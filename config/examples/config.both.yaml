@@ -1,0 +1,29 @@
+# Example: local tree + Google (MVP: index separately; do not merge groups yet)
+
+app:
+  keep_target_default: 10
+  visit_gap_hours: 36
+
+sources:
+  local_tree:
+    enabled: true
+    roots:
+      - ~/Pictures
+    include_globs:
+      - "**/*.{jpg,jpeg,png,heic,heif,webp,mp4,mov,m4v}"
+    exclude_globs:
+      - "**/_Rejected/**"
+      - "**/.Trash/**"
+    follow_symlinks: false
+  google:
+    enabled: true
+    credentials_file: credentials.json
+    token_file: tokens.json
+    backends:
+      - photos
+    read_only: true
+
+commit:
+  # Applies to local_tree rejects; Google follows adapter capabilities / read_only
+  mode: quarantine
+  quarantine_subdir: _Rejected/visit-media-reduce

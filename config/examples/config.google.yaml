@@ -1,0 +1,30 @@
+# Example: Google API source only
+# 1) Create Desktop OAuth client in Google Cloud Console
+# 2) Save downloaded JSON as credentials.json next to config.yaml
+# 3) Enable Photos Library API and/or Drive API as needed
+# See docs/sources-and-setup.md
+
+app:
+  keep_target_default: 10
+  visit_gap_hours: 36
+
+sources:
+  local_tree:
+    enabled: false
+  google:
+    enabled: true
+    # Relative to config directory, or absolute path
+    credentials_file: credentials.json
+    # tokens stored in OS keychain when possible; file fallback:
+    token_file: tokens.json
+    # photos | drive | both — start with what you enabled in Cloud Console
+    backends:
+      - photos
+      # - drive
+    # Scopes are requested by the app; keep least privilege in Cloud Console
+    # read_only true forces decision export instead of API delete attempts
+    read_only: true
+
+commit:
+  # For Google-only + read_only, app exports decisions; local modes unused
+  mode: dry_run

@@ -1,0 +1,28 @@
+# Example: local folder tree only
+# Copy to your OS config dir as config.yaml and edit paths.
+
+app:
+  keep_target_default: 10
+  visit_gap_hours: 36
+
+sources:
+  local_tree:
+    enabled: true
+    roots:
+      - ~/Pictures
+      # - /Volumes/PhotoArchive/Trips
+    include_globs:
+      - "**/*.{jpg,jpeg,png,heic,heif,webp,gif,mp4,mov,m4v,avi,mkv}"
+    exclude_globs:
+      - "**/.Trash/**"
+      - "**/_Rejected/**"
+      - "**/.DS_Store"
+      - "**/@eaDir/**"
+    follow_symlinks: false
+  google:
+    enabled: false
+
+commit:
+  # trash | quarantine | dry_run
+  mode: trash
+  quarantine_subdir: _Rejected/visit-media-reduce

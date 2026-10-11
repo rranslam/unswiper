@@ -1,0 +1,24 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor / IDE
+.idea/
+.vscode/
+*.swp
+*~
+
+# Secrets — never commit Google OAuth client or tokens
+credentials.json
+**/credentials.json
+tokens.json
+**/tokens.json
+*.pem
+
+# Local runtime (future)
+.cache/
+thumb-cache/
+*.sqlite
+*.sqlite-journal
+.env
+.env.*
