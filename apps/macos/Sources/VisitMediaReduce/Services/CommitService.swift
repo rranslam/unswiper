@@ -7,6 +7,8 @@ enum CommitService {
         var failed: [(path: String, error: String)]
         var bytes: Int64
         var dryRun: Bool
+        /// Dry run only: how many items would be moved. `moved` stays 0 for a dry run.
+        var wouldMove: Int = 0
         var manifestURL: URL? = nil
     }
 
@@ -27,7 +29,7 @@ enum CommitService {
 
         if mode == .dryRun {
             let bytes = rejects.reduce(Int64(0)) { $0 + $1.totalBytes }
-            return Result(moved: rejects.count, failed: [], bytes: bytes, dryRun: true)
+            return Result(moved: 0, failed: [], bytes: bytes, dryRun: true, wouldMove: rejects.count)
         }
 
         var moved = 0

@@ -55,7 +55,7 @@ struct CommitView: View {
             }
 
             if state.config.commitMode == .dryRun {
-                Text("Dry run records the count only; files stay in place.")
+                Text("Dry run only reports what would move; files stay in place.")
                     .foregroundStyle(.secondary)
             }
 

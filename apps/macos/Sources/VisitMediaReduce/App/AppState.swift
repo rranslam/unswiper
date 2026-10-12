@@ -27,6 +27,8 @@ final class AppState: ObservableObject {
     }
 
     private var bookmarkURL: URL?
+    /// The URL we currently hold security-scoped access to (started once, stopped on root change/quit).
+    private var accessedURL: URL?
     private var saveTask: Task<Void, Never>?
     private var terminateObserver: NSObjectProtocol?
 
@@ -45,7 +47,10 @@ final class AppState: ObservableObject {
         terminateObserver = NotificationCenter.default.addObserver(
             forName: NSApplication.willTerminateNotification, object: nil, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { self?.flush() }
+            MainActor.assumeIsolated {
+                self?.flush()
+                self?.stopAccess()
+            }
         }
     }
 
@@ -103,7 +108,7 @@ final class AppState: ObservableObject {
             config.bookmarkData = data
             config.rootPath = url.path
             bookmarkURL = url
-            _ = url.startAccessingSecurityScopedResource()
+            beginAccess(url)
             persist()
             path = .home
             Task { await reindex() }
@@ -112,6 +117,7 @@ final class AppState: ObservableObject {
             config.rootPath = url.path
             config.bookmarkData = nil
             bookmarkURL = url
+            stopAccess()
             persist()
             path = .home
             Task { await reindex() }
@@ -119,21 +125,31 @@ final class AppState: ObservableObject {
     }
 
     func ensureAccess() -> URL? {
-        if let bookmarkURL {
-            _ = bookmarkURL.startAccessingSecurityScopedResource()
-            return bookmarkURL
-        }
-        if let data = config.bookmarkData {
+        if bookmarkURL == nil, let data = config.bookmarkData {
             restoreBookmark(data)
-            if let bookmarkURL {
-                _ = bookmarkURL.startAccessingSecurityScopedResource()
-                return bookmarkURL
-            }
+        }
+        if let bookmarkURL {
+            beginAccess(bookmarkURL)
+            return bookmarkURL
         }
         if let path = config.rootPath {
             return URL(fileURLWithPath: path)
         }
         return nil
+    }
+
+    /// Starts security-scoped access once per root; stops access to any previous root.
+    private func beginAccess(_ url: URL) {
+        if let accessedURL, accessedURL.standardizedFileURL == url.standardizedFileURL { return }
+        stopAccess()
+        if url.startAccessingSecurityScopedResource() {
+            accessedURL = url
+        }
+    }
+
+    private func stopAccess() {
+        accessedURL?.stopAccessingSecurityScopedResource()
+        accessedURL = nil
     }
 
     private func restoreBookmark(_ data: Data) {
@@ -198,18 +214,24 @@ final class AppState: ObservableObject {
     }
 
     func updateDecision(paths: [String], decision: Decision) {
-        var map = Dictionary(uniqueKeysWithValues: items.map { ($0.path, $0) })
-        for path in paths {
-            guard var item = map[path] else { continue }
-            item.decision = decision
-            map[path] = item
+        let targets = Set(paths)
+        // Mutate in place so order is preserved and duplicate paths can't trap.
+        for index in items.indices where targets.contains(items[index].path) {
+            items[index].decision = decision
         }
-        items = Array(map.values)
         persist()
     }
 
-    func setKeepTarget(_ value: Int) {
-        config.keepTargetDefault = max(1, value)
+    /// Keep target for one visit; falls back to the global default.
+    func keepTarget(for groupID: VisitGroup.ID) -> Int {
+        config.keepTargets?[groupID] ?? config.keepTargetDefault
+    }
+
+    /// Sets the keep target for one visit only (does not change the global default).
+    func setKeepTarget(_ value: Int, for groupID: VisitGroup.ID) {
+        var targets = config.keepTargets ?? [:]
+        targets[groupID] = max(1, value)
+        config.keepTargets = targets
         persist()
     }
 
@@ -233,8 +255,11 @@ final class AppState: ObservableObject {
                 groups = VisitGrouper.group(items: items.sorted { $0.takenAt < $1.takenAt }, gapHours: config.visitGapHours)
                 flush()
             }
-            let verb = result.dryRun ? "Would move" : "Moved"
-            statusMessage = "\(verb) \(result.moved) items (\(ByteFormat.string(result.bytes)))."
+            if result.dryRun {
+                statusMessage = "Dry run: would move \(result.wouldMove) items (\(ByteFormat.string(result.bytes))). Nothing was moved."
+            } else {
+                statusMessage = "Moved \(result.moved) items (\(ByteFormat.string(result.bytes)))."
+            }
             if !result.failed.isEmpty {
                 statusMessage = (statusMessage ?? "") + " \(result.failed.count) failed."
             }

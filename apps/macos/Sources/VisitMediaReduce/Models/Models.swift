@@ -118,6 +118,8 @@ struct AppConfig: Codable, Equatable {
     var visitGapHours: Double
     var commitMode: CommitMode
     var bookmarkData: Data?
+    /// Per-visit keep targets keyed by group id. Optional so older library.json files still decode.
+    var keepTargets: [String: Int]? = nil
 
     static let `default` = AppConfig(
         rootPath: nil,

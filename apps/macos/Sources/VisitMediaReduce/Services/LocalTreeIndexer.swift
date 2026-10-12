@@ -236,7 +236,7 @@ enum VisitGrouper {
             let photos = cluster.filter { $0.kind == .photo }.count
             let videos = cluster.filter { $0.kind == .video }.count
             let bytes = cluster.reduce(Int64(0)) { $0 + $1.totalBytes }
-            let id = "\(start.timeIntervalSince1970)-\(cluster.count)-\(folder)"
+            let id = stableGroupID(firstPath: cluster.first!.path, start: start)
             return VisitGroup(
                 id: id,
                 title: title,
@@ -250,6 +250,16 @@ enum VisitGrouper {
             )
         }
         .sorted { $0.totalBytes > $1.totalBytes }
+    }
+
+    /// Stable across commits/re-index: FNV-1a of first item path + start time (no item count).
+    static func stableGroupID(firstPath: String, start: Date) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in "\(firstPath)|\(Int64(start.timeIntervalSince1970))".utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
+        }
+        return "visit-" + String(hash, radix: 16)
     }
 
     private static func mostCommonFolder(_ items: [MediaItem]) -> String {

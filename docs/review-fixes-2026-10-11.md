@@ -2,7 +2,7 @@
 
 Scope: `apps/macos/Sources/VisitMediaReduce`. Ordered by priority. Each item: problem → fix → acceptance.
 
-## P0 — Safety (before running on a real library)
+## P0 — Safety (before running on a real library) — ✅ Done (`03de743`)
 
 ### 1. Validate every file before commit
 - **Problem:** `CommitService.commitRejects` moves paths straight from `library.json` with no check that the file is unchanged or inside the library root.
@@ -24,7 +24,7 @@ Scope: `apps/macos/Sources/VisitMediaReduce`. Ordered by priority. Each item: pr
 - **Fix:** Group by same directory + base name; decisions and moves apply to the whole set.
 - **Accept:** Rejecting a Live Photo moves both files.
 
-## P1 — Correctness
+## P1 — Correctness — ✅ Done (`e13324c`)
 
 ### 5. Video capture dates
 - Use `AVURLAsset` `creationDate` / QuickTime metadata for videos instead of file mtime.
@@ -38,7 +38,7 @@ Scope: `apps/macos/Sources/VisitMediaReduce`. Ordered by priority. Each item: pr
 ### 8. Debounce persistence
 - `persist()` rewrites all of `library.json` on every decision. Debounce (~1s) and save on quit.
 
-## P2 — Cleanup
+## P2 — Cleanup — ✅ Done (uncommitted)
 - `updateDecision`: update in place by index; don't rebuild from a Dictionary (scrambles order, traps on duplicate keys).
 - Balance `startAccessingSecurityScopedResource` with `stopAccessing…`; start once.
 - Stable group IDs (e.g. hash of first item path + start time), not including count.

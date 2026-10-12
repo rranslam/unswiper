@@ -53,7 +53,7 @@ struct ReduceView: View {
             }
         }
         .onAppear {
-            keepTarget = state.config.keepTargetDefault
+            keepTarget = state.keepTarget(for: groupID)
         }
     }
 
@@ -80,7 +80,7 @@ struct ReduceView: View {
                 Text("Keep \(keepTarget)")
                 Stepper("", value: $keepTarget, in: 1...max(1, group.itemCount))
                     .labelsHidden()
-                    .onChange(of: keepTarget) { _, v in state.setKeepTarget(v) }
+                    .onChange(of: keepTarget) { _, v in state.setKeepTarget(v, for: groupID) }
                 Text("\(counts.kept) kept · \(counts.rejected) reject · \(counts.left) left")
                     .foregroundStyle(.secondary)
                 if counts.kept >= keepTarget {

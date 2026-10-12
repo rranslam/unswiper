@@ -2,7 +2,28 @@
 
 Local **desktop** app (macOS or Linux) to pare down photos and videos by **visit / place / time groups** — not unrelated left/right swipes. Same group-first reduce concept; mobile (Android / iPhone) later.
 
-**Status:** Design docs only (no app code yet). Refactored 2026-10-11 to desktop-first + dual media sources.
+**Status:** macOS SwiftUI MVP in [`apps/macos`](apps/macos) (local tree source). Review fixes P0/P1/P2 applied 2026-10-11 — see [`docs/review-fixes-2026-10-11.md`](docs/review-fixes-2026-10-11.md). Linux, Google source, and mobile not started.
+
+## Build & run (macOS)
+
+Requires full **Xcode** (not just Command Line Tools) with the license accepted.
+
+```
+cd apps/macos
+swift build
+swift run
+```
+
+Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
+
+## MVP features
+
+- Pick a local folder; background indexer (EXIF dates for photos, `AVAsset` creation date for videos)
+- Visit groups by time gap, sorted by size; "Undated" group for files with no usable date
+- Reduce screen with per-visit keep target, keep/reject, side-by-side compare
+- Commit rejects to Trash or a `_Rejected/` quarantine folder, or dry run (nothing moves)
+- Safety: files validated (inside library, unchanged size/mtime) before moving; confirm dialog; Live Photo + sidecar pairing; per-commit manifest with **Restore Last Commit**
+- Commit/restore off the main thread; debounced saves
 
 Formerly: `android-visit-media-reduce` (stub left at that path).
 
@@ -30,9 +51,11 @@ visit-media-reduce/
 ├── README.md
 ├── STATUS.md
 ├── SESSION.md
+├── apps/macos/               ← SwiftUI macOS MVP (Swift Package)
 ├── config/examples/          ← sample config for Google + local tree
 ├── docs/
 │   ├── architecture.md
+│   ├── review-fixes-2026-10-11.md
 │   ├── ux-model.md
 │   ├── sources-and-setup.md
 │   ├── architecture-android-mvp.md
@@ -49,6 +72,8 @@ visit-media-reduce/
 
 ## Suggested next steps
 
-- Implement shared domain core + desktop shell skeleton, or  
-- Wire `LocalTreeSource` indexer first (fastest path to reduce UX), or  
-- Complete Google Cloud OAuth desktop client setup using `docs/sources-and-setup.md`
+- Test the macOS MVP on a copied real library; collect UX issues  
+- Add tests for commit validation, restore, and visit grouping  
+- Geo-aware grouping and better visit titles  
+- Google source (OAuth desktop) using `docs/sources-and-setup.md`  
+- Linux build path (shared domain core) and later mobile
