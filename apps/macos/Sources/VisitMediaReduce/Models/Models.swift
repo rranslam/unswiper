@@ -46,6 +46,8 @@ struct MediaItem: Identifiable, Codable, Hashable {
     var modifiedAt: Date? = nil
     /// Paired files (Live Photo video, edit sidecars). Decisions and moves apply to the whole set.
     var sidecars: [SidecarFile] = []
+    /// True when no capture date or usable file date was found; `takenAt` is then a placeholder.
+    var isUndated: Bool = false
 
     var fileURL: URL { URL(fileURLWithPath: path) }
     var fileName: String { fileURL.lastPathComponent }
@@ -53,7 +55,7 @@ struct MediaItem: Identifiable, Codable, Hashable {
     var fileCount: Int { 1 + sidecars.count }
 
     enum CodingKeys: String, CodingKey {
-        case path, kind, sizeBytes, takenAt, relativeFolder, decision, modifiedAt, sidecars
+        case path, kind, sizeBytes, takenAt, relativeFolder, decision, modifiedAt, sidecars, isUndated
     }
 }
 
@@ -68,12 +70,13 @@ extension MediaItem {
         decision = try c.decode(Decision.self, forKey: .decision)
         modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt)
         sidecars = try c.decodeIfPresent([SidecarFile].self, forKey: .sidecars) ?? []
+        isUndated = try c.decodeIfPresent(Bool.self, forKey: .isUndated) ?? false
     }
 }
 
 /// Record of one commit, written so it can be restored.
 struct CommitManifest: Codable {
-    struct Entry: Codable {
+    struct Entry: Codable, Sendable {
         var originalPath: String
         var resultPath: String
         var sizeBytes: Int64

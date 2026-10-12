@@ -29,6 +29,7 @@ struct CommitView: View {
                 Label("Back", systemImage: "chevron.left")
             }
             .buttonStyle(.borderless)
+            .disabled(state.isBusy)
 
             Text("Review & commit")
                 .font(.largeTitle.weight(.semibold))
@@ -63,14 +64,20 @@ struct CommitView: View {
                     state.path = .reduce(groupID)
                 }
                 .keyboardShortcut(.cancelAction)
+                .disabled(state.isBusy)
 
                 Spacer()
+
+                if let busy = state.busyMessage {
+                    ProgressView().controlSize(.small)
+                    Text(busy).foregroundStyle(.secondary)
+                }
 
                 Button(commitLabel + "…") {
                     confirming = true
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(rejects.isEmpty || isCommitting)
+                .disabled(rejects.isEmpty || isCommitting || state.isBusy)
             }
             .confirmationDialog(
                 "\(commitLabel): \(rejects.count) items (\(rejectFileCount) files, \(ByteFormat.string(rejectBytes)))?",

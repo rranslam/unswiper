@@ -2,7 +2,7 @@ import Foundation
 import AppKit
 
 enum CommitService {
-    struct Result {
+    struct Result: Sendable {
         var moved: Int
         var failed: [(path: String, error: String)]
         var bytes: Int64
@@ -10,7 +10,7 @@ enum CommitService {
         var manifestURL: URL? = nil
     }
 
-    struct RestoreResult {
+    struct RestoreResult: Sendable {
         var restored: Int
         var failed: [(path: String, error: String)]
     }

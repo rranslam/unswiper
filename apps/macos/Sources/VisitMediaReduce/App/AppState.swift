@@ -13,6 +13,9 @@ final class AppState: ObservableObject {
     @Published var statusMessage: String?
     @Published var selectedGroupID: VisitGroup.ID?
     @Published var path: AppPath = .home
+    /// Set while a commit or restore is moving files; navigation and file actions are disabled.
+    @Published var busyMessage: String?
+    var isBusy: Bool { busyMessage != nil || isIndexing }
     @Published var hasRestorableCommit = LibraryStore.latestManifestURL() != nil
 
     enum AppPath: Hashable {
@@ -24,6 +27,8 @@ final class AppState: ObservableObject {
     }
 
     private var bookmarkURL: URL?
+    private var saveTask: Task<Void, Never>?
+    private var terminateObserver: NSObjectProtocol?
 
     init() {
         let snap = LibraryStore.load()
@@ -37,6 +42,11 @@ final class AppState: ObservableObject {
         if config.rootPath == nil {
             path = .setup
         }
+        terminateObserver = NotificationCenter.default.addObserver(
+            forName: NSApplication.willTerminateNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.flush() }
+        }
     }
 
     var librarySummary: String {
@@ -49,7 +59,19 @@ final class AppState: ObservableObject {
         return groups.first { $0.id == id }
     }
 
+    /// Debounced save (~1s). Use `flush()` to write immediately.
     func persist() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            self?.flush()
+        }
+    }
+
+    func flush() {
+        saveTask?.cancel()
+        saveTask = nil
         let snap = LibrarySnapshot(
             config: config,
             items: items,
@@ -195,12 +217,13 @@ final class AppState: ObservableObject {
         guard let group = groups.first(where: { $0.id == groupID }) else { return }
         let members = items(in: group)
         let root = ensureAccess()
+        let mode = config.commitMode
+        busyMessage = mode == .dryRun ? "Checking…" : "Moving \(members.filter { $0.decision == .reject }.count) items…"
+        defer { busyMessage = nil }
         do {
-            let result = try CommitService.commitRejects(
-                items: members,
-                mode: config.commitMode,
-                libraryRoot: root
-            )
+            let result = try await Task.detached(priority: .userInitiated) {
+                try CommitService.commitRejects(items: members, mode: mode, libraryRoot: root)
+            }.value
             if result.manifestURL != nil { hasRestorableCommit = true }
             if !result.dryRun {
                 let failed = Set(result.failed.map(\.path))
@@ -208,7 +231,7 @@ final class AppState: ObservableObject {
                 items.removeAll { rejectedMoved.contains($0.path) }
                 // Rebuild groups from remaining items
                 groups = VisitGrouper.group(items: items.sorted { $0.takenAt < $1.takenAt }, gapHours: config.visitGapHours)
-                persist()
+                flush()
             }
             let verb = result.dryRun ? "Would move" : "Moved"
             statusMessage = "\(verb) \(result.moved) items (\(ByteFormat.string(result.bytes)))."
@@ -229,9 +252,13 @@ final class AppState: ObservableObject {
             return
         }
         _ = ensureAccess()
+        busyMessage = "Restoring…"
         do {
             let manifest = try LibraryStore.readManifest(at: url)
-            let result = CommitService.restore(manifest: manifest)
+            let result = await Task.detached(priority: .userInitiated) {
+                CommitService.restore(manifest: manifest)
+            }.value
+            busyMessage = nil
             if result.failed.isEmpty {
                 // Mark restored so it is no longer the "last" commit.
                 try? FileManager.default.moveItem(at: url, to: url.deletingPathExtension().appendingPathExtension("restored"))
@@ -244,6 +271,7 @@ final class AppState: ObservableObject {
             }
             statusMessage = msg
         } catch {
+            busyMessage = nil
             statusMessage = "Restore failed: \(error.localizedDescription)"
         }
     }

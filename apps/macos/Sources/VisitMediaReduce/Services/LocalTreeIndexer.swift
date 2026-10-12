@@ -1,5 +1,6 @@
 import Foundation
 import ImageIO
+import AVFoundation
 
 enum LocalTreeIndexer {
     private static let photoExts: Set<String> = [
@@ -92,7 +93,10 @@ enum LocalTreeIndexer {
 
             for e in standalone {
                 let kind: MediaKind = photoExts.contains(e.ext) ? .photo : .video
-                let takenAt = exifDate(for: e.url) ?? e.modifiedAt ?? e.createdAt ?? Date()
+                let captured = kind == .photo ? exifDate(for: e.url) : videoDate(for: e.url)
+                let fileDate = usable(e.modifiedAt) ?? usable(e.createdAt)
+                let takenAt = captured ?? fileDate ?? .distantPast
+                let isUndated = captured == nil && fileDate == nil
 
                 let relFolder: String
                 if let rel = e.url.deletingLastPathComponent().path.replacingOccurrences(of: root.path, with: "")
@@ -116,7 +120,8 @@ enum LocalTreeIndexer {
                     relativeFolder: relFolder,
                     decision: existingDecisions[path] ?? .undecided,
                     modifiedAt: e.modifiedAt,
-                    sidecars: sidecars
+                    sidecars: sidecars,
+                    isUndated: isUndated
                 ))
             }
         }
@@ -125,6 +130,37 @@ enum LocalTreeIndexer {
         items.sort { $0.takenAt < $1.takenAt }
         let groups = VisitGrouper.group(items: items, gapHours: visitGapHours)
         return (items, groups)
+    }
+
+    /// File dates at or before 1980 (zeroed/epoch timestamps) are treated as missing.
+    private static func usable(_ date: Date?) -> Date? {
+        guard let date, date.timeIntervalSince1970 > 315_532_800 else { return nil }
+        return date
+    }
+
+    /// Capture date from QuickTime/MP4 metadata (creationDate, then com.apple.quicktime.creationdate).
+    private static func videoDate(for url: URL) -> Date? {
+        let asset = AVURLAsset(url: url)
+        let sem = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: Date?
+        Task.detached {
+            defer { sem.signal() }
+            if let item = try? await asset.load(.creationDate),
+               let date = try? await item.load(.dateValue) {
+                result = date
+                return
+            }
+            if let meta = try? await asset.load(.metadata) {
+                let items = AVMetadataItem.metadataItems(from: meta, filteredByIdentifier: .quickTimeMetadataCreationDate)
+                for item in items {
+                    if let date = try? await item.load(.dateValue) { result = date; return }
+                    if let s = try? await item.load(.stringValue),
+                       let date = ISO8601DateFormatter().date(from: s) { result = date; return }
+                }
+            }
+        }
+        sem.wait()
+        return usable(result)
     }
 
     private static func exifDate(for url: URL) -> Date? {
@@ -157,6 +193,26 @@ enum LocalTreeIndexer {
 
 enum VisitGrouper {
     static func group(items: [MediaItem], gapHours: Double) -> [VisitGroup] {
+        let undated = items.filter(\.isUndated)
+        let items = items.filter { !$0.isUndated }.sorted { $0.takenAt < $1.takenAt }
+        var result = cluster(items: items, gapHours: gapHours)
+        if !undated.isEmpty {
+            result.append(VisitGroup(
+                id: "undated",
+                title: "Undated",
+                startDate: .distantPast,
+                endDate: .distantPast,
+                itemPaths: undated.map(\.path),
+                photoCount: undated.filter { $0.kind == .photo }.count,
+                videoCount: undated.filter { $0.kind == .video }.count,
+                totalBytes: undated.reduce(Int64(0)) { $0 + $1.totalBytes },
+                folderHint: mostCommonFolder(undated)
+            ))
+        }
+        return result
+    }
+
+    private static func cluster(items: [MediaItem], gapHours: Double) -> [VisitGroup] {
         guard !items.isEmpty else { return [] }
         let gap = gapHours * 3600
         var clusters: [[MediaItem]] = []

@@ -32,7 +32,7 @@ struct CompareView: View {
                         Text(item.fileName)
                             .font(.caption)
                             .lineLimit(2)
-                        Text("\(ByteFormat.string(item.sizeBytes)) · \(item.takenAt.formatted(date: .abbreviated, time: .shortened))")
+                        Text("\(ByteFormat.string(item.sizeBytes)) · \(item.isUndated ? "Undated" : item.takenAt.formatted(date: .abbreviated, time: .shortened))")
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                         HStack {

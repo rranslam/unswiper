@@ -43,6 +43,13 @@ struct GroupsView: View {
                 }
             }
             Spacer()
+            if let busy = state.busyMessage {
+                ProgressView()
+                    .controlSize(.small)
+                Text(busy)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if state.isIndexing {
                 ProgressView()
                     .controlSize(.small)
@@ -58,22 +65,24 @@ struct GroupsView: View {
                 }
             }
             .frame(width: 220)
+            .disabled(state.isBusy)
             .onChange(of: state.config.commitMode) { _, _ in state.persist() }
 
             Button("Restore Last Commit") {
                 Task { await state.restoreLastCommit() }
             }
-            .disabled(state.isIndexing || !state.hasRestorableCommit)
+            .disabled(state.isBusy || !state.hasRestorableCommit)
             .help("Move files from the most recent commit back to their original locations")
 
             Button("Re-index") {
                 Task { await state.reindex() }
             }
-            .disabled(state.isIndexing || state.config.rootPath == nil)
+            .disabled(state.isBusy || state.config.rootPath == nil)
 
             Button("Change Folder…") {
                 state.path = .setup
             }
+            .disabled(state.isBusy)
         }
         .padding()
     }
