@@ -14,7 +14,7 @@ MVP recommendation: ship **local tree** first; add Google as a second adapter.
 | OS | Directory |
 |----|-----------|
 | Linux | `~/.config/visit-media-reduce/` |
-| macOS | `~/Library/Application Support/visit-media-reduce/` |
+| macOS | `~/Library/Application Support/Unswiper/` |
 
 Primary file: `config.yaml` (JSON also acceptable).  
 Examples in repo: [`config/examples/`](../config/examples/).
@@ -50,7 +50,7 @@ See `config/examples/config.local-tree.yaml`.
 | Mode | Behavior |
 |------|----------|
 | `trash` | Move rejects to OS trash (recoverable) |
-| `quarantine` | Move to `<root>/_Rejected/visit-media-reduce/<date>/` |
+| `quarantine` | Move to `<root>/_Rejected/Unswiper/<date>/` |
 | `dry_run` | Record decisions only; do not move files |
 
 Never hard-delete without an explicit settings toggle (default off for MVP).

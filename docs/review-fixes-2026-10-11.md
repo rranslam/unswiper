@@ -1,6 +1,6 @@
 # Review fixes — macOS MVP (2026-10-11)
 
-Scope: `apps/macos/Sources/VisitMediaReduce`. Ordered by priority. Each item: problem → fix → acceptance.
+Scope: `apps/macos/Sources/VisitMediaReduce` (now `Sources/Unswiper`). Ordered by priority. Each item: problem → fix → acceptance.
 
 ## P0 — Safety (before running on a real library) — ✅ Done (`03de743`)
 

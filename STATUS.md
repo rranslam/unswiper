@@ -1,11 +1,14 @@
-# Status — 2026-10-11 (macOS MVP + review fixes)
+# Status — Unswiper — 2026-10-11 (macOS MVP + review fixes)
+
+*Formerly visit-media-reduce.* MIT licensed.
 
 ## State
 
 | Item | Value |
 |------|--------|
 | Phase | **macOS MVP** built; review fixes P0/P1/P2 applied |
-| Code | SwiftUI app in `apps/macos` (`swift build` / `swift run`, needs Xcode) |
+| Code | SwiftUI app **Unswiper** in `apps/macos` (`swift build` / `swift run`, needs Xcode) |
+| Packaging | `apps/macos/scripts/build-dmg.sh` → `Unswiper.app` + `Unswiper-<ver>.dmg` (universal, ad-hoc signed, not notarized); tag `v*` → GitHub Release via `.github/workflows/release.yml` |
 | Primary targets | **macOS** and **Linux** local install |
 | Later | Android, iPhone (shared domain; thin clients) |
 | Media sources | **Local tree** *or* **Google API** (OAuth desktop) |

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Rob Ranslam
+
 import Foundation
 import ImageIO
 import AVFoundation

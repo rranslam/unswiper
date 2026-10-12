@@ -2,15 +2,15 @@
 import PackageDescription
 
 let package = Package(
-    name: "VisitMediaReduce",
+    name: "Unswiper",
     platforms: [.macOS(.v14)],
     products: [
-        .executable(name: "VisitMediaReduce", targets: ["VisitMediaReduce"])
+        .executable(name: "Unswiper", targets: ["Unswiper"])
     ],
     targets: [
         .executableTarget(
-            name: "VisitMediaReduce",
-            path: "Sources/VisitMediaReduce"
+            name: "Unswiper",
+            path: "Sources/Unswiper"
         )
     ]
 )

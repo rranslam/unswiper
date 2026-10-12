@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Rob Ranslam
+
 import Foundation
 import AppKit
 
@@ -42,7 +45,7 @@ enum CommitService {
 
         let quarantineBase: URL = {
             if let root = libraryRoot {
-                return root.appendingPathComponent("_Rejected/visit-media-reduce", isDirectory: true)
+                return root.appendingPathComponent("_Rejected/Unswiper", isDirectory: true)
             }
             return LibraryStore.quarantineRoot
         }()

@@ -1,3 +1,6 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Rob Ranslam
+
 import SwiftUI
 
 struct SetupView: View {
@@ -9,7 +12,7 @@ struct SetupView: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 56))
                 .foregroundStyle(.secondary)
-            Text("Visit Media Reduce")
+            Text("Unswiper")
                 .font(.largeTitle.weight(.semibold))
             Text("Group photos and videos by visit, then keep what matters — not unrelated swipes.")
                 .font(.title3)

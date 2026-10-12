@@ -1,11 +1,33 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Rob Ranslam
+
 import Foundation
 
 enum LibraryStore {
     private static var supportDir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = base.appendingPathComponent("visit-media-reduce", isDirectory: true)
+        let dir = base.appendingPathComponent("Unswiper", isDirectory: true)
+        migrateLegacySupportDir(base: base, to: dir)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         return dir
+    }
+
+    /// One-time migration from the pre-rename folder ("visit-media-reduce").
+    /// The old folder is moved and a symlink is left in its place so paths
+    /// recorded in older commit manifests still resolve for Restore.
+    private static func migrateLegacySupportDir(base: URL, to dir: URL) {
+        let fm = FileManager.default
+        let legacy = base.appendingPathComponent("visit-media-reduce", isDirectory: true)
+        guard !fm.fileExists(atPath: dir.path) else { return }
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: legacy.path, isDirectory: &isDir), isDir.boolValue,
+              (try? fm.destinationOfSymbolicLink(atPath: legacy.path)) == nil else { return }
+        do {
+            try fm.moveItem(at: legacy, to: dir)
+            try? fm.createSymbolicLink(at: legacy, withDestinationURL: dir)
+        } catch {
+            // Fall back to a fresh folder; the legacy data stays untouched.
+        }
     }
 
     static var snapshotURL: URL {

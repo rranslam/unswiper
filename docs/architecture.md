@@ -61,7 +61,7 @@ Pick one shell; keep domain free of UI frameworks:
 | Domain | Rust or Kotlin shared lib | Kotlin shared (easier Android later) |
 | DB | SQLite | SQLite |
 | Thumbs | Local cache dir + image crate / Coil-analog | same |
-| Config | `~/.config/visit-media-reduce/` (Linux) · `~/Library/Application Support/visit-media-reduce/` (macOS) | same |
+| Config | `~/.config/visit-media-reduce/` (Linux) · `~/Library/Application Support/Unswiper/` (macOS) | same |
 
 **Compose Multiplatform** if Android follow-on is near-term. **Tauri** if you want a small native binary and web-skilled UI. Either way: **one domain crate/module**, two source adapters.
 

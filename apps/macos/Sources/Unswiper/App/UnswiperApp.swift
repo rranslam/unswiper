@@ -1,11 +1,14 @@
+// SPDX-License-Identifier: MIT
+// Copyright (c) 2026 Rob Ranslam
+
 import SwiftUI
 
 @main
-struct VisitMediaReduceApp: App {
+struct UnswiperApp: App {
     @StateObject private var state = AppState()
 
     var body: some Scene {
-        WindowGroup("Visit Media Reduce") {
+        WindowGroup("Unswiper") {
             RootView()
                 .environmentObject(state)
         }
