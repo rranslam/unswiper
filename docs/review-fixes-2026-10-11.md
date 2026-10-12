@@ -38,7 +38,7 @@ Scope: `apps/macos/Sources/VisitMediaReduce`. Ordered by priority. Each item: pr
 ### 8. Debounce persistence
 - `persist()` rewrites all of `library.json` on every decision. Debounce (~1s) and save on quit.
 
-## P2 — Cleanup — ✅ Done (uncommitted)
+## P2 — Cleanup — ✅ Done (`59b0fef`)
 - `updateDecision`: update in place by index; don't rebuild from a Dictionary (scrambles order, traps on duplicate keys).
 - Balance `startAccessingSecurityScopedResource` with `stopAccessing…`; start once.
 - Stable group IDs (e.g. hash of first item path + start time), not including count.
