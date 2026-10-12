@@ -13,6 +13,7 @@ final class AppState: ObservableObject {
     @Published var statusMessage: String?
     @Published var selectedGroupID: VisitGroup.ID?
     @Published var path: AppPath = .home
+    @Published var hasRestorableCommit = LibraryStore.latestManifestURL() != nil
 
     enum AppPath: Hashable {
         case home
@@ -39,7 +40,7 @@ final class AppState: ObservableObject {
     }
 
     var librarySummary: String {
-        let bytes = items.reduce(Int64(0)) { $0 + $1.sizeBytes }
+        let bytes = items.reduce(Int64(0)) { $0 + $1.totalBytes }
         return "\(items.count) items · \(ByteFormat.string(bytes))"
     }
 
@@ -200,6 +201,7 @@ final class AppState: ObservableObject {
                 mode: config.commitMode,
                 libraryRoot: root
             )
+            if result.manifestURL != nil { hasRestorableCommit = true }
             if !result.dryRun {
                 let failed = Set(result.failed.map(\.path))
                 let rejectedMoved = Set(members.filter { $0.decision == .reject && !failed.contains($0.path) }.map(\.path))
@@ -216,6 +218,33 @@ final class AppState: ObservableObject {
             path = .home
         } catch {
             statusMessage = "Commit failed: \(error.localizedDescription)"
+        }
+    }
+
+    /// Moves every file from the most recent commit back to its original path, then re-indexes.
+    func restoreLastCommit() async {
+        guard let url = LibraryStore.latestManifestURL() else {
+            statusMessage = "No commit to restore."
+            hasRestorableCommit = false
+            return
+        }
+        _ = ensureAccess()
+        do {
+            let manifest = try LibraryStore.readManifest(at: url)
+            let result = CommitService.restore(manifest: manifest)
+            if result.failed.isEmpty {
+                // Mark restored so it is no longer the "last" commit.
+                try? FileManager.default.moveItem(at: url, to: url.deletingPathExtension().appendingPathExtension("restored"))
+            }
+            hasRestorableCommit = LibraryStore.latestManifestURL() != nil
+            await reindex()
+            var msg = "Restored \(result.restored) of \(manifest.entries.count) files."
+            if !result.failed.isEmpty {
+                msg += " \(result.failed.count) failed (manifest kept): \(result.failed.first!.error)"
+            }
+            statusMessage = msg
+        } catch {
+            statusMessage = "Restore failed: \(error.localizedDescription)"
         }
     }
 }

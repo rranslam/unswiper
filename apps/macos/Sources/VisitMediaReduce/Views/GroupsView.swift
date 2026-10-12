@@ -60,6 +60,12 @@ struct GroupsView: View {
             .frame(width: 220)
             .onChange(of: state.config.commitMode) { _, _ in state.persist() }
 
+            Button("Restore Last Commit") {
+                Task { await state.restoreLastCommit() }
+            }
+            .disabled(state.isIndexing || !state.hasRestorableCommit)
+            .help("Move files from the most recent commit back to their original locations")
+
             Button("Re-index") {
                 Task { await state.reindex() }
             }

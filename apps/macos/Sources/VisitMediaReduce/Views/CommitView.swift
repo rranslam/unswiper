@@ -4,6 +4,7 @@ struct CommitView: View {
     @EnvironmentObject private var state: AppState
     let groupID: VisitGroup.ID
     @State private var isCommitting = false
+    @State private var confirming = false
 
     private var group: VisitGroup? {
         state.groups.first { $0.id == groupID }
@@ -17,7 +18,8 @@ struct CommitView: View {
     private var rejects: [MediaItem] { members.filter { $0.decision == .reject } }
     private var keeps: [MediaItem] { members.filter { $0.decision == .keep } }
     private var undecided: [MediaItem] { members.filter { $0.decision == .undecided } }
-    private var rejectBytes: Int64 { rejects.reduce(0) { $0 + $1.sizeBytes } }
+    private var rejectFileCount: Int { rejects.reduce(0) { $0 + $1.fileCount } }
+    private var rejectBytes: Int64 { rejects.reduce(0) { $0 + $1.totalBytes } }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -64,16 +66,29 @@ struct CommitView: View {
 
                 Spacer()
 
-                Button(commitLabel) {
+                Button(commitLabel + "…") {
+                    confirming = true
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(rejects.isEmpty || isCommitting)
+            }
+            .confirmationDialog(
+                "\(commitLabel): \(rejects.count) items (\(rejectFileCount) files, \(ByteFormat.string(rejectBytes)))?",
+                isPresented: $confirming,
+                titleVisibility: .visible
+            ) {
+                Button(commitLabel, role: state.config.commitMode == .dryRun ? nil : .destructive) {
                     isCommitting = true
                     Task {
                         await state.commitGroup(groupID)
                         isCommitting = false
                     }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(rejects.isEmpty || isCommitting)
-                .keyboardShortcut(.defaultAction)
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(state.config.commitMode == .dryRun
+                     ? "No files will be moved."
+                     : "Files are validated first; a manifest is saved so you can use Restore Last Commit.")
             }
 
             Spacer()

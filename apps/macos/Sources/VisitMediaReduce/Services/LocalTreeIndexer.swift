@@ -9,6 +9,10 @@ enum LocalTreeIndexer {
         "mp4", "mov", "m4v", "avi", "mkv", "mts", "m2ts", "3gp", "webm"
     ]
 
+    private static let sidecarExts: Set<String> = ["aae", "xmp"]
+    /// Stills that can be the photo half of a Live Photo (paired with a same-name .mov).
+    private static let livePhotoStillExts: Set<String> = ["heic", "heif", "jpg", "jpeg"]
+
     struct Progress {
         var filesSeen: Int
         var mediaFound: Int
@@ -31,24 +35,26 @@ enum LocalTreeIndexer {
             throw IndexError.unreadableRoot
         }
 
+        struct Entry {
+            let url: URL
+            let ext: String
+            let size: Int64
+            let modifiedAt: Date?
+            let createdAt: Date?
+        }
+        var entries: [Entry] = []
+
         for case let fileURL as URL in enumerator {
             seen += 1
             if seen % 50 == 0 {
-                onProgress(Progress(filesSeen: seen, mediaFound: items.count))
+                onProgress(Progress(filesSeen: seen, mediaFound: entries.count))
             }
 
             let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey, .creationDateKey])
             guard values?.isRegularFile == true else { continue }
 
             let ext = fileURL.pathExtension.lowercased()
-            let kind: MediaKind
-            if photoExts.contains(ext) {
-                kind = .photo
-            } else if videoExts.contains(ext) {
-                kind = .video
-            } else {
-                continue
-            }
+            guard photoExts.contains(ext) || videoExts.contains(ext) || sidecarExts.contains(ext) else { continue }
 
             // Skip quarantine / trash-like folders
             let pathLower = fileURL.path.lowercased()
@@ -56,32 +62,63 @@ enum LocalTreeIndexer {
                 continue
             }
 
-            let size = Int64(values?.fileSize ?? 0)
-            let takenAt = exifDate(for: fileURL)
-                ?? values?.contentModificationDate
-                ?? values?.creationDate
-                ?? Date()
-
-            let relFolder: String
-            if let rel = fileURL.deletingLastPathComponent().path.replacingOccurrences(of: root.path, with: "")
-                .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                .split(separator: "/")
-                .first {
-                relFolder = String(rel)
-            } else {
-                relFolder = root.lastPathComponent
-            }
-
-            let path = fileURL.path
-            let decision = existingDecisions[path] ?? .undecided
-            items.append(MediaItem(
-                path: path,
-                kind: kind,
-                sizeBytes: size,
-                takenAt: takenAt,
-                relativeFolder: relFolder,
-                decision: decision
+            entries.append(Entry(
+                url: fileURL,
+                ext: ext,
+                size: Int64(values?.fileSize ?? 0),
+                modifiedAt: values?.contentModificationDate,
+                createdAt: values?.creationDate
             ))
+        }
+
+        // Pair Live Photos and sidecars: same directory + base name.
+        var sets: [String: [Entry]] = [:]
+        for e in entries {
+            let key = e.url.deletingPathExtension().path.lowercased()
+            sets[key, default: []].append(e)
+        }
+
+        for (_, set) in sets {
+            let photos = set.filter { photoExts.contains($0.ext) }
+            let videos = set.filter { videoExts.contains($0.ext) }
+            var attached = set.filter { sidecarExts.contains($0.ext) }
+            var standalone = photos + videos
+            if photos.contains(where: { livePhotoStillExts.contains($0.ext) }) {
+                attached += videos.filter { $0.ext == "mov" }
+                standalone = photos + videos.filter { $0.ext != "mov" }
+            }
+            // Anchor: prefer a Live Photo still, else first primary. Orphan sidecars are ignored.
+            guard let anchor = standalone.first(where: { livePhotoStillExts.contains($0.ext) }) ?? standalone.first else { continue }
+
+            for e in standalone {
+                let kind: MediaKind = photoExts.contains(e.ext) ? .photo : .video
+                let takenAt = exifDate(for: e.url) ?? e.modifiedAt ?? e.createdAt ?? Date()
+
+                let relFolder: String
+                if let rel = e.url.deletingLastPathComponent().path.replacingOccurrences(of: root.path, with: "")
+                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                    .split(separator: "/")
+                    .first {
+                    relFolder = String(rel)
+                } else {
+                    relFolder = root.lastPathComponent
+                }
+
+                let path = e.url.path
+                let sidecars = e.url == anchor.url
+                    ? attached.map { SidecarFile(path: $0.url.path, sizeBytes: $0.size, modifiedAt: $0.modifiedAt) }
+                    : []
+                items.append(MediaItem(
+                    path: path,
+                    kind: kind,
+                    sizeBytes: e.size,
+                    takenAt: takenAt,
+                    relativeFolder: relFolder,
+                    decision: existingDecisions[path] ?? .undecided,
+                    modifiedAt: e.modifiedAt,
+                    sidecars: sidecars
+                ))
+            }
         }
 
         onProgress(Progress(filesSeen: seen, mediaFound: items.count))
@@ -142,7 +179,7 @@ enum VisitGrouper {
             let title = titleFor(folder: folder, start: start, end: end)
             let photos = cluster.filter { $0.kind == .photo }.count
             let videos = cluster.filter { $0.kind == .video }.count
-            let bytes = cluster.reduce(Int64(0)) { $0 + $1.sizeBytes }
+            let bytes = cluster.reduce(Int64(0)) { $0 + $1.totalBytes }
             let id = "\(start.timeIntervalSince1970)-\(cluster.count)-\(folder)"
             return VisitGroup(
                 id: id,
