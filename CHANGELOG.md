@@ -2,7 +2,7 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
-## [0.1.2] - Unreleased
+## [0.1.2] - 2026-10-13
 
 ### Fixed
 - **Saved decisions can no longer be wiped silently.** If `library.json` can't be read (damaged, or saved by a newer version), Unswiper now copies it to `library.json.corrupt-<date>` first, tells you in an alert, and only then starts empty. Before, it quietly started empty and the next save overwrote all your Keep/Reject choices. `library.json` now records a `schemaVersion`.

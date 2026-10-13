@@ -14,16 +14,16 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
-3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.1.1.dmg`**. Do *not* click "Source code".
+3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.1.2.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
 
 ### Step 2 — Install
 
 1. Open **Finder** (the blue-and-white smiley face at the left end of the Dock, the row of icons at the bottom of your screen).
 2. In the Finder window's left sidebar, click **Downloads**.
-3. **Double-click** `Unswiper-0.1.1.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
+3. **Double-click** `Unswiper-0.1.2.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
 4. **Click and hold** on the Unswiper icon, **drag** it on top of the Applications folder icon, and let go. This copies the app into your Applications folder.
-5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.1.1** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
+5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.1.2** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
 
 ### Step 3 — Open it the first time
 
@@ -88,10 +88,10 @@ swift test
 To build the downloadable app and `.dmg` yourself:
 
 ```
-apps/macos/scripts/build-dmg.sh 0.1.1
+apps/macos/scripts/build-dmg.sh 0.1.2
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.1.1.dmg`). Pushing a tag such as `v0.1.1` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg` and attaches it to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.1.2.dmg`). Pushing a tag such as `v0.1.2` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg` and attaches it to a GitHub Release.
 
 Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
 
