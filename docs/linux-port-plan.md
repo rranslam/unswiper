@@ -119,7 +119,7 @@ Resolution order per item:
    - Precision is kept (`day | month | year`). The item is placed at noon local time of the first day of that span, and flagged `dateSource = folder`.
 3. **Named folder** (no date in the path, but the item's folder isn't the root): the item joins the visit that holds most of its *dated siblings in the same folder* (`dateSource = sibling`). If no sibling is dated, all such items in that folder form their own visit titled with the folder name (`dateSource = folder-name`, the group sorts by folder name).
 4. Only if the file sits directly in the root with no capture date → **Undated** group (id `undated`, unchanged).
-- File mtime/birth time is no longer used for grouping (it's still recorded for validation). This is a deliberate change from v0.1.x, and both apps adopt it in v0.2.
+- File mtime/birth time is no longer used for grouping (it's still recorded for validation). This is a deliberate change from v0.1.1: the Mac app adopts it in v0.1.2, and the Linux app ships with it in v0.2.
 - Not dates: `IMG_2026…`, `12345`, `2026-13-40`, `0000`, versions like `v2026`. A bare `1999` component **is** a year folder, and `1999 Photos` counts as year 1999 (leading token). Only whole components or a leading date token count.
 - **Tests:** a parser table with 60+ cases (valid, invalid, edge: Feb 29 in leap and non-leap years, `2026/1/5`, `2026/01/01/extra`, `Trip 2026-01-01`, unicode names). Property tests: any valid `NaiveDate` formatted in each supported pattern parses back to itself, and random non-date strings never parse. Fixture folders `2026/01/01/`, `2025-07-04 Beach/`, `Lisbon/` (mix of dated and undated), and root-level undated files. Expected groups are pinned as goldens.
 
