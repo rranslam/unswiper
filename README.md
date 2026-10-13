@@ -12,7 +12,7 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 ### Step 1 — Download
 
-1. Open this link in Safari (or any browser): **https://github.com/rranslam/visit-media-reduce/releases/latest**
+1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
 3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.1.1.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
@@ -53,7 +53,7 @@ Once Unswiper is open, click **Help** in the menu bar at the top of the screen a
 ### Updating to a new version
 
 1. Quit Unswiper if it's open (click its window, then press **⌘ + Q**).
-2. Download the newest `.dmg` from the [Releases page](https://github.com/rranslam/visit-media-reduce/releases/latest) and install it exactly as in Steps 1–2.
+2. Download the newest `.dmg` from the [Releases page](https://github.com/rranslam/unswiper/releases/latest) and install it exactly as in Steps 1–2.
 3. When Finder asks whether to replace the existing Unswiper, click **Replace**.
 4. You may need to do the Step 3 "Open Anyway" approval again for the new version.
 
@@ -97,7 +97,7 @@ Try it on a **copy** of a small photo folder first. Re-index after upgrading (ne
 - Safety: files validated (inside library, unchanged size/mtime) before moving; confirm dialog; Live Photo + sidecar pairing; per-commit manifest with **Restore Last Commit**
 - Commit/restore off the main thread; debounced saves
 
-Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (stub left at that path). The GitHub repo and local folder keep the name `visit-media-reduce` for now.
+Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (stub left at that path). The GitHub repo was renamed to `unswiper` (old links redirect); the local folder may still be named `visit-media-reduce`.
 
 ## Restart here
 
@@ -119,7 +119,7 @@ Point at a **local media tree** *or* connect **Google** (OAuth) → form visit g
 ## Tree
 
 ```
-visit-media-reduce/   (repo folder; app is Unswiper)
+unswiper/   (repo folder)
 ├── README.md
 ├── STATUS.md
 ├── SESSION.md

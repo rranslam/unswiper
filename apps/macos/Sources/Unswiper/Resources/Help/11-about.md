@@ -2,8 +2,8 @@
 
 Unswiper is free and open source software, released under the **MIT License**. Copyright (c) 2026 Rob Ranslam.
 
-- Project page: https://github.com/rranslam/visit-media-reduce
-- Release notes and downloads: https://github.com/rranslam/visit-media-reduce/releases
+- Project page: https://github.com/rranslam/unswiper
+- Release notes and downloads: https://github.com/rranslam/unswiper/releases
 
 To see which version you have, choose **Unswiper ▸ About Unswiper** from the menu bar.
 

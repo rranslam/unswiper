@@ -1,6 +1,11 @@
 # Changelog
 
-All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/visit-media-reduce/releases
+All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
+
+## [0.1.2] - Unreleased
+
+### Changed
+- GitHub repository renamed from `visit-media-reduce` to `unswiper`: https://github.com/rranslam/unswiper. Old links redirect automatically. README, Help pages, and Help menu links now point to the new address.
 
 ## [0.1.1] - 2026-10-12
 

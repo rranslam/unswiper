@@ -12,8 +12,8 @@ struct HelpTopic: Identifiable, Hashable {
 
 enum HelpLibrary {
     static let bundleName = "Unswiper_Unswiper.bundle"
-    static let issuesURL = URL(string: "https://github.com/rranslam/visit-media-reduce/issues")!
-    static let releasesURL = URL(string: "https://github.com/rranslam/visit-media-reduce/releases")!
+    static let issuesURL = URL(string: "https://github.com/rranslam/unswiper/issues")!
+    static let releasesURL = URL(string: "https://github.com/rranslam/unswiper/releases")!
 
     /// Locates the SwiftPM resource bundle without using `Bundle.module`, which
     /// would crash in the packaged .app (it only looks next to the .app itself).
@@ -45,7 +45,7 @@ enum HelpLibrary {
               let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)
         else {
             return [HelpTopic(id: "missing", title: "Help Unavailable",
-                              markdown: "# Help Unavailable\n\nThe help files could not be found. Please reinstall Unswiper, or read the guide online at https://github.com/rranslam/visit-media-reduce")]
+                              markdown: "# Help Unavailable\n\nThe help files could not be found. Please reinstall Unswiper, or read the guide online at https://github.com/rranslam/unswiper")]
         }
         return files.filter { $0.pathExtension == "md" }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
