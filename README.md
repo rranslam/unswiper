@@ -78,6 +78,13 @@ swift build
 swift run
 ```
 
+Run the automated tests (also run by GitHub on every push and pull request, see `.github/workflows/ci.yml`):
+
+```
+cd apps/macos
+swift test
+```
+
 To build the downloadable app and `.dmg` yourself:
 
 ```

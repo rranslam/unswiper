@@ -107,6 +107,8 @@ unswiper/                         (repo root after rename)
 5. Quarantine uses `rename(2)`. If it crosses devices: copy, fsync, verify size and hash, then remove the source.
 
 ## 7. Undated rule (Rob's decision)
+
+**Status:** ships in Mac v0.1.2 (Swift, `FolderDate.swift`); the Rust core ports the same rule in Phase 1.
 A file with no **real capture date** (no EXIF/QuickTime date) is *not* dated by mtime when its folder tells us where it belongs.
 
 Resolution order per item:
@@ -266,6 +268,11 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **Live folder watching:** in v1 (§3.0, Phase 1b, §10.4a).
 - **Coverage gate:** 80% overall / 85% core approved.
 
-### 14.2 Still open
-1. **Distribution order:** Flatpak first, then .deb + AUR. Is AppImage needed at all?
-2. **macOS bundle ID:** keep `com.rranslam.unswiper`, or move to `io.github.rranslam.Unswiper` at the first signed release?
+### 14.2 Resolved (13 Oct 2026, follow-up)
+- **AppImage:** stays in the plan (Phase 5, alongside Flatpak, .deb and AUR).
+- **Repo visibility:** `rranslam/unswiper` stays **private until v0.2.0** ships.
+- **Apple Developer ID:** pending; Rob is setting it up. §9.2 applies once the certificate exists.
+- **Only open item:** the macOS bundle ID (see §14.3).
+
+### 14.3 Still open
+1. **macOS bundle ID:** keep `com.rranslam.unswiper`, or move to `io.github.rranslam.Unswiper` at the first signed release?

@@ -97,19 +97,20 @@ enum LocalTreeIndexer {
             for e in standalone {
                 let kind: MediaKind = photoExts.contains(e.ext) ? .photo : .video
                 let captured = kind == .photo ? exifDate(for: e.url) : videoDate(for: e.url)
-                let fileDate = usable(e.modifiedAt) ?? usable(e.createdAt)
-                let takenAt = captured ?? fileDate ?? .distantPast
-                let isUndated = captured == nil && fileDate == nil
-
-                let relFolder: String
-                if let rel = e.url.deletingLastPathComponent().path.replacingOccurrences(of: root.path, with: "")
-                    .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-                    .split(separator: "/")
-                    .first {
-                    relFolder = String(rel)
+                let folderPath = relativeFolderPath(of: e.url.deletingLastPathComponent(), root: root)
+                // Undated rule (v0.1.2): capture date, else a date in the folder path. File
+                // modification/creation dates are no longer used for grouping (only for commit checks).
+                let takenAt: Date
+                let source: DateSource
+                if let captured {
+                    takenAt = captured; source = .capture
+                } else if let folderDate = FolderDate.parse(relativeFolder: folderPath) {
+                    takenAt = folderDate.date; source = .folder
                 } else {
-                    relFolder = root.lastPathComponent
+                    takenAt = .distantPast; source = .unknown
                 }
+                let isUndated = source == .unknown
+                let relFolder = folderPath.split(separator: "/").first.map(String.init) ?? root.lastPathComponent
 
                 let path = e.url.path
                 let sidecars = e.url == anchor.url
@@ -124,7 +125,9 @@ enum LocalTreeIndexer {
                     decision: existingDecisions[path] ?? .undecided,
                     modifiedAt: e.modifiedAt,
                     sidecars: sidecars,
-                    isUndated: isUndated
+                    isUndated: isUndated,
+                    dateSource: source,
+                    folderPath: folderPath
                 ))
             }
         }
@@ -135,14 +138,25 @@ enum LocalTreeIndexer {
         return (items, groups)
     }
 
+    /// Parent folder of a file relative to the library root, "" for the root itself.
+    /// Both sides are canonicalised so `/var` vs `/private/var` style differences don't matter.
+    static func relativeFolderPath(of dir: URL, root: URL) -> String {
+        let d = PathUtil.canonicalPath(dir)
+        let r = PathUtil.canonicalPath(root)
+        guard d != r else { return "" }
+        let prefix = r.hasSuffix("/") ? r : r + "/"
+        guard d.hasPrefix(prefix) else { return "" }
+        return String(d.dropFirst(prefix.count)).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
     /// File dates at or before 1980 (zeroed/epoch timestamps) are treated as missing.
-    private static func usable(_ date: Date?) -> Date? {
+    static func usable(_ date: Date?) -> Date? {
         guard let date, date.timeIntervalSince1970 > 315_532_800 else { return nil }
         return date
     }
 
     /// Capture date from QuickTime/MP4 metadata (creationDate, then com.apple.quicktime.creationdate).
-    private static func videoDate(for url: URL) -> Date? {
+    static func videoDate(for url: URL) -> Date? {
         let asset = AVURLAsset(url: url)
         let sem = DispatchSemaphore(value: 0)
         nonisolated(unsafe) var result: Date?
@@ -166,7 +180,7 @@ enum LocalTreeIndexer {
         return usable(result)
     }
 
-    private static func exifDate(for url: URL) -> Date? {
+    static func exifDate(for url: URL) -> Date? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
         else { return nil }
@@ -195,27 +209,76 @@ enum LocalTreeIndexer {
 }
 
 enum VisitGrouper {
+    /// Groups items into visits:
+    /// 1. Items with a capture or folder date are clustered by time gap (largest visits first).
+    /// 2. Items without a date in a sub-folder join the visit holding most of the dated files
+    ///    in the same folder; if that folder has no dated files they form a visit named after
+    ///    the folder (sorted by folder name).
+    /// 3. Only undated items directly in the library root (or from pre-0.1.2 indexes) go to "Undated".
     static func group(items: [MediaItem], gapHours: Double) -> [VisitGroup] {
-        let undated = items.filter(\.isUndated)
-        let items = items.filter { !$0.isUndated }.sorted { $0.takenAt < $1.takenAt }
-        var result = cluster(items: items, gapHours: gapHours)
-        if !undated.isEmpty {
+        let undatedAll = items.filter(\.isUndated)
+        let dated = items.filter { !$0.isUndated }.sorted { $0.takenAt < $1.takenAt }
+        var clusters = cluster(items: dated, gapHours: gapHours)
+
+        // Dated items per folder -> cluster index counts.
+        var clusterOf: [String: Int] = [:]
+        for (i, c) in clusters.enumerated() { for item in c { clusterOf[item.path] = i } }
+        var datedByFolder: [String: [Int: Int]] = [:]
+        for item in dated {
+            guard let folder = item.folderPath, let ci = clusterOf[item.path] else { continue }
+            datedByFolder[folder, default: [:]][ci, default: 0] += 1
+        }
+
+        var rootUndated: [MediaItem] = []
+        var namedFolders: [String: [MediaItem]] = [:]
+        var joined: [Int: [MediaItem]] = [:]
+        for item in undatedAll {
+            guard let folder = item.folderPath, !folder.isEmpty else { rootUndated.append(item); continue }
+            if let counts = datedByFolder[folder],
+               let best = counts.max(by: { $0.value != $1.value ? $0.value < $1.value : $0.key > $1.key }) {
+                joined[best.key, default: []].append(item)
+            } else {
+                namedFolders[folder, default: []].append(item)
+            }
+        }
+        for (ci, extra) in joined { clusters[ci].append(contentsOf: extra) }
+
+        var result = clusters.map(makeVisit).sorted { $0.totalBytes > $1.totalBytes }
+
+        for folder in namedFolders.keys.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
+            let members = namedFolders[folder]!
+            let name = folder.split(separator: "/").last.map(String.init) ?? folder
+            result.append(VisitGroup(
+                id: "folder-" + fnv1a(folder),
+                title: name,
+                startDate: .distantPast,
+                endDate: .distantPast,
+                itemPaths: members.map(\.path),
+                photoCount: members.filter { $0.kind == .photo }.count,
+                videoCount: members.filter { $0.kind == .video }.count,
+                totalBytes: members.reduce(Int64(0)) { $0 + $1.totalBytes },
+                folderHint: folder
+            ))
+        }
+
+        if !rootUndated.isEmpty {
             result.append(VisitGroup(
                 id: "undated",
                 title: "Undated",
                 startDate: .distantPast,
                 endDate: .distantPast,
-                itemPaths: undated.map(\.path),
-                photoCount: undated.filter { $0.kind == .photo }.count,
-                videoCount: undated.filter { $0.kind == .video }.count,
-                totalBytes: undated.reduce(Int64(0)) { $0 + $1.totalBytes },
-                folderHint: mostCommonFolder(undated)
+                itemPaths: rootUndated.map(\.path),
+                photoCount: rootUndated.filter { $0.kind == .photo }.count,
+                videoCount: rootUndated.filter { $0.kind == .video }.count,
+                totalBytes: rootUndated.reduce(Int64(0)) { $0 + $1.totalBytes },
+                folderHint: mostCommonFolder(rootUndated)
             ))
         }
         return result
     }
 
-    private static func cluster(items: [MediaItem], gapHours: Double) -> [VisitGroup] {
+    /// Splits time-sorted items wherever the gap exceeds `gapHours`.
+    static func cluster(items: [MediaItem], gapHours: Double) -> [[MediaItem]] {
         guard !items.isEmpty else { return [] }
         let gap = gapHours * 3600
         var clusters: [[MediaItem]] = []
@@ -230,39 +293,42 @@ enum VisitGrouper {
             }
         }
         clusters.append(current)
+        return clusters
+    }
 
-        return clusters.map { cluster in
-            let start = cluster.first!.takenAt
-            let end = cluster.last!.takenAt
-            let folder = mostCommonFolder(cluster)
-            let title = titleFor(folder: folder, start: start, end: end)
-            let photos = cluster.filter { $0.kind == .photo }.count
-            let videos = cluster.filter { $0.kind == .video }.count
-            let bytes = cluster.reduce(Int64(0)) { $0 + $1.totalBytes }
-            let id = stableGroupID(firstPath: cluster.first!.path, start: start)
-            return VisitGroup(
-                id: id,
-                title: title,
-                startDate: start,
-                endDate: end,
-                itemPaths: cluster.map(\.path),
-                photoCount: photos,
-                videoCount: videos,
-                totalBytes: bytes,
-                folderHint: folder
-            )
+    /// Builds a visit from a cluster. The first element(s) are the dated items in time order;
+    /// undated folder-siblings appended at the end don't affect dates or the ID.
+    private static func makeVisit(_ cluster: [MediaItem]) -> VisitGroup {
+        let datedMembers = cluster.filter { !$0.isUndated }
+        let start = datedMembers.first!.takenAt
+        let end = datedMembers.last!.takenAt
+        let folder = mostCommonFolder(cluster)
+        let title = titleFor(folder: folder, start: start, end: end)
+        return VisitGroup(
+            id: stableGroupID(firstPath: datedMembers.first!.path, start: start),
+            title: title,
+            startDate: start,
+            endDate: end,
+            itemPaths: cluster.map(\.path),
+            photoCount: cluster.filter { $0.kind == .photo }.count,
+            videoCount: cluster.filter { $0.kind == .video }.count,
+            totalBytes: cluster.reduce(Int64(0)) { $0 + $1.totalBytes },
+            folderHint: folder
+        )
+    }
+
+    static func fnv1a(_ s: String) -> String {
+        var hash: UInt64 = 0xcbf29ce484222325
+        for byte in s.utf8 {
+            hash ^= UInt64(byte)
+            hash = hash &* 0x100000001b3
         }
-        .sorted { $0.totalBytes > $1.totalBytes }
+        return String(hash, radix: 16)
     }
 
     /// Stable across commits/re-index: FNV-1a of first item path + start time (no item count).
     static func stableGroupID(firstPath: String, start: Date) -> String {
-        var hash: UInt64 = 0xcbf29ce484222325
-        for byte in "\(firstPath)|\(Int64(start.timeIntervalSince1970))".utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 0x100000001b3
-        }
-        return "visit-" + String(hash, radix: 16)
+        "visit-" + fnv1a("\(firstPath)|\(Int64(start.timeIntervalSince1970))")
     }
 
     private static func mostCommonFolder(_ items: [MediaItem]) -> String {

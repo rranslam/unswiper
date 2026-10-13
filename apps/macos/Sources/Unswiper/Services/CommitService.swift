@@ -18,12 +18,24 @@ enum CommitService {
     struct RestoreResult: Sendable {
         var restored: Int
         var failed: [(path: String, error: String)]
+        /// Entries of an interrupted commit whose file never left its original place.
+        var alreadyInPlace: Int = 0
     }
 
+    /// Moves the rejected items (and their sidecars) to the Trash or quarantine.
+    ///
+    /// Safety order: validate every set first; write a `pending` manifest listing every planned
+    /// move *before* touching any file; update the manifest after each move; mark it `complete`.
+    /// If the app dies part-way, `LibraryStore.pendingManifestURLs()` finds it on next launch.
+    ///
+    /// - Parameter stopAfterMoves: test hook that simulates a crash after N file moves
+    ///   (returns without finalizing the manifest).
     static func commitRejects(
         items: [MediaItem],
         mode: CommitMode,
-        libraryRoot: URL?
+        libraryRoot: URL?,
+        now: Date = Date(),
+        stopAfterMoves: Int? = nil
     ) throws -> Result {
         let rejects = items.filter { $0.decision == .reject }
         guard !rejects.isEmpty else {
@@ -35,12 +47,8 @@ enum CommitService {
             return Result(moved: 0, failed: [], bytes: bytes, dryRun: true, wouldMove: rejects.count)
         }
 
-        var moved = 0
         var failed: [(String, String)] = []
-        var bytes: Int64 = 0
-        var entries: [CommitManifest.Entry] = []
         let fm = FileManager.default
-        let now = Date()
         let stamp = ISO8601DateFormatter().string(from: now).replacingOccurrences(of: ":", with: "-")
 
         let quarantineBase: URL = {
@@ -50,58 +58,100 @@ enum CommitService {
             return LibraryStore.quarantineRoot
         }()
         let destDir = quarantineBase.appendingPathComponent(stamp, isDirectory: true)
-        if mode == .quarantine {
-            try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
-        }
 
+        // 1. Validate every set before moving anything.
+        typealias FileRef = (path: String, size: Int64, modifiedAt: Date?)
+        var plannedSets: [(item: MediaItem, entryRange: Range<Int>)] = []
+        var entries: [CommitManifest.Entry] = []
+        var plannedNames = Set<String>()
         for item in rejects {
-            // Validate every file in the set before touching any of them.
-            let files: [(path: String, size: Int64, modifiedAt: Date?)] =
-                [(item.path, item.sizeBytes, item.modifiedAt)] + item.sidecars.map { ($0.path, $0.sizeBytes, $0.modifiedAt) }
+            let files: [FileRef] = [(item.path, item.sizeBytes, item.modifiedAt)]
+                + item.sidecars.map { ($0.path, $0.sizeBytes, $0.modifiedAt) }
             if let problem = files.lazy.compactMap({ validate(path: $0.path, size: $0.size, modifiedAt: $0.modifiedAt, root: libraryRoot) }).first {
                 failed.append((item.path, problem))
                 continue
             }
-
-            var setFailed = false
+            let start = entries.count
             for file in files {
-                let src = URL(fileURLWithPath: file.path)
+                var planned = ""
+                if mode == .quarantine {
+                    var name = URL(fileURLWithPath: file.path).lastPathComponent
+                    if plannedNames.contains(name.lowercased()) {
+                        name = "\(UUID().uuidString.prefix(8))-\(name)"
+                    }
+                    plannedNames.insert(name.lowercased())
+                    planned = destDir.appendingPathComponent(name).path
+                }
+                entries.append(.init(originalPath: file.path, resultPath: planned, sizeBytes: file.size, movedAt: nil, state: .pending))
+            }
+            plannedSets.append((item, start..<entries.count))
+        }
+
+        guard !entries.isEmpty else {
+            return Result(moved: 0, failed: failed, bytes: 0, dryRun: false)
+        }
+
+        // 2. Journal first.
+        var manifest = CommitManifest(status: .pending, id: stamp, createdAt: now, mode: mode, libraryRoot: libraryRoot?.path, entries: entries)
+        let manifestURL = LibraryStore.commitsDir.appendingPathComponent("\(stamp).json")
+        try LibraryStore.writeManifest(manifest, to: [manifestURL])
+        if mode == .quarantine {
+            try fm.createDirectory(at: destDir, withIntermediateDirectories: true)
+        }
+
+        // 3. Move, recording each result.
+        var moved = 0
+        var bytes: Int64 = 0
+        var movesDone = 0
+        for set in plannedSets {
+            var setFailed = false
+            for i in set.entryRange {
+                if let limit = stopAfterMoves, movesDone >= limit {
+                    return Result(moved: moved, failed: failed, bytes: bytes, dryRun: false, manifestURL: manifestURL)
+                }
+                let src = URL(fileURLWithPath: manifest.entries[i].originalPath)
                 do {
-                    let resultPath: String
                     if mode == .quarantine {
-                        var dest = destDir.appendingPathComponent(src.lastPathComponent)
-                        if fm.fileExists(atPath: dest.path) {
-                            dest = destDir.appendingPathComponent("\(UUID().uuidString.prefix(8))-\(src.lastPathComponent)")
-                        }
+                        let dest = URL(fileURLWithPath: manifest.entries[i].resultPath)
                         try fm.moveItem(at: src, to: dest)
-                        resultPath = dest.path
                     } else {
                         var resulting: NSURL?
                         try fm.trashItem(at: src, resultingItemURL: &resulting)
-                        resultPath = (resulting as URL?)?.path ?? ""
+                        manifest.entries[i].resultPath = (resulting as URL?)?.path ?? ""
                     }
-                    entries.append(.init(originalPath: file.path, resultPath: resultPath, sizeBytes: file.size, movedAt: Date()))
-                    bytes += file.size
+                    manifest.entries[i].state = .moved
+                    manifest.entries[i].movedAt = Date()
+                    bytes += manifest.entries[i].sizeBytes
+                    movesDone += 1
                 } catch {
-                    failed.append((file.path, error.localizedDescription))
+                    manifest.entries[i].state = .failed
+                    manifest.entries[i].error = error.localizedDescription
+                    failed.append((src.path, error.localizedDescription))
                     setFailed = true
+                }
+                do {
+                    try LibraryStore.writeManifest(manifest, to: [manifestURL])
+                } catch {
+                    failed.append(("manifest.json", "Could not update manifest: \(error.localizedDescription)"))
                 }
             }
             if !setFailed { moved += 1 }
         }
 
-        var manifestURL: URL?
-        if !entries.isEmpty {
-            let manifest = CommitManifest(id: stamp, createdAt: now, mode: mode, libraryRoot: libraryRoot?.path, entries: entries)
-            let supportURL = LibraryStore.commitsDir.appendingPathComponent("\(stamp).json")
-            var urls = [supportURL]
-            if mode == .quarantine { urls.append(destDir.appendingPathComponent("manifest.json")) }
-            do {
-                try LibraryStore.writeManifest(manifest, to: urls)
-                manifestURL = supportURL
-            } catch {
-                failed.append(("manifest.json", "Could not write manifest: \(error.localizedDescription)"))
-            }
+        // 4. Finalize.
+        manifest.status = .complete
+        let anyMoved = manifest.entries.contains { $0.effectiveState == .moved }
+        if !anyMoved {
+            try? fm.removeItem(at: manifestURL)
+            if mode == .quarantine { try? fm.removeItem(at: destDir) }
+            return Result(moved: moved, failed: failed, bytes: bytes, dryRun: false)
+        }
+        var urls = [manifestURL]
+        if mode == .quarantine { urls.append(destDir.appendingPathComponent("manifest.json")) }
+        do {
+            try LibraryStore.writeManifest(manifest, to: urls)
+        } catch {
+            failed.append(("manifest.json", "Could not write manifest: \(error.localizedDescription)"))
         }
         return Result(moved: moved, failed: failed, bytes: bytes, dryRun: false, manifestURL: manifestURL)
     }
@@ -109,8 +159,12 @@ enum CommitService {
     /// Returns a failure reason, or nil if the file is safe to move.
     static func validate(path: String, size: Int64, modifiedAt: Date?, root: URL?) -> String? {
         guard let root else { return "No library folder; refusing to move." }
-        let rootPath = root.resolvingSymlinksInPath().standardizedFileURL.path
-        let fileURL = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL
+        let rootPath = PathUtil.canonicalPath(root)
+        let rawURL = URL(fileURLWithPath: path)
+        if (try? FileManager.default.destinationOfSymbolicLink(atPath: rawURL.path)) != nil {
+            return "Is a symbolic link; not moved."
+        }
+        let fileURL = URL(fileURLWithPath: PathUtil.canonicalPath(rawURL))
         guard fileURL.path.hasPrefix(rootPath.hasSuffix("/") ? rootPath : rootPath + "/") else {
             return "Outside the library folder; not moved."
         }
@@ -132,31 +186,56 @@ enum CommitService {
         return nil
     }
 
-    /// Moves every file in the manifest back to its original path.
+    /// Moves every moved file in the manifest back to its original path.
+    /// Works for complete manifests and for `pending` ones left by an interrupted commit.
     static func restore(manifest: CommitManifest) -> RestoreResult {
         let fm = FileManager.default
-        var restored = 0
-        var failed: [(String, String)] = []
+        var result = RestoreResult(restored: 0, failed: [])
         for entry in manifest.entries {
-            let src = URL(fileURLWithPath: entry.resultPath)
             let dest = URL(fileURLWithPath: entry.originalPath)
-            guard !entry.resultPath.isEmpty, fm.fileExists(atPath: src.path) else {
-                failed.append((entry.originalPath, "Moved file not found (Trash emptied?)."))
+            let state = entry.effectiveState
+            if state == .failed {
+                continue // never moved
+            }
+            if state == .pending {
+                // Interrupted before/while moving this file.
+                if fm.fileExists(atPath: dest.path) {
+                    result.alreadyInPlace += 1
+                    continue
+                }
+                if entry.resultPath.isEmpty {
+                    result.failed.append((entry.originalPath, "Couldn't locate this file in the Trash. Open the Trash in Finder and use Put Back."))
+                    continue
+                }
+            }
+            if entry.resultPath.isEmpty {
+                let msg = manifest.mode == .trash
+                    ? "Couldn't locate this file in the Trash (macOS didn't report where it went). Open the Trash in Finder and use Put Back."
+                    : "No record of where this file was moved."
+                result.failed.append((entry.originalPath, msg))
+                continue
+            }
+            let src = URL(fileURLWithPath: entry.resultPath)
+            guard fm.fileExists(atPath: src.path) else {
+                let msg = manifest.mode == .trash
+                    ? "Couldn't locate this file in the Trash (was the Trash emptied?)."
+                    : "Moved file not found at \(entry.resultPath)."
+                result.failed.append((entry.originalPath, msg))
                 continue
             }
             guard !fm.fileExists(atPath: dest.path) else {
-                failed.append((entry.originalPath, "A file already exists at the original path."))
+                result.failed.append((entry.originalPath, "A file already exists at the original path."))
                 continue
             }
             do {
                 try fm.createDirectory(at: dest.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try fm.moveItem(at: src, to: dest)
-                restored += 1
+                result.restored += 1
             } catch {
-                failed.append((entry.originalPath, error.localizedDescription))
+                result.failed.append((entry.originalPath, error.localizedDescription))
             }
         }
-        return RestoreResult(restored: restored, failed: failed)
+        return result
     }
 }
 

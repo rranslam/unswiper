@@ -20,6 +20,12 @@ final class AppState: ObservableObject {
     @Published var busyMessage: String?
     var isBusy: Bool { busyMessage != nil || isIndexing }
     @Published var hasRestorableCommit = LibraryStore.latestManifestURL() != nil
+    /// Shown once at launch when library.json couldn't be opened (it was backed up first).
+    @Published var libraryLoadProblem: String?
+    /// A commit manifest left `pending` by an interrupted commit; the UI offers to restore it.
+    @Published var interruptedCommitURL: URL?
+    /// Delay for debounced saves (tests shorten it).
+    var saveDelay: Duration = .seconds(1)
 
     enum AppPath: Hashable {
         case home
@@ -36,7 +42,10 @@ final class AppState: ObservableObject {
     private var terminateObserver: NSObjectProtocol?
 
     init() {
-        let snap = LibraryStore.load()
+        let loaded = LibraryStore.load()
+        let snap = loaded.snapshot
+        self.libraryLoadProblem = loaded.problem
+        self.interruptedCommitURL = LibraryStore.pendingManifestURLs().last
         self.config = snap.config
         self.items = snap.items
         self.groups = snap.groups
@@ -71,7 +80,8 @@ final class AppState: ObservableObject {
     func persist() {
         saveTask?.cancel()
         saveTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(1))
+            guard let delay = self?.saveDelay else { return }
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             self?.flush()
         }
@@ -279,6 +289,27 @@ final class AppState: ObservableObject {
             hasRestorableCommit = false
             return
         }
+        await restoreCommit(at: url)
+    }
+
+    /// Restores the files moved by an interrupted (pending) commit found at launch.
+    func restoreInterruptedCommit() async {
+        guard let url = interruptedCommitURL else { return }
+        interruptedCommitURL = nil
+        await restoreCommit(at: url)
+    }
+
+    /// Keeps an interrupted commit as-is (its files stay where they are; Restore Last Commit still works).
+    func keepInterruptedCommit() {
+        guard let url = interruptedCommitURL else { return }
+        interruptedCommitURL = nil
+        if var manifest = try? LibraryStore.readManifest(at: url) {
+            manifest.status = .complete
+            try? LibraryStore.writeManifest(manifest, to: [url])
+        }
+    }
+
+    func restoreCommit(at url: URL) async {
         _ = ensureAccess()
         busyMessage = "Restoring…"
         do {
@@ -293,7 +324,11 @@ final class AppState: ObservableObject {
             }
             hasRestorableCommit = LibraryStore.latestManifestURL() != nil
             await reindex()
-            var msg = "Restored \(result.restored) of \(manifest.entries.count) files."
+            let movedCount = manifest.entries.filter { $0.effectiveState != .failed }.count
+            var msg = "Restored \(result.restored) of \(movedCount) files."
+            if result.alreadyInPlace > 0 {
+                msg += " \(result.alreadyInPlace) had not been moved yet."
+            }
             if !result.failed.isEmpty {
                 msg += " \(result.failed.count) failed (manifest kept): \(result.failed.first!.error)"
             }

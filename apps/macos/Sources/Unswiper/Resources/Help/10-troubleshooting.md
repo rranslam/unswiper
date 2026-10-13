@@ -8,6 +8,16 @@ See **Install, Update and Uninstall ▸ Opening it the first time**. Use **Open 
 
 Click **Re-index** (or press **⇧⌘R**). New versions sometimes store extra details that need a fresh scan.
 
+## "Saved library couldn't be opened"
+
+Unswiper couldn't read its saved file (`library.json`), for example because it was damaged. It made a copy named `library.json.corrupt-<date>` in `~/Library/Application Support/Unswiper` before doing anything else, so nothing is lost. Click **Re-index** to rebuild your visits. If you want your old Keep/Reject choices back, use **Help ▸ Report an Issue** and mention the copy.
+
+To open that folder: in Finder choose **Go ▸ Go to Folder…** (⇧⌘G), paste `~/Library/Application Support/Unswiper`, and press Return.
+
+## My visits changed after updating to 0.1.2
+
+Files without a recorded date are now grouped by their folder instead of their "last changed" date. See **Visits and Grouping**. Click **Re-index** once.
+
 ## Some files were "skipped" during commit
 
 They changed after indexing (renamed, edited, moved, or replaced), so Unswiper left them alone to be safe. Click **Re-index**, check your choices, and commit again.

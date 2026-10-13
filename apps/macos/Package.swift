@@ -12,6 +12,11 @@ let package = Package(
             name: "Unswiper",
             path: "Sources/Unswiper",
             resources: [.copy("Resources/Help")]
+        ),
+        .testTarget(
+            name: "UnswiperTests",
+            dependencies: ["Unswiper"],
+            path: "Tests/UnswiperTests"
         )
     ]
 )

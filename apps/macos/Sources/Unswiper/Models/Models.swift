@@ -30,6 +30,16 @@ enum CommitMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// Where an item's grouping date came from (see the Undated rule in docs/linux-port-plan.md §7).
+enum DateSource: String, Codable, Hashable {
+    /// EXIF / TIFF / QuickTime capture date.
+    case capture
+    /// A date parsed from the folder path (e.g. `2026/01/01`, `2025-07-04 Beach`).
+    case folder
+    /// No date of its own; grouping uses the dated files in the same folder, or the folder name.
+    case unknown
+}
+
 /// A file that travels with a primary item (Live Photo MOV, .AAE/.XMP sidecar).
 struct SidecarFile: Codable, Hashable {
     var path: String
@@ -51,6 +61,10 @@ struct MediaItem: Identifiable, Codable, Hashable {
     var sidecars: [SidecarFile] = []
     /// True when no capture date or usable file date was found; `takenAt` is then a placeholder.
     var isUndated: Bool = false
+    /// How `takenAt` was determined (nil for libraries indexed before v0.1.2).
+    var dateSource: DateSource? = nil
+    /// Parent folder relative to the library root ("" = the root itself). Nil for older libraries.
+    var folderPath: String? = nil
 
     var fileURL: URL { URL(fileURLWithPath: path) }
     var fileName: String { fileURL.lastPathComponent }
@@ -58,7 +72,7 @@ struct MediaItem: Identifiable, Codable, Hashable {
     var fileCount: Int { 1 + sidecars.count }
 
     enum CodingKeys: String, CodingKey {
-        case path, kind, sizeBytes, takenAt, relativeFolder, decision, modifiedAt, sidecars, isUndated
+        case path, kind, sizeBytes, takenAt, relativeFolder, decision, modifiedAt, sidecars, isUndated, dateSource, folderPath
     }
 }
 
@@ -74,22 +88,40 @@ extension MediaItem {
         modifiedAt = try c.decodeIfPresent(Date.self, forKey: .modifiedAt)
         sidecars = try c.decodeIfPresent([SidecarFile].self, forKey: .sidecars) ?? []
         isUndated = try c.decodeIfPresent(Bool.self, forKey: .isUndated) ?? false
+        dateSource = try c.decodeIfPresent(DateSource.self, forKey: .dateSource)
+        folderPath = try c.decodeIfPresent(String.self, forKey: .folderPath)
     }
 }
 
 /// Record of one commit, written so it can be restored.
+///
+/// Since v0.1.2 the manifest is written with `status: pending` *before* any file moves and is
+/// updated after every move, so an interrupted commit can still be restored. Manifests from
+/// older versions have no `status`/`state` and are treated as complete / moved.
 struct CommitManifest: Codable {
+    enum Status: String, Codable, Sendable { case pending, complete }
+    enum EntryState: String, Codable, Sendable { case pending, moved, failed }
+
     struct Entry: Codable, Sendable {
         var originalPath: String
+        /// Where the file went. For quarantine this is filled in before the move (planned path).
+        /// For Trash it is empty until macOS reports the location, and may stay empty.
         var resultPath: String
         var sizeBytes: Int64
-        var movedAt: Date
+        var movedAt: Date?
+        var state: EntryState? = nil
+        var error: String? = nil
+
+        var effectiveState: EntryState { state ?? .moved }
     }
+    var status: Status? = nil
     var id: String
     var createdAt: Date
     var mode: CommitMode
     var libraryRoot: String?
     var entries: [Entry]
+
+    var isPending: Bool { status == .pending }
 }
 
 struct VisitGroup: Identifiable, Codable, Hashable {
@@ -134,6 +166,10 @@ struct AppConfig: Codable, Equatable {
 }
 
 struct LibrarySnapshot: Codable {
+    /// Format version of library.json. Missing in files written before v0.1.2 (treated as 1).
+    /// Version 1 = absolute item paths (today's format). See docs/linux-port-plan.md §5.
+    static let currentSchemaVersion = 1
+    var schemaVersion: Int? = LibrarySnapshot.currentSchemaVersion
     var config: AppConfig
     var items: [MediaItem]
     var groups: [VisitGroup]

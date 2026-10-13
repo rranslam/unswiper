@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-macos:
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: apps/macos
+    steps:
+      - uses: actions/checkout@v4
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Build
+        run: swift build
+      - name: Test (with coverage)
+        run: swift test --enable-code-coverage
+      - name: Coverage report
+        # Reported only; the coverage gate applies to the Rust core later (plan §10).
+        run: |
+          PROF="$(swift test --show-codecov-path | xargs dirname)/default.profdata"
+          [ -f "$PROF" ] || PROF="$(find .build -name default.profdata | head -1)"
+          XCTEST="$(find .build -name 'UnswiperPackageTests.xctest' -type d | head -1)"
+          EXE="$XCTEST/Contents/MacOS/$(basename "$XCTEST" .xctest)"
+          xcrun llvm-cov report "$EXE" -instr-profile "$PROF" \
+            -ignore-filename-regex='(\.build|Tests)/' | tee coverage.txt
+          {
+            echo '### Swift coverage (apps/macos, reported only)'
+            echo '```'
+            cat coverage.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

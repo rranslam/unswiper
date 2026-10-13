@@ -145,6 +145,9 @@ struct GroupRow: View {
     }
 
     private var dateRange: String {
+        if group.startDate == .distantPast {
+            return group.id == "undated" ? "No date found" : "No date · folder \(group.folderHint)"
+        }
         let f = Date.FormatStyle(date: .abbreviated, time: .omitted)
         if Calendar.current.isDate(group.startDate, inSameDayAs: group.endDate) {
             return group.startDate.formatted(f)

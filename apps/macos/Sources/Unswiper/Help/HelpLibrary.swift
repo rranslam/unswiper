@@ -10,6 +10,8 @@ struct HelpTopic: Identifiable, Hashable {
     let markdown: String
 }
 
+private final class HelpBundleToken {}
+
 enum HelpLibrary {
     static let bundleName = "Unswiper_Unswiper.bundle"
     static let issuesURL = URL(string: "https://github.com/rranslam/unswiper/issues")!
@@ -21,6 +23,8 @@ enum HelpLibrary {
         var candidates: [URL] = []
         if let r = Bundle.main.resourceURL { candidates.append(r.appendingPathComponent(bundleName)) }
         candidates.append(Bundle.main.bundleURL.appendingPathComponent(bundleName))
+        // Bundle containing this code (the .xctest bundle when running tests).
+        candidates.append(Bundle(for: HelpBundleToken.self).bundleURL.deletingLastPathComponent().appendingPathComponent(bundleName))
         if let exe = Bundle.main.executableURL {
             candidates.append(exe.deletingLastPathComponent().appendingPathComponent(bundleName))
         }
