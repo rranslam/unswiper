@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_NAME="Unswiper"
 BUNDLE_ID="com.rranslam.unswiper"
-VERSION="${1:-${VERSION:-0.1.0}}"
+VERSION="${1:-${VERSION:-0.1.1}}"
 VERSION="${VERSION#v}"
 MIN_MACOS="14.0"
 
@@ -33,6 +33,10 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
 # Copy any SwiftPM resource bundles next to the binary.
 find "$BIN_DIR" -maxdepth 1 -name '*.bundle' -exec cp -R {} "$APP/Contents/Resources/" \;
+if [ ! -d "$APP/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle" ]; then
+  echo "!! Resource bundle ${APP_NAME}_${APP_NAME}.bundle missing (Help would be unavailable)" >&2
+  exit 1
+fi
 
 ICON_KEY=""
 if [ -f "$PKG_DIR/Resources/AppIcon.icns" ]; then
@@ -78,3 +82,5 @@ rm -rf "$STAGE"
 
 echo "==> Done: $DMG"
 lipo -info "$APP/Contents/MacOS/$APP_NAME" || true
+echo "==> Help self-test"
+"$APP/Contents/MacOS/$APP_NAME" --help-selftest

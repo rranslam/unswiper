@@ -10,7 +10,8 @@ let package = Package(
     targets: [
         .executableTarget(
             name: "Unswiper",
-            path: "Sources/Unswiper"
+            path: "Sources/Unswiper",
+            resources: [.copy("Resources/Help")]
         )
     ]
 )
