@@ -35,16 +35,21 @@ jobs:
           sudo docker image prune --all --force >/dev/null || true
           df -h /
       - uses: actions/checkout@v4
-      - name: Install flatpak and flatpak-builder
+      - name: Install flatpak and org.flatpak.Builder
+        # flatpak-builder comes from Flathub (org.flatpak.Builder), not apt: it bundles current
+        # appstream, eu-strip and friends, matching the gnome-50 container. Ubuntu 24.04's
+        # flatpak-builder 1.4 + appstream 1.0 failed in `appstreamcli compose` (run 38611263435).
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder elfutils
+          sudo apt-get install -y --no-install-recommends flatpak dbus
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y --noninteractive flathub \
+          flatpak install --user -y --noninteractive flathub org.flatpak.Builder \
             org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
       - name: Build
         run: |
-          flatpak-builder --user --disable-rofiles-fuse --force-clean --delete-build-dirs \
+          # dbus-run-session: org.flatpak.Builder asks the host flatpak for the SDK over the session bus,
+          # which the runner doesn't have ("Unable to find sdk org.gnome.Sdk version 50" without it).
+          dbus-run-session -- flatpak run org.flatpak.Builder --user --disable-rofiles-fuse --force-clean --delete-build-dirs \
             --repo=repo build-dir packaging/flatpak/io.github.rranslam.Unswiper.yml
           rm -rf build-dir .flatpak-builder/build
           df -h /
