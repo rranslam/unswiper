@@ -4,7 +4,7 @@
 - **R** — Reject the selected photos (in a visit)
 - **U** — Clear the choice for the selected photos
 - **Ctrl+A** — Select every photo in the visit
-- **Ctrl+Enter** — Open Review & Commit (it still asks you to confirm)
+- **Ctrl+Enter** — Review & Commit the open visit (it still asks you to confirm)
 - **Esc** — Cancel the confirmation box
 - **Ctrl+Shift+R** — Re-index the current folder
 - **F1** — Open Unswiper Help

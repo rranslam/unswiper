@@ -18,7 +18,7 @@ Your photos are **not moved or changed** during indexing. While Unswiper is open
 
 ## Step 3 — Pick a visit and reduce it
 
-When indexing finishes you'll see a list of **visits**. Click one to open it, mark the photos you want to **Keep** and the ones to **Reject**, then click **Review & Commit…**. See the other help topics for each step.
+When indexing finishes you'll see a list of **visits**. Click one to open it, mark the photos you want to **Keep** and the ones to **Reject**, then click **Review & Commit…** to move that visit's rejects. See the other help topics for each step.
 
 ## Changing folders later
 

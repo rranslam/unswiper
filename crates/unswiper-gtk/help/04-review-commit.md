@@ -1,6 +1,8 @@
 # Review & Commit
 
-When you're happy with your choices, click **Review & Commit…**. This is the only step that moves files.
+When you're happy with your choices for a visit, click **Review & Commit…** at the bottom of that visit. This is the only step that moves files.
+
+A commit only acts on the **visit that is open**: its rejected items are moved, and every other visit is left exactly as it is, even if it has rejected items too. The button is greyed out until you open a visit that has at least one rejected item.
 
 ## Choose what happens to rejected files
 
@@ -14,7 +16,7 @@ If your photos are on a different drive than your home folder, use **Quarantine 
 
 ## Confirming
 
-The confirmation box shows how many files and how much space will be moved. Click the red button (for example **Move to Trash**) to confirm, or **Cancel** to go back. Pressing Enter alone never moves files — it picks **Cancel**.
+The confirmation box names the visit and shows how many rejected items (and files, and how much space) will be moved, plus how many kept and undecided items stay. Click the red button (for example **Move to Trash**) to confirm, or **Cancel** to go back. Pressing Enter alone never moves files — it picks **Cancel**.
 
 ## Safety checks — "skipped" files
 

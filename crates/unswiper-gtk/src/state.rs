@@ -39,7 +39,11 @@ pub struct VisitRow {
 /// What a commit would do, for the confirmation dialog.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommitPlan {
+    /// The open visit's title (commits act on one visit, like the Mac app).
+    pub visit: String,
     pub items: usize,
+    pub keeps: usize,
+    pub undecided: usize,
     pub files: usize,
     pub bytes: i64,
     pub mode: CommitMode,
@@ -53,18 +57,31 @@ impl CommitPlan {
     pub fn heading(&self) -> String {
         match self.mode {
             CommitMode::DryRun => "Dry Run".into(),
-            _ if self.items == 1 => "Move 1 Rejected Item?".into(),
-            _ => format!("Move {} Rejected Items?", self.items),
+            _ if self.items == 1 => format!("Move 1 Rejected Item from “{}”?", self.visit),
+            _ => format!("Move {} Rejected Items from “{}”?", self.items, self.visit),
         }
     }
 
     pub fn body(&self) -> String {
-        let what = format!("{} files, {}", self.files, format::bytes(self.bytes));
-        match self.mode {
+        let what = format!(
+            "{} rejected item{} ({} files, {})",
+            self.items,
+            if self.items == 1 { "" } else { "s" },
+            self.files,
+            format::bytes(self.bytes)
+        );
+        let action = match self.mode {
             CommitMode::Trash => format!("{what} will be moved to the Trash. You can restore them until the Trash is emptied."),
             CommitMode::Quarantine => format!("{what} will be moved to the _Rejected/Unswiper folder inside your library. Nothing is deleted."),
-            CommitMode::DryRun => format!("Nothing will move. This only reports what would be moved ({what})."),
-        }
+            CommitMode::DryRun => format!("Nothing will move. This only reports what would be moved: {what}."),
+        };
+        format!(
+            "Visit “{}”: {action}\n\n{} kept and {} undecided item{} stay where they are. Other visits are not touched.",
+            self.visit,
+            self.keeps,
+            self.undecided,
+            if self.undecided == 1 { "" } else { "s" }
+        )
     }
 
     /// The (destructive) confirm button. Enter never activates it (Cancel is the default).
@@ -372,53 +389,76 @@ impl AppState {
         self.dirty = true;
     }
 
-    /// Every rejected item in the library (like the Mac app, commit covers all visits).
+    /// Members of the open visit (all of them, ignoring the filter).
+    fn visit_members(&self) -> Vec<MediaItem> {
+        self.current_group()
+            .map(|g| commit::visit_members(&self.snap.items, g))
+            .unwrap_or_default()
+    }
+
+    /// The rejected items of the open visit. Empty when no visit is open.
     pub fn commit_plan(&self) -> CommitPlan {
-        let rejects: Vec<&MediaItem> = self
-            .snap
-            .items
+        let members = self.visit_members();
+        let count = |d: Decision| members.iter().filter(|i| i.decision == d).count();
+        let rejects: Vec<&MediaItem> = members
             .iter()
             .filter(|i| i.decision == Decision::Reject)
             .collect();
         CommitPlan {
+            visit: self
+                .current_group()
+                .map(|g| g.title.clone())
+                .unwrap_or_default(),
             items: rejects.len(),
+            keeps: count(Decision::Keep),
+            undecided: count(Decision::Undecided),
             files: rejects.iter().map(|i| i.file_count()).sum(),
             bytes: rejects.iter().map(|i| i.total_bytes()).sum(),
             mode: self.snap.config.commit_mode,
         }
     }
 
+    /// Whether Review & Commit is available: a visit is open and it has rejects.
+    pub fn can_commit(&self) -> bool {
+        !self.commit_plan().is_empty()
+    }
+
     /// Runs the commit and drops moved items from the index. Returns the message to show.
     pub fn commit(&mut self, trasher: &dyn Trasher) -> Result<String, String> {
         let mode = self.snap.config.commit_mode;
         let root = self.root();
+        let members = self.visit_members();
+        if !members.iter().any(|i| i.decision == Decision::Reject) {
+            return Err("Open a visit with rejected items first.".into());
+        }
+        let member_paths: BTreeSet<&str> = members.iter().map(|i| i.path.as_str()).collect();
         // Ignore our own moves in the watcher for a while.
         if let Some(live) = self.live.as_mut() {
             let ours = self
                 .snap
                 .items
                 .iter()
-                .filter(|i| i.decision == Decision::Reject)
+                .filter(|i| {
+                    i.decision == Decision::Reject && member_paths.contains(i.path.as_str())
+                })
                 .flat_map(|i| {
                     std::iter::once(i.path.clone()).chain(i.sidecars.iter().map(|s| s.path.clone()))
                 })
                 .map(PathBuf::from);
             live.suppress(ours, std::time::Duration::from_secs(10));
         }
-        let r = commit::commit_rejects(
-            &self.snap.items,
-            mode,
-            root.as_deref(),
-            &self.store,
-            trasher,
-        )
-        .map_err(|e| e.to_string())?;
+        let r = commit::commit_rejects(&members, mode, root.as_deref(), &self.store, trasher)
+            .map_err(|e| e.to_string())?;
         if !r.dry_run {
             let gone: Vec<String> = self
                 .snap
                 .items
                 .iter()
-                .filter(|i| i.decision == Decision::Reject && !Path::new(&i.path).exists())
+                .filter(|i| {
+                    i.decision == Decision::Reject
+                        && member_paths.contains(i.path.as_str())
+                        && !Path::new(&i.path).exists()
+                })
                 .map(|i| i.path.clone())
                 .collect();
             if !gone.is_empty() {
@@ -640,8 +680,18 @@ mod tests {
         s.decide_selected(Decision::Reject);
         s.set_commit_mode(CommitMode::Trash);
         let p = s.commit_plan();
-        assert_eq!(p.heading(), "Move 1 Rejected Item?");
+        assert_eq!(
+            p.heading(),
+            format!("Move 1 Rejected Item from “{}”?", p.visit)
+        );
         assert!(p.body().contains("Trash"));
+        assert!(
+            p.body()
+                .starts_with(&format!("Visit “{}”: 1 rejected item (1 files", p.visit)),
+            "{}",
+            p.body()
+        );
+        assert!(p.body().contains("0 kept and 0 undecided items stay"));
         assert_eq!(p.confirm_label(), "Move to Trash");
         s.set_commit_mode(CommitMode::Quarantine);
         assert_eq!(s.commit_plan().confirm_label(), "Move to Quarantine");
@@ -692,6 +742,79 @@ mod tests {
         assert!(msg.contains("to the Trash"), "{msg}");
         assert!(s.snap.items.is_empty());
         assert!(s.visit.is_none());
+    }
+
+    fn two_visits() -> (T, AppState, Vec<String>) {
+        let d = tempfile::tempdir().unwrap();
+        let base = d.path().canonicalize().unwrap();
+        let root = base.join("lib");
+        for (dir, n) in [
+            ("2026-01-01 Lisbon", "a.jpg"),
+            ("2026-01-01 Lisbon", "b.jpg"),
+            ("2026-03-01 Porto", "c.jpg"),
+        ] {
+            std::fs::create_dir_all(root.join(dir)).unwrap();
+            std::fs::write(root.join(dir).join(n), b"xy").unwrap();
+        }
+        let mut s = AppState::new(LibraryStore::new(base.join("support")));
+        s.set_root(&root);
+        let (items, groups) = index(&root, 36.0, &s.decisions(), &MetadataDates, |_| {}).unwrap();
+        s.apply_index(items, groups, chrono::Utc::now());
+        let all: Vec<String> = s.snap.items.iter().map(|i| i.path.clone()).collect();
+        s.decide(&all, Decision::Reject);
+        let ids = s.visits().iter().map(|v| v.id.clone()).collect();
+        (T { _d: d, root, base }, s, ids)
+    }
+
+    #[test]
+    fn commit_acts_only_on_open_visit() {
+        let (t, mut s, ids) = two_visits();
+        assert_eq!(ids.len(), 2);
+        let trash = FreedesktopTrash {
+            trash_dir: t.base.join("Trash"),
+        };
+        // No visit open: nothing to commit.
+        assert!(!s.can_commit());
+        assert!(s.commit_plan().is_empty());
+        assert!(s.commit(&trash).is_err());
+        let lisbon = s
+            .snap
+            .groups
+            .iter()
+            .find(|g| g.title.contains("Lisbon"))
+            .unwrap()
+            .id
+            .clone();
+        s.open_visit(&lisbon);
+        let p = s.commit_plan();
+        assert!(s.can_commit());
+        assert_eq!((p.items, p.files, p.bytes), (2, 2, 4));
+        assert!(p.visit.contains("Lisbon"));
+        assert!(p.heading().contains("Lisbon") && p.heading().starts_with("Move 2 Rejected Items"));
+        s.set_commit_mode(CommitMode::Quarantine);
+        let msg = s.commit(&trash).unwrap();
+        assert!(msg.starts_with("Moved 2 items"), "{msg}");
+        // Porto's reject is untouched, on disk and in the index.
+        assert!(t.root.join("2026-03-01 Porto/c.jpg").exists());
+        assert!(!t.root.join("2026-01-01 Lisbon/a.jpg").exists());
+        assert_eq!(s.snap.items.len(), 1);
+        assert_eq!(s.snap.items[0].decision, Decision::Reject);
+        assert!(!s.can_commit());
+        // Restore brings back exactly the Lisbon files.
+        let (msg, _) = s.restore_last();
+        assert!(msg.starts_with("Restored 2 files"), "{msg}");
+        assert!(t.root.join("2026-01-01 Lisbon/a.jpg").exists());
+    }
+
+    #[test]
+    fn visit_without_rejects_cannot_commit() {
+        let (_t, mut s, _) = two_visits();
+        let all: Vec<String> = s.snap.items.iter().map(|i| i.path.clone()).collect();
+        s.decide(&all, Decision::Keep);
+        let id = s.visits()[0].id.clone();
+        s.open_visit(&id);
+        assert!(!s.can_commit());
+        assert_eq!(s.commit_plan().keeps, s.visible_items().len());
     }
 
     #[test]

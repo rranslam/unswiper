@@ -395,7 +395,7 @@ impl Component for App {
         let commit_button = gtk::Button::builder()
             .label("Review & Commit…")
             .css_classes(["suggested-action"])
-            .tooltip_text("Move rejected items (Ctrl+Enter)")
+            .tooltip_text("Move this visit’s rejected items (Ctrl+Enter)")
             .build();
         {
             let s = sender.clone();
@@ -593,9 +593,12 @@ impl Component for App {
                 changed = false;
                 let plan = self.state.commit_plan();
                 if plan.is_empty() {
-                    w.toasts.add_toast(adw::Toast::new(
-                        "Nothing to commit. Reject some items first.",
-                    ));
+                    w.toasts
+                        .add_toast(adw::Toast::new(if self.state.visit.is_none() {
+                            "Open a visit to commit its rejected items."
+                        } else {
+                            "Nothing to commit in this visit. Reject some items first."
+                        }));
                 } else {
                     let d = adw::AlertDialog::new(Some(&plan.heading()), Some(&plan.body()));
                     d.add_response("cancel", "Cancel");
@@ -902,7 +905,7 @@ impl App {
             n => format!("{n} selected"),
         });
         let plan = st.commit_plan();
-        w.commit_button.set_sensitive(!plan.is_empty());
+        w.commit_button.set_sensitive(st.can_commit());
         w.commit_button.set_label(&if plan.is_empty() {
             "Review & Commit…".to_string()
         } else {
