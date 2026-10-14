@@ -127,6 +127,18 @@ struct Options<'a> {
 ///
 /// Order: validate every set; write a `pending` manifest listing every planned move before
 /// touching any file; update it after each move; mark it `complete`.
+/// The members of one visit, in visit order (paths the index no longer has are skipped).
+/// Commits act on one visit at a time, like the Mac app: pass these to [`commit_rejects`].
+pub fn visit_members(items: &[MediaItem], group: &crate::VisitGroup) -> Vec<MediaItem> {
+    let by_path: std::collections::HashMap<&str, &MediaItem> =
+        items.iter().map(|i| (i.path.as_str(), i)).collect();
+    group
+        .item_paths
+        .iter()
+        .filter_map(|p| by_path.get(p.as_str()).map(|i| (*i).clone()))
+        .collect()
+}
+
 pub fn commit_rejects(
     items: &[MediaItem],
     mode: CommitMode,

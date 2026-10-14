@@ -467,3 +467,17 @@ mod props {
         }
     }
 }
+
+#[test]
+fn visit_members_follow_group_order_and_skip_missing() {
+    let e = env();
+    std::fs::write(e.root.join("a.jpg"), b"a").unwrap();
+    std::fs::write(e.root.join("b.jpg"), b"b").unwrap();
+    let items = indexed(&e);
+    let mut g = unswiper_core::group::group(&items, 36.0).remove(0);
+    g.item_paths.reverse();
+    g.item_paths.push("/gone.jpg".into());
+    let m = visit_members(&items, &g);
+    assert_eq!(m.len(), 2);
+    assert_eq!(m[0].path, g.item_paths[0]);
+}
