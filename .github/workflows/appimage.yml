@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# Builds Unswiper-x86_64.AppImage on Ubuntu 24.04, smoke-tests it under Xvfb and uploads it as an
+# artifact. Also called by release.yml. Nothing is published here.
+name: AppImage
+
+on:
+  push:
+    branches: ["main", "phase*"]
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/appimage.yml"]
+  pull_request:
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/appimage.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  appimage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgtk-4-dev libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
+            librsvg2-common dpkg-dev wget file patchelf xvfb xauth ffmpeg
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build AppImage
+        run: crates/unswiper-gtk/packaging/build-appimage.sh
+      - name: Smoke test (launch under Xvfb with a clean environment, index a library with a video)
+        run: |
+          T="$RUNNER_TEMP/smoke"; mkdir -p "$T/lib" "$T/home"
+          ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x240:rate=10 -t 1 -c:v libx264 -pix_fmt yuv420p "$T/lib/clip.mov"
+          ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x240 -frames:v 1 "$T/lib/IMG_0001.jpg"
+          xvfb-run -a env -i PATH=/usr/bin:/bin HOME="$T/home" APPIMAGE_EXTRACT_AND_RUN=1 \
+            target/appimage/Unswiper-x86_64.AppImage --open "$T/lib" --open-first-visit --quit-after 12
+          test -s "$T/home/.local/share/unswiper/library.json"
+          ls -l "$T/home/.cache/unswiper/thumbs"
+          test -n "$(ls -A "$T/home/.cache/unswiper/thumbs")"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Unswiper-x86_64.AppImage
+          path: target/appimage/Unswiper-x86_64.AppImage
+          if-no-files-found: error
