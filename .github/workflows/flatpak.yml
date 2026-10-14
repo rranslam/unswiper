@@ -21,15 +21,37 @@ jobs:
       - run: desktop-file-validate crates/unswiper-gtk/data/io.github.rranslam.Unswiper.desktop
 
   flatpak:
+    # Runs on the host, not in the flatpak-github-actions container: the hosted runner's ~14 GB
+    # free disk ran out when exporting the build (run 38607788232), and a container job can't
+    # remove the host's preinstalled toolchains. Here we free ~25 GB first, delete each module's
+    # build dir as soon as it is done, and remove the build tree before bundling.
     runs-on: ubuntu-24.04
-    container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
-      options: --privileged
     steps:
+      - name: Free disk space (unused preinstalled toolchains)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift /usr/local/share/powershell
+          sudo docker image prune --all --force >/dev/null || true
+          df -h /
       - uses: actions/checkout@v4
-      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+      - name: Install flatpak and flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak flatpak-builder
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub \
+            org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
+      - name: Build
+        run: |
+          flatpak-builder --user --disable-rofiles-fuse --force-clean --delete-build-dirs \
+            --repo=repo build-dir packaging/flatpak/io.github.rranslam.Unswiper.yml
+          rm -rf build-dir .flatpak-builder/build
+          df -h /
+      - name: Bundle
+        run: flatpak build-bundle repo Unswiper.flatpak io.github.rranslam.Unswiper --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      - uses: actions/upload-artifact@v4
         with:
-          bundle: Unswiper.flatpak
-          manifest-path: packaging/flatpak/io.github.rranslam.Unswiper.yml
-          cache-key: flatpak-builder-${{ github.sha }}
-          upload-artifact: true
+          name: Unswiper-x86_64.flatpak
+          path: Unswiper.flatpak
+          if-no-files-found: error
