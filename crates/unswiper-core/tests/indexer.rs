@@ -236,3 +236,19 @@ fn relative_folder_path_cases() {
         ""
     );
 }
+
+#[test]
+fn sidecar_order_matches_swift_sidecars_then_mov() {
+    let d = tempfile::tempdir().unwrap();
+    let root = canon(d.path());
+    write(&root, "IMG_9.HEIC", b"h");
+    write(&root, "IMG_9.MOV", b"m");
+    write(&root, "IMG_9.xmp", b"x");
+    let (items, _) = run(&root);
+    let side: Vec<_> = items[0]
+        .sidecars
+        .iter()
+        .map(|s| s.path.rsplit('/').next().unwrap().to_string())
+        .collect();
+    assert_eq!(side, vec!["IMG_9.xmp", "IMG_9.MOV"]);
+}

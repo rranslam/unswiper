@@ -207,19 +207,22 @@ pub(crate) fn items_for_set(
         .iter()
         .filter(|e| SIDECAR_EXTS.contains(&e.ext.as_str()))
         .collect();
+    // Swift order: .aae/.xmp sidecars first, then the Live Photo .mov (stored in library.json).
+    attached.sort_by(|a, b| a.path.cmp(&b.path));
     let mut standalone: Vec<&Entry> = photos.iter().chain(videos.iter()).copied().collect();
     if photos
         .iter()
         .any(|e| LIVE_STILL_EXTS.contains(&e.ext.as_str()))
     {
-        attached.extend(videos.iter().filter(|e| e.ext == "mov"));
+        let mut movs: Vec<&Entry> = videos.iter().copied().filter(|e| e.ext == "mov").collect();
+        movs.sort_by(|a, b| a.path.cmp(&b.path));
+        attached.extend(movs);
         standalone = photos
             .iter()
             .copied()
             .chain(videos.iter().copied().filter(|e| e.ext != "mov"))
             .collect();
     }
-    attached.sort_by(|a, b| a.path.cmp(&b.path));
     // Anchor: a Live Photo still (HEIC before JPEG), else the first primary.
     let Some(anchor) = standalone
         .iter()
