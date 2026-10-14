@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# Builds the Flatpak bundle and uploads Unswiper.flatpak as an artifact. Nothing is published.
+name: Flatpak
+
+on:
+  push:
+    branches: ["main", "phase*"]
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "packaging/flatpak/**", ".github/workflows/flatpak.yml"]
+  pull_request:
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "packaging/flatpak/**", ".github/workflows/flatpak.yml"]
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends appstream desktop-file-utils
+      - run: appstreamcli validate --no-net crates/unswiper-gtk/data/io.github.rranslam.Unswiper.metainfo.xml
+      - run: desktop-file-validate crates/unswiper-gtk/data/io.github.rranslam.Unswiper.desktop
+
+  flatpak:
+    runs-on: ubuntu-24.04
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: Unswiper.flatpak
+          manifest-path: packaging/flatpak/io.github.rranslam.Unswiper.yml
+          cache-key: flatpak-builder-${{ github.sha }}
+          upload-artifact: true
