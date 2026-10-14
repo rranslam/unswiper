@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# Rust core (crates/) — lint, test, coverage gate (plan §10.8: 85% core).
+name: Rust
+
+on:
+  push:
+    branches: ["main", "phase*"]
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+  pull_request:
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", ".github/workflows/rust.yml"]
+
+env:
+  CARGO_TERM_COLOR: always
+  # Folder dates and titles are local-time; pin a zone with DST so tests are deterministic.
+  TZ: America/Los_Angeles
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+
+  test-linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace
+        env:
+          PROPTEST_CASES: "256"
+      - name: Also pass in UTC
+        run: cargo test --workspace
+        env:
+          TZ: UTC
+
+  coverage:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - name: Core coverage (gate 85% lines)
+        run: cargo llvm-cov --package unswiper-core --fail-under-lines 85 --summary-only
+      - name: Workspace coverage (gate 80% lines)
+        run: cargo llvm-cov --workspace --fail-under-lines 80 --lcov --output-path lcov.info
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: lcov.info
