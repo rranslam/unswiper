@@ -5,7 +5,7 @@ resolver = "2"
 members = ["crates/unswiper-core", "crates/unswiper-cli", "crates/unswiper-gtk"]
 
 [workspace.package]
-version = "0.2.0-dev"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.89"
 license = "MIT"

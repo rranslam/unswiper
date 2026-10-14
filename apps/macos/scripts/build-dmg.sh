@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_NAME="Unswiper"
 BUNDLE_ID="io.github.rranslam.Unswiper"  # same as Linux; com.rranslam.unswiper up to 0.1.2
-VERSION="${1:-${VERSION:-0.1.2}}"
+VERSION="${1:-${VERSION:-0.2.0}}"
 VERSION="${VERSION#v}"
 MIN_MACOS="14.0"
 

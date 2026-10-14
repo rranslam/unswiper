@@ -37,6 +37,7 @@
     <screenshot type="default"><caption>Reviewing a visit</caption><image>https://raw.githubusercontent.com/rranslam/unswiper/main/crates/unswiper-gtk/data/screenshot.png</image></screenshot>
   </screenshots>
   <releases>
+    <release version="0.2.0" date="2026-10-13"><description><p>First Linux release: GTK 4 app on the shared Rust core, as Flatpak and AppImage. Video thumbnails via GStreamer, HEIC via libheif, new icon. Commit applies only to the open visit.</p></description></release>
     <release version="0.1.0" date="2026-10-13"><description><p>First Linux preview.</p></description></release>
   </releases>
 </component>

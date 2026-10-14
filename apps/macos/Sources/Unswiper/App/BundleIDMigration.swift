@@ -5,7 +5,7 @@ import Foundation
 
 /// One-time move of preferences from the old bundle ID.
 ///
-/// Up to 0.1.2 the app was `com.rranslam.unswiper`. From 0.1.3 it is `io.github.rranslam.Unswiper`
+/// Up to 0.1.2 the app was `com.rranslam.unswiper`. From 0.2.0 it is `io.github.rranslam.Unswiper`
 /// (the same ID as the Linux app). Library data lives in `~/Library/Application Support/Unswiper`,
 /// which does not depend on the bundle ID, so libraries, decisions and commit records carry over
 /// untouched. Only the `UserDefaults` domain (window sizes and other SwiftUI/AppKit state) is keyed

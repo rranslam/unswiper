@@ -2,11 +2,19 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
-## [Unreleased]
+## [0.2.0] - 2026-10-13
+
+### Added
+- **Unswiper for Linux.** A native GNOME app (GTK 4 + libadwaita) with the same visits, Keep/Reject, Review & Commit and Restore as the Mac app. Works on GNOME, Hyprland/Omarchy and other Wayland or X11 desktops.
+- **Two Linux downloads** on the release page: `Unswiper-x86_64.AppImage` (one file, make it executable and run it) and `Unswiper-x86_64.flatpak` (sandboxed; install with `flatpak install --user`). See the README for step-by-step instructions.
+- **Shared Rust core** (`unswiper-core`) for grouping, indexing, commit and restore, with a command-line tool (`unswiper`). It reads and writes the same `library.json` and commit manifests as the Mac app.
+- **Video thumbnails on Linux via GStreamer** (H.264 and HEVC/iPhone clips). The Flatpak gets the codecs from the Freedesktop codecs extension; the AppImage bundles them. **HEIC photos** are supported through libheif.
 
 ### Changed
+- **Commit applies only to the open visit.** The confirmation names the visit and how many files will be moved; Commit is disabled when the visit has no rejects. (The Mac app already worked this way.)
 - **New app icon:** photos going into a funnel, with the kept one marked by a check.
-- **New bundle ID: `io.github.rranslam.Unswiper`** (was `com.rranslam.unswiper`), the same as the Linux app. Your libraries, decisions and commit history stay where they are. Window sizes and other preferences are copied over on first launch. macOS may ask once more for permission to access your photo folders.
+- **New bundle ID: `io.github.rranslam.Unswiper`** (was `com.rranslam.unswiper`), the same as the Linux app. Your libraries, decisions and commit history stay where they are. Window sizes and other preferences are copied over on first launch. **macOS will ask again for permission to access your photo folders**; click Allow.
+- The Mac app is still ad-hoc signed: on first launch use System Settings ▸ Privacy & Security ▸ **Open Anyway**.
 
 ## [0.1.2] - 2026-10-13
 
