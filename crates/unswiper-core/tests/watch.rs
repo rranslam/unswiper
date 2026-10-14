@@ -316,3 +316,17 @@ fn start_on_missing_folder_fails() {
     let r = PathBuf::from("/nonexistent/unswiper-watch");
     assert!(FolderWatcher::start(&r, DEFAULT_QUIET, DEFAULT_MAX_WAIT, |_| {}).is_err());
 }
+
+#[test]
+fn from_items_wraps_existing_index() {
+    let (_d, r) = root();
+    let a = write(&r, "x/a.jpg", b"a");
+    let (items, groups) = index(&r, 36.0, &HashMap::new(), &MetadataDates, |_| {}).unwrap();
+    let mut li = LiveIndex::from_items(&r, 36.0, items.clone());
+    assert_eq!(li.root(), r.as_path());
+    assert_eq!(li.items(), items);
+    assert_eq!(li.groups(), groups.as_slice());
+    let b = write(&r, "x/b.jpg", b"b");
+    assert_eq!(li.apply(&batch(&[&b]), &MetadataDates).added, vec![s(&b)]);
+    assert!(li.item(&s(&a)).is_some());
+}

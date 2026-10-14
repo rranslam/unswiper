@@ -314,6 +314,25 @@ impl LiveIndex {
         })
     }
 
+    /// Wraps an index that was already built (e.g. loaded from library.json or just indexed),
+    /// so the app doesn't have to walk the tree twice.
+    pub fn from_items(root: &Path, gap_hours: f64, items: Vec<MediaItem>) -> Self {
+        let mut li = LiveIndex {
+            root: root.to_path_buf(),
+            gap_hours,
+            remembered: HashMap::new(),
+            items: items.into_iter().map(|i| (i.path.clone(), i)).collect(),
+            groups: vec![],
+            suppressed: HashMap::new(),
+        };
+        li.regroup();
+        li
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
     /// Items sorted by date, then path.
     pub fn items(&self) -> Vec<MediaItem> {
         let mut v: Vec<MediaItem> = self.items.values().cloned().collect();
