@@ -64,10 +64,11 @@ impl CommitPlan {
 
     pub fn body(&self) -> String {
         let what = format!(
-            "{} rejected item{} ({} files, {})",
+            "{} rejected item{} ({} file{}, {})",
             self.items,
             if self.items == 1 { "" } else { "s" },
             self.files,
+            if self.files == 1 { "" } else { "s" },
             format::bytes(self.bytes)
         );
         let action = match self.mode {
@@ -550,6 +551,15 @@ impl AppState {
     }
 }
 
+/// True for folders handed over by the document portal (`/run/user/<uid>/doc/…` or
+/// `/run/flatpak/doc/…`). That FUSE mount does not deliver inotify events for changes made
+/// outside the app, so the folder watcher must poll there.
+pub fn is_portal_path(p: &Path) -> bool {
+    let s = p.to_string_lossy();
+    s.starts_with("/run/flatpak/doc/")
+        || (s.starts_with("/run/user/") && s.split('/').nth(4) == Some("doc"))
+}
+
 fn short(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
 }
@@ -612,6 +622,16 @@ mod tests {
     fn open_first(s: &mut AppState) {
         let id = s.visits()[0].id.clone();
         assert!(s.open_visit(&id));
+    }
+
+    #[test]
+    fn portal_paths() {
+        assert!(is_portal_path(Path::new(
+            "/run/user/1000/doc/ab12cd/Photos"
+        )));
+        assert!(is_portal_path(Path::new("/run/flatpak/doc/ab12cd/Photos")));
+        assert!(!is_portal_path(Path::new("/run/user/1000/gvfs/x")));
+        assert!(!is_portal_path(Path::new("/home/r/Pictures")));
     }
 
     #[test]
@@ -687,7 +707,7 @@ mod tests {
         assert!(p.body().contains("Trash"));
         assert!(
             p.body()
-                .starts_with(&format!("Visit “{}”: 1 rejected item (1 files", p.visit)),
+                .starts_with(&format!("Visit “{}”: 1 rejected item (1 file,", p.visit)),
             "{}",
             p.body()
         );

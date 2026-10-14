@@ -745,9 +745,19 @@ impl App {
             return;
         };
         let tx = sender.input_sender().clone();
-        self.watcher = FolderWatcher::start(&root, DEFAULT_QUIET, DEFAULT_MAX_WAIT, move |b| {
-            tx.emit(Msg::Watch(b))
-        })
+        let on_batch = move |b| tx.emit(Msg::Watch(b));
+        self.watcher = if crate::state::is_portal_path(&root) {
+            // Document-portal folders (Flatpak) get no inotify events: poll every 5 s.
+            FolderWatcher::start_polling(
+                &root,
+                std::time::Duration::from_secs(5),
+                DEFAULT_QUIET,
+                DEFAULT_MAX_WAIT,
+                on_batch,
+            )
+        } else {
+            FolderWatcher::start(&root, DEFAULT_QUIET, DEFAULT_MAX_WAIT, on_batch)
+        }
         .ok();
     }
 

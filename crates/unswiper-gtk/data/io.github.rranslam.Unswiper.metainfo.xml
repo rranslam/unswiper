@@ -18,6 +18,14 @@
     </ul>
   </description>
   <icon type="stock">io.github.rranslam.Unswiper</icon>
+  <categories>
+    <category>Graphics</category>
+    <category>Photography</category>
+  </categories>
+  <branding>
+    <color type="primary" scheme_preference="light">#ffbe6f</color>
+    <color type="primary" scheme_preference="dark">#c64600</color>
+  </branding>
   <launchable type="desktop-id">io.github.rranslam.Unswiper.desktop</launchable>
   <url type="homepage">https://github.com/rranslam/unswiper</url>
   <url type="bugtracker">https://github.com/rranslam/unswiper/issues</url>
