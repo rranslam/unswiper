@@ -23,11 +23,14 @@ any `Cargo.lock` change:** `packaging/flatpak/update-cargo-sources.sh` (uses a p
 ## Bundled libraries
 
 - **libheif 1.20 + libde265** — HEIC/HEIF thumbnails (decode only; every other codec is off).
-- **ffmpeg: not included.** Video thumbnails call the `ffmpeg` *command*. The
-  `org.freedesktop.Platform.ffmpeg-full` extension ships only libraries, not the CLI, so it would not
-  help. Inside the Flatpak, videos show the generic video placeholder; dates, grouping, keep/reject
-  and commit work the same. Bundling an ffmpeg CLI module (or decoding frames through GStreamer, which
-  the GNOME runtime has) is a possible follow-up.
+- **Video thumbnails: GStreamer from the GNOME runtime.** The app grabs one frame with
+  `uridecodebin ! videoconvert ! videoscale ! appsink`. The runtime ships `gst-libav`, and the
+  H.264/HEVC decoders behind it come from `org.freedesktop.Platform.codecs-extra`. Flatpak installs that
+  runtime extension automatically with the 25.08 base (GNOME 50), so the manifest needs no extra
+  extension. The old `ffmpeg-full` extension is not needed. Verified in the sandbox: iPhone-style
+  H.264 (`avc1`) and HEVC (`hvc1`) `.mov` clips both get thumbnails. If the codecs extension is
+  missing or a codec isn't covered, the clip shows the video placeholder and everything else works.
+  The ffmpeg command is not used any more.
 
 ## Sandbox permissions
 

@@ -26,7 +26,7 @@ jobs:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
       - name: GTK 4 / libadwaita / libheif headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
       - run: cargo fmt --all --check
       - run: cargo clippy --workspace --all-targets -- -D warnings
 
@@ -36,8 +36,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - name: GTK 4 / libadwaita / libheif headers, Xvfb and ffmpeg for the GUI tests
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev xvfb xauth ffmpeg
+      - name: GTK 4 / libadwaita / libheif headers, GStreamer, Xvfb for the GUI tests
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-libav xvfb xauth
       # xvfb-run gives the headless smoke test (crates/unswiper-gtk/tests/smoke.rs) a display.
       - run: xvfb-run -a cargo test --workspace
         env:
@@ -57,7 +57,7 @@ jobs:
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
       - name: GTK 4 / libadwaita / libheif headers
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
       - name: Core coverage (gate 85% lines)
         run: cargo llvm-cov --package unswiper-core --fail-under-lines 85 --summary-only
       # Approved exclusion (Rob, 2026-10-14): the relm4 widget layer (ui.rs, main.rs) needs a display
