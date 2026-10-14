@@ -6,7 +6,7 @@ Install **libheif** (`sudo apt install libheif1`, or `sudo pacman -S libheif`) a
 
 ## Videos show a film icon instead of a thumbnail
 
-Video thumbnails need **ffmpeg** (`sudo apt install ffmpeg`, or `sudo pacman -S ffmpeg`). Without it, Unswiper still works.
+Video thumbnails come from **GStreamer**. iPhone videos (H.264 and HEVC) need its libav plugin: `sudo apt install gstreamer1.0-libav`, or `sudo pacman -S gst-libav`. If you use the Flatpak, run `flatpak update` so the codecs extension is installed. Without a decoder, Unswiper still works and only the thumbnail is missing.
 
 ## My visits look wrong or empty
 

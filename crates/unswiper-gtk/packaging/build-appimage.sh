@@ -5,7 +5,8 @@
 # Builds Unswiper-<version>-x86_64.AppImage with linuxdeploy + its GTK plugin.
 # Build on the oldest distro you support (Ubuntu 24.04 baseline: GTK 4.14, libadwaita 1.5).
 # Needs: cargo, libgtk-4-dev, libadwaita-1-dev, libheif-dev, wget, file.
-# ffmpeg is not bundled; video thumbnails use the system ffmpeg when present.
+# GStreamer is not bundled: video thumbnails use the system GStreamer and its plugins
+# (gst-libav for H.264/HEVC). Without them, videos show a placeholder.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 root="$(cd "$here/../.." && pwd)"

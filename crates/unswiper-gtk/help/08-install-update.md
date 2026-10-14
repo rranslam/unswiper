@@ -7,7 +7,7 @@
 3. Open **Files**, go to **Downloads**, right-click the file, choose **Properties**, and turn on **Executable as Program** (or run `chmod +x Unswiper-*.AppImage` in a terminal).
 4. Double-click the file to start Unswiper.
 
-Unswiper needs **libheif** for iPhone HEIC photos. On Ubuntu/Debian: `sudo apt install libheif1`. On Arch/Omarchy: `sudo pacman -S libheif`. For video thumbnails, also install **ffmpeg** (optional).
+Unswiper needs **libheif** for iPhone HEIC photos. On Ubuntu/Debian: `sudo apt install libheif1`. On Arch/Omarchy: `sudo pacman -S libheif`. Video thumbnails use **GStreamer**, which most desktops already have. For iPhone videos (H.264/HEVC) you also need its libav plugin: `sudo apt install gstreamer1.0-libav` or `sudo pacman -S gst-libav`. The Flatpak includes everything.
 
 Packages for Ubuntu/Debian (.deb), Arch (AUR) and Flatpak are planned.
 
