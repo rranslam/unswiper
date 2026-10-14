@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+#
+# Flatpak manifest for the Linux app (crates/unswiper-gtk). Build from the repo root:
+#   flatpak-builder --user --install --force-clean build-flatpak packaging/flatpak/io.github.rranslam.Unswiper.yml
+# Sandbox decisions are explained in packaging/flatpak/README.md.
+id: io.github.rranslam.Unswiper
+runtime: org.gnome.Platform
+runtime-version: "50"
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: unswiper
+finish-args:
+  - --share=ipc
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --device=dri
+  # Library folders are normally picked with the portal file chooser (document portal).
+  # These two give direct access to the usual photo locations so live folder watching uses
+  # inotify and commits/restores use real paths. See README.md for the tradeoff.
+  - --filesystem=xdg-pictures
+  - --filesystem=xdg-videos
+  # Move to Trash: the freedesktop home trash, so files can be put back by Restore Last Commit.
+  - --filesystem=xdg-data/Trash
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/unswiper/cargo
+    CARGO_NET_OFFLINE: "true"
+cleanup:
+  - /include
+  - /lib/pkgconfig
+  - /lib/cmake
+  - /share/thumbnailers
+  - /bin/heif-*
+  - /bin/dec265
+  - "*.a"
+modules:
+  # HEVC decoder used by libheif for HEIC.
+  - name: libde265
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DENABLE_SDL=OFF
+      - -DENABLE_DECODER=OFF
+      - -DENABLE_ENCODER=OFF
+    sources:
+      - type: archive
+        url: https://github.com/strukturag/libde265/releases/download/v1.0.16/libde265-1.0.16.tar.gz
+        sha256: b92beb6b53c346db9a8fae968d686ab706240099cdd5aff87777362d668b0de7
+
+  # HEIF/HEIC container (decode only; JPEG/PNG come from the image crate).
+  - name: libheif
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DWITH_EXAMPLES=OFF
+      - -DWITH_GDK_PIXBUF=OFF
+      - -DBUILD_TESTING=OFF
+      - -DWITH_LIBDE265=ON
+      - -DWITH_X265=OFF
+      - -DWITH_AOM_DECODER=OFF
+      - -DWITH_AOM_ENCODER=OFF
+      - -DWITH_DAV1D=OFF
+      - -DWITH_RAV1E=OFF
+      - -DWITH_SvtEnc=OFF
+      - -DWITH_JPEG_DECODER=OFF
+      - -DWITH_JPEG_ENCODER=OFF
+      - -DWITH_OpenJPEG_DECODER=OFF
+      - -DWITH_OpenJPEG_ENCODER=OFF
+      - -DWITH_FFMPEG_DECODER=OFF
+      - -DWITH_OPENH264_DECODER=OFF
+      - -DWITH_UNCOMPRESSED_CODEC=OFF
+      - -DENABLE_PLUGIN_LOADING=OFF
+    sources:
+      - type: archive
+        url: https://github.com/strukturag/libheif/releases/download/v1.20.2/libheif-1.20.2.tar.gz
+        sha256: 68ac9084243004e0ef3633f184eeae85d615fe7e4444373a0a21cebccae9d12a
+
+  - name: unswiper
+    buildsystem: simple
+    build-commands:
+      - cargo --offline fetch --manifest-path Cargo.toml --verbose
+      - cargo --offline build --release --locked -p unswiper-gtk
+      - install -Dm755 target/release/unswiper /app/bin/unswiper
+      - install -Dm644 crates/unswiper-gtk/data/io.github.rranslam.Unswiper.desktop /app/share/applications/io.github.rranslam.Unswiper.desktop
+      - install -Dm644 crates/unswiper-gtk/data/io.github.rranslam.Unswiper.metainfo.xml /app/share/metainfo/io.github.rranslam.Unswiper.metainfo.xml
+      - cd crates/unswiper-gtk/data/icons && find hicolor -type f -exec install -Dm644 {} /app/share/icons/{} \;
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - target
+          - build-flatpak
+          - .flatpak-builder
+          - apps
+      - cargo-sources.json
