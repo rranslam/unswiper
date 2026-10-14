@@ -139,7 +139,7 @@ pub(crate) fn walk(
             continue;
         }
         *seen += 1;
-        if *seen % 50 == 0 {
+        if seen.is_multiple_of(50) {
             progress(IndexProgress {
                 files_seen: *seen,
                 media_found: out.len(),
