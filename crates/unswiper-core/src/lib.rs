@@ -19,5 +19,6 @@ pub mod path_util;
 pub mod store;
 pub mod time;
 pub mod trash;
+pub mod watch;
 
 pub use model::*;

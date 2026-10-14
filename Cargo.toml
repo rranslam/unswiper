@@ -7,7 +7,7 @@ members = ["crates/unswiper-core", "crates/unswiper-cli"]
 [workspace.package]
 version = "0.2.0-dev"
 edition = "2021"
-rust-version = "1.75"
+rust-version = "1.89"
 license = "MIT"
 authors = ["Rob Ranslam"]
 repository = "https://github.com/rranslam/unswiper"

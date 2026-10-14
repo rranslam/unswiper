@@ -30,7 +30,8 @@ pub struct LoadResult {
 }
 
 /// Per-platform default support folder:
-/// Linux `$XDG_DATA_HOME/unswiper` (or `~/.local/share/unswiper`),
+/// Linux `$XDG_DATA_HOME/unswiper` (or `~/.local/share/unswiper`) — lowercase, decided by Rob
+/// on 13 Oct 2026 (Linux convention; the Flatpak sandbox maps it the same way),
 /// macOS `~/Library/Application Support/Unswiper` (same as the Swift app).
 pub fn default_support_dir() -> PathBuf {
     let home = std::env::var_os("HOME")
