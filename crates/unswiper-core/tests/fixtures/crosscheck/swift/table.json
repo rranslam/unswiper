@@ -1,0 +1,309 @@
+{
+  "fnv" : [
+    {
+      "hash" : "cbf29ce484222325",
+      "input" : ""
+    },
+    {
+      "hash" : "af63dc4c8601ec8c",
+      "input" : "a"
+    },
+    {
+      "hash" : "85944171f73967e8",
+      "input" : "foobar"
+    },
+    {
+      "hash" : "ca9eb901d5af6902",
+      "input" : "\/Users\/rob\/Pictures\/IMG_0001.HEIC|1767268800"
+    },
+    {
+      "hash" : "69f11e500d157ad1",
+      "input" : "Lisbon\/Été 2026"
+    },
+    {
+      "hash" : "1f21f4f446f932b1",
+      "input" : "Porto\/old"
+    }
+  ],
+  "gapHours" : 36,
+  "groups" : [
+    {
+      "endDate" : "2026-03-04T17:00:00Z",
+      "folderHint" : "Lisbon",
+      "id" : "visit-b37213f7327c4326",
+      "itemPaths" : [
+        "Lisbon\/IMG_1.jpg",
+        "Lisbon\/IMG_2.JPG",
+        "Lisbon\/nodate.jpg"
+      ],
+      "startDate" : "2026-03-03T18:00:00Z",
+      "title" : "Mar 3–Mar 4 · Lisbon"
+    },
+    {
+      "endDate" : "2026-05-03T03:00:00Z",
+      "folderHint" : "Trip",
+      "id" : "visit-3cfdae8e820160fe",
+      "itemPaths" : [
+        "Trip\/t2.jpg",
+        "Trip\/t1.jpg"
+      ],
+      "startDate" : "2026-05-03T03:00:00Z",
+      "title" : "May 2 · Trip"
+    },
+    {
+      "endDate" : "2026-05-04T15:00:01Z",
+      "folderHint" : "Trip",
+      "id" : "visit-4f841081ad3a7f10",
+      "itemPaths" : [
+        "Trip\/t3.jpg"
+      ],
+      "startDate" : "2026-05-04T15:00:01Z",
+      "title" : "May 4 · Trip"
+    },
+    {
+      "endDate" : "2026-08-02T01:30:00Z",
+      "folderHint" : "Été 2026",
+      "id" : "visit-b0bcdd9f1ab5acf3",
+      "itemPaths" : [
+        "Été 2026\/Côte.jpg"
+      ],
+      "startDate" : "2026-08-02T01:30:00Z",
+      "title" : "Aug 1 · Été 2026"
+    },
+    {
+      "endDate" : "2025-07-04T19:00:00Z",
+      "folderHint" : "2025-07-04 Beach",
+      "id" : "visit-7003d3f08bc617a8",
+      "itemPaths" : [
+        "2025-07-04 Beach\/c.jpg"
+      ],
+      "startDate" : "2025-07-04T19:00:00Z",
+      "title" : "Jul 4 · 2025-07-04 Beach"
+    },
+    {
+      "endDate" : "2026-02-01T20:00:00Z",
+      "folderHint" : "2026",
+      "id" : "visit-4c37874307b0ea9a",
+      "itemPaths" : [
+        "2026\/02\/b.jpg"
+      ],
+      "startDate" : "2026-02-01T20:00:00Z",
+      "title" : "Feb 1 · 2026"
+    },
+    {
+      "endDate" : "2026-01-01T20:00:00Z",
+      "folderHint" : "2026",
+      "id" : "visit-6bcbf6245c8297e0",
+      "itemPaths" : [
+        "2026\/01\/01\/a.jpg"
+      ],
+      "startDate" : "2026-01-01T20:00:00Z",
+      "title" : "Jan 1 · 2026"
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "Porto",
+      "id" : "folder-d9bce896fc4c09eb",
+      "itemPaths" : [
+        "Porto\/x.jpg"
+      ],
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "Porto"
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "Porto\/old",
+      "id" : "folder-1f21f4f446f932b1",
+      "itemPaths" : [
+        "Porto\/old\/y.mov"
+      ],
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "old"
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+      "id" : "undated",
+      "itemPaths" : [
+        "root.jpg",
+        "clip.mp4"
+      ],
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "Undated"
+    }
+  ],
+  "items" : [
+    {
+      "dateSource" : "unknown",
+      "folderPath" : "Porto\/old",
+      "isUndated" : true,
+      "kind" : "video",
+      "path" : "Porto\/old\/y.mov",
+      "relativeFolder" : "Porto",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "folderPath" : "Porto",
+      "isUndated" : true,
+      "kind" : "photo",
+      "path" : "Porto\/x.jpg",
+      "relativeFolder" : "Porto",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "folderPath" : "",
+      "isUndated" : true,
+      "kind" : "photo",
+      "path" : "root.jpg",
+      "relativeFolder" : "library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "folderPath" : "",
+      "isUndated" : true,
+      "kind" : "video",
+      "path" : "clip.mp4",
+      "relativeFolder" : "library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "folderPath" : "Trip",
+      "isUndated" : true,
+      "kind" : "photo",
+      "path" : "Trip\/t1.jpg",
+      "relativeFolder" : "Trip",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "folderPath" : "Lisbon",
+      "isUndated" : true,
+      "kind" : "photo",
+      "path" : "Lisbon\/nodate.jpg",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "folder",
+      "folderPath" : "2025-07-04 Beach",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "2025-07-04 Beach\/c.jpg",
+      "relativeFolder" : "2025-07-04 Beach",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2025-07-04T19:00:00Z"
+    },
+    {
+      "dateSource" : "folder",
+      "folderPath" : "2026\/01\/01",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "2026\/01\/01\/a.jpg",
+      "relativeFolder" : "2026",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2026-01-01T20:00:00Z"
+    },
+    {
+      "dateSource" : "folder",
+      "folderPath" : "2026\/02",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "2026\/02\/b.jpg",
+      "relativeFolder" : "2026",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2026-02-01T20:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "folderPath" : "Lisbon",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "Lisbon\/IMG_1.jpg",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+        "Lisbon\/IMG_1.AAE",
+        "Lisbon\/IMG_1.mov"
+      ],
+      "takenAt" : "2026-03-03T18:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "folderPath" : "Lisbon",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "Lisbon\/IMG_2.JPG",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2026-03-04T17:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "folderPath" : "Trip",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "Trip\/t2.jpg",
+      "relativeFolder" : "Trip",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2026-05-03T03:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "folderPath" : "Trip",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "Trip\/t3.jpg",
+      "relativeFolder" : "Trip",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2026-05-04T15:00:01Z"
+    },
+    {
+      "dateSource" : "capture",
+      "folderPath" : "Été 2026",
+      "isUndated" : false,
+      "kind" : "photo",
+      "path" : "Été 2026\/Côte.jpg",
+      "relativeFolder" : "Été 2026",
+      "sidecars" : [
+
+      ],
+      "takenAt" : "2026-08-02T01:30:00Z"
+    }
+  ],
+  "locale" : "en_US",
+  "root" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+  "timeZone" : "America\/Los_Angeles"
+}
