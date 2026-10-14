@@ -252,6 +252,8 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **UniFFI + notarization:** nested binaries must be signed inside-out with hardened runtime. Test in CI before the first signed release.
 
 ## 13. Roadmap after the Linux port
+Order approved 14 Oct 2026 (§15.8): Linux v0.2.0 → blur detection v0.3 (§15) → geo grouping → Google Photos.
+
 1. **Geo grouping:** split and merge visits by GPS (EXIF GPS, QuickTime ISO 6709) with distance thresholds. Offline reverse-geocoding for titles.
 2. **Google Photos source:** read-only via the Photos Library/Picker API. Decisions export to an album, since the API can't delete.
 3. Extra RAW formats (CR2/CR3/NEF/ARW/ORF/RAF), "Show in file manager", restore any past commit, (live folder watching moved into v1).
@@ -280,3 +282,63 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
    carry over unchanged. `BundleIDMigration` copies the old `UserDefaults` domain once (window state). macOS will
    ask again for folder-access permissions (they are per bundle ID) and treats it as a new app in Login Items/
    Launchpad. Nothing is open in §14 any more.
+
+## 15. Blur / out-of-focus detection (new feature, Rob 14 Oct 2026)
+
+**Goal:** find out-of-focus or shaky photos automatically and pre-mark them so they're easy to drop. Runs offline with no external API. Setting **on by default**. Evaluation: `docs/blur-evaluation.md`.
+
+### 15.1 Approach
+- **New crate `crates/unswiper-blur`** (MIT, pure Rust: `image`, `imageproc`, `rayon`). It decodes through the core's existing image path (libheif for HEIC), so no new system dependencies are needed and Flatpak/AppImage are unaffected.
+- **Where it runs (both, sharing one crate):**
+  1. **Core background job** (`unswiper-core::quality`). After indexing, unscored photos go on a low-priority worker queue: `nice`/QoS background, N−1 threads, cancellable. The open visit is scored first. Live folder watching enqueues new files.
+  2. **CLI `unswiper-blur`**: `unswiper-blur scan <dir|library.json> [--json] [--threshold] [--write-cache]`. Use it for big backlogs, headless runs, and threshold tuning. It shares the cache format, so the app picks its results up.
+- **Score:**
+  1. Decode to a 1024 px long edge (use the embedded preview when it's large enough), convert to grayscale, Gaussian σ=1.
+  2. Split into a 4×4 tile grid. Take the Laplacian variance and Tenengrad for each tile, and skip flat tiles (low intensity variance).
+  3. `sharpness = p90 over tiles` (tolerates bokeh, since a sharp subject anywhere passes). If AF-point metadata exists, use the AF tiles instead.
+  4. Also store `global` and a `motion` flag (gradient-orientation anisotropy) for display.
+- **Decision (two-stage, conservative):**
+  - *Relative:* within a visit/burst (≥3 photos taken within a few seconds), flag a photo if `sharpness < 0.35 × burst max`.
+  - *Absolute floor:* flag a photo with `sharpness < T_abs`, where `T_abs` is calibrated on the fixture set and set low.
+  - *Never flag:* low-confidence cases (dark: mean luma < 40/255; very high ISO), Portrait/depth photos, screenshots and non-camera images, videos.
+  - Sensitivity setting: Low / **Normal** / High scales both thresholds.
+
+### 15.2 Semantics: suggest, never move
+- Auto-reject = **"reject-suggested"** (a new decision source), shown as Reject with a "blurry" badge. It counts toward Commit like any reject, but the confirmation lists "N suggested as blurry" separately, and nothing moves until the user commits the visit (the existing Commit-open-visit rule still applies).
+- **Manual decisions always win.** Never override Keep/Reject/Undecided that the user set. Pressing U on a suggested item clears it and records `blurDismissed`, so rescans don't re-flag it.
+- If the setting is turned off, suggestions become hidden and uncounted (cached scores stay).
+- Filter: "Show blurry suggestions" in the visit view, plus "Keep all in visit" / "Reject all suggested."
+
+### 15.3 Data / schema
+- Additive, optional fields per item in library.json: `quality: { v: 1, sharpness, global, motion, confidence, scoredAt, fileSize, mtime }` and decision source `"auto-blur"`. Cache key = size + mtime + algorithm version. A changed file or a bumped algorithm triggers a rescore.
+- Works with v1 and v2: the Rust reader keeps unknown fields (`serde(flatten)`). **Caveat:** the current Swift app's Codable reader *ignores* unknown keys but *drops* them on save. Until Phase 6 (Mac on core), the Mac app either (a) adds the optional fields to its model (small change), or (b) keeps scores in a sidecar `quality-cache.json`. Recommendation: **sidecar cache** for scores (rebuildable, can't corrupt library.json), and only the suggestion/dismissal state in library.json via (a).
+
+### 15.4 Settings and UI
+- Setting "Detect blurry photos" (default **On**), Sensitivity (Low/Normal/High), and "Rescan library."
+- Linux: Preferences window (`AdwPreferencesWindow`, switch row + combo row), progress in the header bar ("Checking sharpness 120/900"), a blur badge on thumbnails.
+- macOS: Settings scene (⌘,), Toggle + Picker, progress in the toolbar, and the same badge. Before Phase 6, the Mac app calls the `unswiper-blur` crate through UniFFI (or runs the CLI as a helper) rather than re-implementing it in Swift. Both must produce identical scores (cross-check test).
+- Help page: what's flagged, why, and how to undo.
+
+### 15.5 Performance targets
+- ≤ 40 ms per 12 MP JPEG and ≤ 80 ms per HEIC per core on a 2020-era laptop (decode-bound). 1,000 photos in under 30 s on 4 cores.
+- UI stays responsive (scoring off the main thread, no frame > 16 ms). Memory < 200 MB extra.
+- The rescan cost is near zero when the cache hits.
+
+### 15.6 Test plan
+- **Labeled fixture set** `tests/fixtures/blur/`: about 60–100 small (1024 px) images, CC0 or Rob's own, with labels in `labels.csv` (sharp / defocus / motion / bokeh-sharp / night-sharp / night-blurry / low-texture-sharp / burst sets). Synthetic blur (Gaussian, motion kernels) is generated from sharp originals by `xtask`.
+- Unit tests: tile scoring, flat-tile skip, monotonicity (more blur gives a lower score: proptest), resolution invariance (same image at 2 sizes within ±10%), relative burst logic, manual-decision precedence, cache invalidation.
+- **Accuracy gate in CI:** on the fixture set, **precision ≥ 0.95** for suggestions (false rejects are the costly error) and recall ≥ 0.70; zero flags on bokeh-sharp and night-sharp.
+- Benchmark (`criterion`), not gating, tracked over time.
+- Cross-check: the Rust CLI vs the Mac binding produce identical JSON.
+- Coverage: the crate is inside the 85% core gate.
+
+### 15.7 Placement and effort
+Order: **Flatpak (finish) → AppImage in CI → v0.2.0 Linux release → 15. Blur detection (v0.3) → Geo grouping → Google Photos.**
+Rationale: packaging is nearly done and gates v0.2. Blur is self-contained in core, which makes it the most useful next culling feature. It also benefits Google Photos later (scoring downloaded thumbnails). The Mac app gets it fully in Phase 6, with an interim UniFFI/CLI bridge.
+Effort: 6–9 days. Crate + CLI 2–3, core job + cache 1–2, Linux UI 1, Mac UI/bridge 1–2, fixtures/calibration 1–2.
+Optional v2: a permissively licensed ONNX model through `tract` for better bokeh handling.
+
+### 15.8 Decisions (Rob, 14 Oct 2026)
+- **Approved:** the plan above and the order in §15.7: Flatpak → AppImage in CI → **Linux v0.2.0** → **blur detection (v0.3)** → geo grouping → Google Photos.
+- **Decided:** blurry photos are **pre-marked Reject and moved only on commit**. They are never moved or deleted automatically, manual decisions always win, and the existing commit-the-open-visit rule applies.
+- **Deferred** until v0.3 work starts: the score storage (sidecar cache vs library.json fields, §15.3), the Mac bridge (UniFFI vs CLI helper, §15.4), the sensitivity defaults and accuracy-gate numbers (§15.6), and the optional ONNX model.
