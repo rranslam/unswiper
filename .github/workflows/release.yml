@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# On a v* tag: build the Mac dmg (ad-hoc signed), the AppImage and the Flatpak bundle, then attach
+# all three to the GitHub release for that tag.
 name: Release
 
 on:
@@ -19,8 +23,34 @@ jobs:
           swift --version
       - name: Build Unswiper.dmg
         run: apps/macos/scripts/build-dmg.sh "${GITHUB_REF_NAME#v}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Unswiper-dmg
+          path: apps/macos/dist/Unswiper-*.dmg
+          if-no-files-found: error
+
+  appimage:
+    uses: ./.github/workflows/appimage.yml
+
+  flatpak:
+    uses: ./.github/workflows/flatpak.yml
+
+  release:
+    needs: [build-dmg, appimage, flatpak]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+      - name: Collect files
+        run: |
+          mkdir out
+          cp dist/Unswiper-dmg/*.dmg out/
+          cp dist/Unswiper-x86_64.AppImage/Unswiper-x86_64.AppImage out/
+          cp dist/Unswiper-x86_64.flatpak/Unswiper.flatpak out/Unswiper-x86_64.flatpak
+          ls -l out
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: apps/macos/dist/Unswiper-*.dmg
+          files: out/*
           generate_release_notes: true
