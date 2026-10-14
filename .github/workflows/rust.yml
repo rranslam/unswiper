@@ -60,8 +60,9 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev
       - name: Core coverage (gate 85% lines)
         run: cargo llvm-cov --package unswiper-core --fail-under-lines 85 --summary-only
-      # The relm4 widget layer (ui.rs, main.rs) needs a display and is covered by the smoke test,
-      # not by line coverage; all GUI logic lives in state/help/thumbs/format and is counted.
+      # Approved exclusion (Rob, 2026-10-14): the relm4 widget layer (ui.rs, main.rs) needs a display
+      # and is covered by the xvfb smoke test, not line coverage. All GUI logic lives in
+      # state/help/thumbs/format/icons and is counted.
       - name: Workspace coverage (gate 80% lines)
         run: cargo llvm-cov --workspace --ignore-filename-regex 'unswiper-gtk/src/(ui|main)\.rs' --fail-under-lines 80 --lcov --output-path lcov.info
       - uses: actions/upload-artifact@v4
