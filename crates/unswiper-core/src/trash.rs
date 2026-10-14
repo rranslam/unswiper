@@ -20,14 +20,13 @@ pub struct FreedesktopTrash {
 
 impl FreedesktopTrash {
     pub fn home() -> Self {
-        let base = std::env::var_os("XDG_DATA_HOME")
-            .filter(|v| !v.is_empty())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| {
-                PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".local/share")
-            });
+        let get = |k: &str| {
+            std::env::var_os(k)
+                .filter(|v| !v.is_empty())
+                .map(PathBuf::from)
+        };
         FreedesktopTrash {
-            trash_dir: base.join("Trash"),
+            trash_dir: home_trash_dir(get, Path::new("/.flatpak-info").exists()),
         }
     }
 
@@ -39,6 +38,29 @@ impl FreedesktopTrash {
             n.push(".trashinfo");
             self.trash_dir.join("info").join(n)
         })
+    }
+}
+
+/// The home trash folder. Outside a sandbox: `$XDG_DATA_HOME/Trash`, else `~/.local/share/Trash`.
+/// Inside Flatpak `XDG_DATA_HOME` points at the app's private `~/.var/app/<id>/data`, so the
+/// host's value (`HOST_XDG_DATA_HOME`, exported by Flatpak) or `~/.local/share` is used; the
+/// manifest grants `--filesystem=xdg-data/Trash` for exactly this folder.
+pub fn home_trash_dir(get: impl Fn(&str) -> Option<PathBuf>, in_flatpak: bool) -> PathBuf {
+    let home = || get("HOME").unwrap_or_default().join(".local/share");
+    let data = if in_flatpak {
+        get("HOST_XDG_DATA_HOME").unwrap_or_else(home)
+    } else {
+        get("XDG_DATA_HOME").unwrap_or_else(home)
+    };
+    data.join("Trash")
+}
+
+/// Whether two paths live on the same file system (same `st_dev`), even through different mounts.
+pub fn same_device(a: &Path, b: &Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) => x.dev() == y.dev(),
+        _ => false,
     }
 }
 
@@ -108,6 +130,19 @@ impl Trasher for FreedesktopTrash {
             n += 1;
         };
         if let Err(e) = std::fs::rename(path, &target) {
+            if e.raw_os_error() == Some(18) && same_device(path, &files) {
+                // Same file system seen through two mounts (Flatpak binds ~/Pictures and the
+                // Trash separately, so rename says EXDEV). Still the home trash's own drive:
+                // copy, verify, remove.
+                return match crate::commit::copy_then_remove(path, &target) {
+                    Ok(()) => Ok(Some(target)),
+                    Err(e) => {
+                        let _ = std::fs::remove_file(&target);
+                        let _ = std::fs::remove_file(&info_path);
+                        Err(e)
+                    }
+                };
+            }
             let _ = std::fs::remove_file(&info_path);
             if e.raw_os_error() == Some(18) {
                 return Err(std::io::Error::other(
@@ -122,6 +157,44 @@ impl Trasher for FreedesktopTrash {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn same_device_detects_one_file_system() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("a");
+        std::fs::write(&a, b"x").unwrap();
+        assert!(super::same_device(&a, d.path()));
+        assert!(!super::same_device(&a, &d.path().join("missing")));
+    }
+
+    #[test]
+    fn home_trash_dir_inside_and_outside_flatpak() {
+        use std::collections::HashMap;
+        let env: HashMap<&str, &str> = [
+            ("HOME", "/home/r"),
+            ("XDG_DATA_HOME", "/home/r/.var/app/x/data"),
+            ("HOST_XDG_DATA_HOME", "/home/r/data"),
+        ]
+        .into();
+        let get = |k: &str| env.get(k).map(super::PathBuf::from);
+        assert_eq!(
+            super::home_trash_dir(get, false),
+            super::PathBuf::from("/home/r/.var/app/x/data/Trash")
+        );
+        assert_eq!(
+            super::home_trash_dir(get, true),
+            super::PathBuf::from("/home/r/data/Trash")
+        );
+        let only_home = |k: &str| (k == "HOME").then(|| super::PathBuf::from("/home/r"));
+        assert_eq!(
+            super::home_trash_dir(only_home, true),
+            super::PathBuf::from("/home/r/.local/share/Trash")
+        );
+        assert_eq!(
+            super::home_trash_dir(only_home, false),
+            super::PathBuf::from("/home/r/.local/share/Trash")
+        );
+    }
+
     use super::*;
 
     #[test]

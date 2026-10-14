@@ -99,7 +99,7 @@ pub fn move_file(src: &Path, dest: &Path) -> std::io::Result<()> {
     }
 }
 
-fn copy_then_remove(src: &Path, dest: &Path) -> std::io::Result<()> {
+pub(crate) fn copy_then_remove(src: &Path, dest: &Path) -> std::io::Result<()> {
     let expected = std::fs::metadata(src)?.len();
     std::fs::copy(src, dest)?;
     let f = std::fs::File::open(dest)?;
