@@ -26,12 +26,15 @@ rm -rf "$appdir"
 install -Dm755 "$root/target/release/unswiper" "$appdir/usr/bin/unswiper"
 install -Dm644 "$here/data/$id.desktop" "$appdir/usr/share/applications/$id.desktop"
 install -Dm644 "$here/data/$id.metainfo.xml" "$appdir/usr/share/metainfo/$id.metainfo.xml"
-install -Dm644 "$here/data/icons/hicolor/scalable/apps/$id.svg" "$appdir/usr/share/icons/hicolor/scalable/apps/$id.svg"
+# App icon: scalable, symbolic and PNG sizes 16-512.
+(cd "$here/data/icons" && find hicolor -type f) | while read -r f; do
+  install -Dm644 "$here/data/icons/$f" "$appdir/usr/share/icons/$f"
+done
 
 cd "$out"
 export DEPLOY_GTK_VERSION=4 VERSION="$version" APPIMAGE_EXTRACT_AND_RUN=1
 "$tools/linuxdeploy-x86_64.AppImage" --appdir "$appdir" --plugin gtk \
   --desktop-file "$appdir/usr/share/applications/$id.desktop" \
-  --icon-file "$appdir/usr/share/icons/hicolor/scalable/apps/$id.svg" \
+  --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/$id.png" \
   --output appimage
 ls -l "$out"/*.AppImage

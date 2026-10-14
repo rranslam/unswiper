@@ -6,6 +6,7 @@
 
 pub mod format;
 pub mod help;
+pub mod icons;
 pub mod state;
 pub mod thumbs;
 pub mod ui;

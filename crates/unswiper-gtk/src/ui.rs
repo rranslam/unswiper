@@ -37,6 +37,14 @@ pub struct Options {
 pub fn run(opts: Options) {
     let app = relm4::RelmApp::new(APP_ID).with_args(vec![]);
     relm4::set_global_css(CSS);
+    // Fallback icon path so the window and About dialog have the icon when uninstalled.
+    if let (Some(display), Ok(dir)) = (
+        gdk::Display::default(),
+        crate::icons::install(&crate::icons::default_dir()),
+    ) {
+        gtk::IconTheme::for_display(&display).add_search_path(dir);
+    }
+    gtk::Window::set_default_icon_name(APP_ID);
     app.run::<App>(opts);
 }
 
@@ -160,6 +168,7 @@ impl Component for App {
     fn init_root() -> Self::Root {
         adw::ApplicationWindow::builder()
             .title("Unswiper")
+            .icon_name(APP_ID)
             .default_width(1180)
             .default_height(760)
             .width_request(720)

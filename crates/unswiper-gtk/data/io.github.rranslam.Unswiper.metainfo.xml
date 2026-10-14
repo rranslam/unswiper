@@ -17,6 +17,7 @@
       <li>Restore Last Commit puts files back</li>
     </ul>
   </description>
+  <icon type="stock">io.github.rranslam.Unswiper</icon>
   <launchable type="desktop-id">io.github.rranslam.Unswiper.desktop</launchable>
   <url type="homepage">https://github.com/rranslam/unswiper</url>
   <url type="bugtracker">https://github.com/rranslam/unswiper/issues</url>
