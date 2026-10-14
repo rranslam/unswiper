@@ -2,6 +2,12 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
+## [Unreleased]
+
+### Changed
+- **New app icon:** photos going into a funnel, with the kept one marked by a check.
+- **New bundle ID: `io.github.rranslam.Unswiper`** (was `com.rranslam.unswiper`), the same as the Linux app. Your libraries, decisions and commit history stay where they are. Window sizes and other preferences are copied over on first launch. macOS may ask once more for permission to access your photo folders.
+
 ## [0.1.2] - 2026-10-13
 
 ### Fixed

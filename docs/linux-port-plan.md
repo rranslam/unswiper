@@ -41,7 +41,7 @@ Why:
 | "Show in Finder" | Mapped to FileManager1 | **Not in the app** | Moved to "new features" |
 | Folder access | Bookmarks | Security-scoped bookmark is stored in `config.bookmarkData` (base64 in JSON), used even though the app isn't sandboxed | Linux ignores the field but keeps it on round-trip |
 | Thumbnails | QuickLook | `QLThumbnailGenerator` in `ThumbnailView` | As planned |
-| Packaging | — | SwiftPM, macOS 14, bundle ID `com.rranslam.unswiper`, universal build with arm64 fallback, **ad-hoc** codesign, `hdiutil` UDZO. `release.yml` runs on tag `v*` on `macos-latest` with `softprops/action-gh-release@v2`. **No test target** | §8 + §9 |
+| Packaging | — | SwiftPM, macOS 14, bundle ID `io.github.rranslam.Unswiper` (was `com.rranslam.unswiper` up to 0.1.2; §14.3), universal build with arm64 fallback, **ad-hoc** codesign, `hdiutil` UDZO. `release.yml` runs on tag `v*` on `macos-latest` with `softprops/action-gh-release@v2`. **No test target** | §8 + §9 |
 
 ## 3. Feature parity and macOS → Linux mapping
 
@@ -153,7 +153,7 @@ Desktop file, AppStream metainfo and icons all use `io.github.rranslam.Unswiper`
 3. `release.yml` (macOS job): create a temporary keychain → import the cert → `build-dmg.sh` signs with `codesign --force --options runtime --timestamp --sign "Developer ID Application: … ($TEAM_ID)"` (sign the nested UniFFI dylib/framework first, **no `--deep`**). Add an entitlements file (no sandbox, no special entitlements needed today). Sign the DMG → `xcrun notarytool submit --wait` → `xcrun stapler staple` the DMG → verify with `spctl -a -vvv -t install` and `codesign --verify --strict` → upload.
 4. Keep ad-hoc signing as the fallback when secrets are missing (forks, PRs).
 5. The README and Help page `08-install-update.md` drop the "Open Anyway" steps once the first notarized release is out.
-6. Bundle ID: keep `com.rranslam.unswiper` on macOS (it's what's installed; changing it resets permissions), or switch to `io.github.rranslam.Unswiper` at the first signed release. **Open decision** (§13).
+6. Bundle ID: **`io.github.rranslam.Unswiper`** on macOS too (decided 14 Oct 2026, §14.3). Preferences are migrated once from `com.rranslam.unswiper`; library data never depended on the ID.
 
 ## 10. Automated testing
 
@@ -272,7 +272,11 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **AppImage:** stays in the plan (Phase 5, alongside Flatpak, .deb and AUR).
 - **Repo visibility:** `rranslam/unswiper` stays **private until v0.2.0** ships.
 - **Apple Developer ID:** pending; Rob is setting it up. §9.2 applies once the certificate exists.
-- **Only open item:** the macOS bundle ID (see §14.3).
+- **Only open item:** the macOS bundle ID (resolved; see §14.3).
 
-### 14.3 Still open
-1. **macOS bundle ID:** keep `com.rranslam.unswiper`, or move to `io.github.rranslam.Unswiper` at the first signed release?
+### 14.3 Resolved (14 Oct 2026)
+1. **macOS bundle ID:** `io.github.rranslam.Unswiper`, the same as Linux (`build-dmg.sh` Info.plist). Data in
+   `~/Library/Application Support/Unswiper` is not keyed by the ID, so libraries, decisions and commit records
+   carry over unchanged. `BundleIDMigration` copies the old `UserDefaults` domain once (window state). macOS will
+   ask again for folder-access permissions (they are per bundle ID) and treats it as a new app in Login Items/
+   Launchpad. Nothing is open in §14 any more.

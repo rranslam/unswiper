@@ -16,6 +16,7 @@ struct UnswiperApp: App {
             topics.forEach { print(" - \($0.title)") }
             exit(topics.count > 1 ? 0 : 1)
         }
+        BundleIDMigration.runAtLaunch()
     }
 
     var body: some Scene {
