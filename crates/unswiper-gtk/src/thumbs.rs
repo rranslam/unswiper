@@ -23,7 +23,11 @@ pub struct Thumb {
 impl Thumb {
     fn from_image(img: image::DynamicImage, max: u32) -> Thumb {
         let t = img.thumbnail(max, max).to_rgba8();
-        Thumb { width: t.width(), height: t.height(), rgba: t.into_raw() }
+        Thumb {
+            width: t.width(),
+            height: t.height(),
+            rgba: t.into_raw(),
+        }
     }
 
     pub fn to_png(&self) -> Option<Vec<u8>> {
@@ -70,7 +74,11 @@ fn cache_key(path: &Path, max: u32) -> Option<String> {
         .duration_since(std::time::UNIX_EPOCH)
         .ok()?
         .as_secs();
-    Some(fnv1a(&format!("{}|{}|{mtime}|{max}", path.display(), m.len())))
+    Some(fnv1a(&format!(
+        "{}|{}|{mtime}|{max}",
+        path.display(),
+        m.len()
+    )))
 }
 
 fn ext(path: &Path) -> String {
@@ -81,7 +89,9 @@ fn ext(path: &Path) -> String {
 
 /// Loads (or builds and caches) a thumbnail that fits in `max`×`max`.
 pub fn load(path: &Path, kind: MediaKind, max: u32, cache: Option<&Path>) -> Option<Thumb> {
-    let cached = cache.zip(cache_key(path, max)).map(|(d, k)| d.join(format!("{k}.png")));
+    let cached = cache
+        .zip(cache_key(path, max))
+        .map(|(d, k)| d.join(format!("{k}.png")));
     if let Some(c) = &cached {
         if let Ok(img) = image::open(c) {
             return Some(Thumb::from_image(img, max));
@@ -104,7 +114,12 @@ fn photo(path: &Path, max: u32) -> Option<Thumb> {
     if matches!(ext(path).as_str(), "heic" | "heif") {
         return heif(path, max);
     }
-    let img = image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?;
+    let img = image::ImageReader::open(path)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?;
     Some(Thumb::from_image(img, max))
 }
 
@@ -114,7 +129,9 @@ fn heif(path: &Path, max: u32) -> Option<Thumb> {
     let lib = LibHeif::new();
     let ctx = HeifContext::read_from_file(path.to_str()?).ok()?;
     let handle = ctx.primary_image_handle().ok()?;
-    let img = lib.decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None).ok()?;
+    let img = lib
+        .decode(&handle, ColorSpace::Rgb(RgbChroma::Rgba), None)
+        .ok()?;
     let planes = img.planes();
     let p = planes.interleaved?;
     let (w, h, stride) = (p.width, p.height, p.stride);
@@ -140,7 +157,17 @@ fn video(path: &Path, max: u32) -> Option<Thumb> {
         let out = Command::new("ffmpeg")
             .args(["-v", "error", "-ss", seek, "-i"])
             .arg(path)
-            .args(["-frames:v", "1", "-vf", &format!("scale={max}:{max}:force_original_aspect_ratio=decrease"), "-f", "image2pipe", "-vcodec", "png", "-"])
+            .args([
+                "-frames:v",
+                "1",
+                "-vf",
+                &format!("scale={max}:{max}:force_original_aspect_ratio=decrease"),
+                "-f",
+                "image2pipe",
+                "-vcodec",
+                "png",
+                "-",
+            ])
             .stdin(Stdio::null())
             .stderr(Stdio::null())
             .output()
@@ -160,7 +187,9 @@ mod tests {
 
     fn jpeg(dir: &Path, name: &str, w: u32, h: u32) -> PathBuf {
         let p = dir.join(name);
-        image::RgbImage::from_pixel(w, h, image::Rgb([10, 120, 200])).save(&p).unwrap();
+        image::RgbImage::from_pixel(w, h, image::Rgb([10, 120, 200]))
+            .save(&p)
+            .unwrap();
         p
     }
 
@@ -206,7 +235,16 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let v = d.path().join("clip.mp4");
         let ok = Command::new("ffmpeg")
-            .args(["-v", "error", "-f", "lavfi", "-i", "testsrc=duration=2:size=320x240:rate=10", "-pix_fmt", "yuv420p"])
+            .args([
+                "-v",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc=duration=2:size=320x240:rate=10",
+                "-pix_fmt",
+                "yuv420p",
+            ])
             .arg(&v)
             .status()
             .unwrap()

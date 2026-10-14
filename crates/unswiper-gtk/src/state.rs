@@ -107,7 +107,11 @@ impl AppState {
         };
         if let Some(root) = s.root() {
             if root.is_dir() {
-                s.live = Some(LiveIndex::from_items(&root, s.snap.config.visit_gap_hours, s.snap.items.clone()));
+                s.live = Some(LiveIndex::from_items(
+                    &root,
+                    s.snap.config.visit_gap_hours,
+                    s.snap.items.clone(),
+                ));
             }
         }
         s
@@ -136,13 +140,21 @@ impl AppState {
 
     /// Decisions to carry into a (re-)index.
     pub fn decisions(&self) -> HashMap<String, Decision> {
-        self.snap.items.iter().map(|i| (i.path.clone(), i.decision)).collect()
+        self.snap
+            .items
+            .iter()
+            .map(|i| (i.path.clone(), i.decision))
+            .collect()
     }
 
     /// Takes the result of an index run.
     pub fn apply_index(&mut self, items: Vec<MediaItem>, groups: Vec<VisitGroup>, now: Timestamp) {
         if let Some(root) = self.root() {
-            self.live = Some(LiveIndex::from_items(&root, self.snap.config.visit_gap_hours, items.clone()));
+            self.live = Some(LiveIndex::from_items(
+                &root,
+                self.snap.config.visit_gap_hours,
+                items.clone(),
+            ));
         }
         self.snap.items = items;
         self.snap.groups = groups;
@@ -152,7 +164,9 @@ impl AppState {
 
     /// Applies a debounced folder-watch batch.
     pub fn apply_watch(&mut self, batch: &WatchBatch, dates: &dyn DateReader) -> Delta {
-        let Some(live) = self.live.as_mut() else { return Delta::default() };
+        let Some(live) = self.live.as_mut() else {
+            return Delta::default();
+        };
         let d = live.apply(batch, dates);
         if !d.is_empty() {
             self.snap.items = live.items();
@@ -218,8 +232,15 @@ impl AppState {
 
     /// Items of the open visit in visit order, after the filter.
     pub fn visible_items(&self) -> Vec<&MediaItem> {
-        let Some(g) = self.current_group() else { return vec![] };
-        let by_path: HashMap<&str, &MediaItem> = self.snap.items.iter().map(|i| (i.path.as_str(), i)).collect();
+        let Some(g) = self.current_group() else {
+            return vec![];
+        };
+        let by_path: HashMap<&str, &MediaItem> = self
+            .snap
+            .items
+            .iter()
+            .map(|i| (i.path.as_str(), i))
+            .collect();
         g.item_paths
             .iter()
             .filter_map(|p| by_path.get(p.as_str()).copied())
@@ -233,18 +254,30 @@ impl AppState {
 
     pub fn set_filter(&mut self, f: Filter) {
         self.filter = f;
-        let visible: BTreeSet<String> = self.visible_items().iter().map(|i| i.path.clone()).collect();
+        let visible: BTreeSet<String> = self
+            .visible_items()
+            .iter()
+            .map(|i| i.path.clone())
+            .collect();
         self.selection.retain(|p| visible.contains(p));
     }
 
     /// Click on a thumbnail: plain = select only this, Ctrl = toggle, Shift = range from anchor.
     pub fn click(&mut self, path: &str, ctrl: bool, shift: bool) {
-        let order: Vec<String> = self.visible_items().iter().map(|i| i.path.clone()).collect();
+        let order: Vec<String> = self
+            .visible_items()
+            .iter()
+            .map(|i| i.path.clone())
+            .collect();
         if !order.iter().any(|p| p == path) {
             return;
         }
         if shift {
-            if let Some(a) = self.anchor.as_ref().and_then(|a| order.iter().position(|p| p == a)) {
+            if let Some(a) = self
+                .anchor
+                .as_ref()
+                .and_then(|a| order.iter().position(|p| p == a))
+            {
                 let b = order.iter().position(|p| p == path).unwrap();
                 let (lo, hi) = (a.min(b), a.max(b));
                 if !ctrl {
@@ -266,7 +299,11 @@ impl AppState {
     }
 
     pub fn select_all(&mut self) {
-        self.selection = self.visible_items().iter().map(|i| i.path.clone()).collect();
+        self.selection = self
+            .visible_items()
+            .iter()
+            .map(|i| i.path.clone())
+            .collect();
     }
 
     /// Applies `d` to the selection; returns how many items changed.
@@ -278,7 +315,12 @@ impl AppState {
     pub fn decide(&mut self, paths: &[String], d: Decision) -> usize {
         let set: BTreeSet<&str> = paths.iter().map(String::as_str).collect();
         let mut n = 0;
-        for i in self.snap.items.iter_mut().filter(|i| set.contains(i.path.as_str())) {
+        for i in self
+            .snap
+            .items
+            .iter_mut()
+            .filter(|i| set.contains(i.path.as_str()))
+        {
             if i.decision != d {
                 i.decision = d;
                 n += 1;
@@ -303,13 +345,19 @@ impl AppState {
     }
 
     pub fn set_keep_target(&mut self, id: &str, n: i64) {
-        self.snap.config.keep_targets.get_or_insert_with(Default::default).insert(id.to_string(), n.max(0));
+        self.snap
+            .config
+            .keep_targets
+            .get_or_insert_with(Default::default)
+            .insert(id.to_string(), n.max(0));
         self.dirty = true;
     }
 
     /// `Keep target reached` or `4 of 10 kept`.
     pub fn keep_status(&self, id: &str) -> String {
-        let Some(g) = self.snap.groups.iter().find(|g| g.id == id) else { return String::new() };
+        let Some(g) = self.snap.groups.iter().find(|g| g.id == id) else {
+            return String::new();
+        };
         let kept = g.progress(&self.snap.items).kept as i64;
         let target = self.keep_target(id);
         if kept >= target && target > 0 {
@@ -326,7 +374,12 @@ impl AppState {
 
     /// Every rejected item in the library (like the Mac app, commit covers all visits).
     pub fn commit_plan(&self) -> CommitPlan {
-        let rejects: Vec<&MediaItem> = self.snap.items.iter().filter(|i| i.decision == Decision::Reject).collect();
+        let rejects: Vec<&MediaItem> = self
+            .snap
+            .items
+            .iter()
+            .filter(|i| i.decision == Decision::Reject)
+            .collect();
         CommitPlan {
             items: rejects.len(),
             files: rejects.iter().map(|i| i.file_count()).sum(),
@@ -346,11 +399,20 @@ impl AppState {
                 .items
                 .iter()
                 .filter(|i| i.decision == Decision::Reject)
-                .flat_map(|i| std::iter::once(i.path.clone()).chain(i.sidecars.iter().map(|s| s.path.clone())))
+                .flat_map(|i| {
+                    std::iter::once(i.path.clone()).chain(i.sidecars.iter().map(|s| s.path.clone()))
+                })
                 .map(PathBuf::from);
             live.suppress(ours, std::time::Duration::from_secs(10));
         }
-        let r = commit::commit_rejects(&self.snap.items, mode, root.as_deref(), &self.store, trasher).map_err(|e| e.to_string())?;
+        let r = commit::commit_rejects(
+            &self.snap.items,
+            mode,
+            root.as_deref(),
+            &self.store,
+            trasher,
+        )
+        .map_err(|e| e.to_string())?;
         if !r.dry_run {
             let gone: Vec<String> = self
                 .snap
@@ -366,7 +428,10 @@ impl AppState {
                     self.snap.groups = live.groups().to_vec();
                 } else {
                     self.snap.items.retain(|i| !gone.contains(&i.path));
-                    self.snap.groups = unswiper_core::group::group(&self.snap.items, self.snap.config.visit_gap_hours);
+                    self.snap.groups = unswiper_core::group::group(
+                        &self.snap.items,
+                        self.snap.config.visit_gap_hours,
+                    );
                 }
                 self.after_items_changed();
             }
@@ -395,12 +460,20 @@ impl AppState {
         if r.failed.is_empty() {
             let _ = self.store.mark_restored(path);
         }
-        let mut msg = format!("Restored {} file{}.", r.restored, if r.restored == 1 { "" } else { "s" });
+        let mut msg = format!(
+            "Restored {} file{}.",
+            r.restored,
+            if r.restored == 1 { "" } else { "s" }
+        );
         if r.already_in_place > 0 {
             msg.push_str(&format!(" {} were already in place.", r.already_in_place));
         }
         if let Some((p, e)) = r.failed.first() {
-            msg.push_str(&format!(" {} couldn't be restored (first: {}: {e})", r.failed.len(), short(p)));
+            msg.push_str(&format!(
+                " {} couldn't be restored (first: {}: {e})",
+                r.failed.len(),
+                short(p)
+            ));
         }
         (msg, r.restored > 0)
     }
@@ -451,7 +524,11 @@ pub fn commit_message(r: &CommitResult, mode: CommitMode) -> String {
             format::bytes(r.bytes)
         );
     }
-    let place = if mode == CommitMode::Trash { "to the Trash" } else { "to the quarantine folder" };
+    let place = if mode == CommitMode::Trash {
+        "to the Trash"
+    } else {
+        "to the quarantine folder"
+    };
     let mut s = format!(
         "Moved {} item{} ({}) {place}.",
         r.moved,
@@ -464,7 +541,6 @@ pub fn commit_message(r: &CommitResult, mode: CommitMode) -> String {
     }
     s
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -489,7 +565,7 @@ mod tests {
         let mut s = AppState::new(LibraryStore::new(base.join("support")));
         s.set_root(&root);
         let (items, groups) = index(&root, 36.0, &s.decisions(), &MetadataDates, |_| {}).unwrap();
-        s.apply_index(items, groups, chrono::Utc::now().into());
+        s.apply_index(items, groups, chrono::Utc::now());
         (T { _d: d, root, base }, s)
     }
 
@@ -581,7 +657,9 @@ mod tests {
         let a = s.visible_items()[0].path.clone();
         s.decide(std::slice::from_ref(&a), Decision::Reject);
         s.set_commit_mode(CommitMode::Quarantine);
-        let trash = FreedesktopTrash { trash_dir: t.base.join("Trash") };
+        let trash = FreedesktopTrash {
+            trash_dir: t.base.join("Trash"),
+        };
         let msg = s.commit(&trash).unwrap();
         assert!(msg.starts_with("Moved 1 item"), "{msg}");
         assert!(!Path::new(&a).exists());
@@ -602,7 +680,9 @@ mod tests {
         open_first(&mut s);
         s.select_all();
         s.decide_selected(Decision::Reject);
-        let trash = FreedesktopTrash { trash_dir: t.base.join("Trash") };
+        let trash = FreedesktopTrash {
+            trash_dir: t.base.join("Trash"),
+        };
         s.set_commit_mode(CommitMode::DryRun);
         let msg = s.commit(&trash).unwrap();
         assert!(msg.starts_with("Dry run: 1 item"), "{msg}");
@@ -626,11 +706,17 @@ mod tests {
         let (t, mut s) = setup(&["a.jpg"]);
         let b = t.root.join("b.jpg");
         std::fs::write(&b, b"x").unwrap();
-        let d = s.apply_watch(&WatchBatch::Paths([b.clone()].into_iter().collect()), &MetadataDates);
+        let d = s.apply_watch(
+            &WatchBatch::Paths([b.clone()].into_iter().collect()),
+            &MetadataDates,
+        );
         assert_eq!(d.added.len(), 1);
         assert_eq!(s.snap.items.len(), 2);
         std::fs::remove_file(&b).unwrap();
-        let d = s.apply_watch(&WatchBatch::Paths([b].into_iter().collect()), &MetadataDates);
+        let d = s.apply_watch(
+            &WatchBatch::Paths([b].into_iter().collect()),
+            &MetadataDates,
+        );
         assert_eq!(d.removed.len(), 1);
         assert_eq!(s.snap.items.len(), 1);
     }

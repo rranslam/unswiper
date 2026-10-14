@@ -47,7 +47,9 @@ pub fn topics() -> Vec<Topic> {
 }
 
 fn escape(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 /// Inline Markdown: `**bold**`, `*italic*`, `` `code` ``, and bare `https://` links.
@@ -108,14 +110,23 @@ pub fn to_pango(md: &str) -> String {
             flush(&mut para, &mut blocks);
         } else if let Some(h) = t.strip_prefix("# ") {
             flush(&mut para, &mut blocks);
-            blocks.push(format!("<span size=\"x-large\" weight=\"bold\">{}</span>", inline(h)));
+            blocks.push(format!(
+                "<span size=\"x-large\" weight=\"bold\">{}</span>",
+                inline(h)
+            ));
         } else if let Some(h) = t.strip_prefix("## ") {
             flush(&mut para, &mut blocks);
-            blocks.push(format!("<span size=\"large\" weight=\"bold\">{}</span>", inline(h)));
+            blocks.push(format!(
+                "<span size=\"large\" weight=\"bold\">{}</span>",
+                inline(h)
+            ));
         } else if let Some(b) = t.strip_prefix("- ") {
             flush(&mut para, &mut blocks);
             blocks.push(format!("  •  {}", inline(b)));
-        } else if let Some((n, rest)) = t.split_once(". ").filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit())) {
+        } else if let Some((n, rest)) = t
+            .split_once(". ")
+            .filter(|(n, _)| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+        {
             flush(&mut para, &mut blocks);
             blocks.push(format!("  {n}.  {}", inline(rest)));
         } else {
@@ -128,7 +139,11 @@ pub fn to_pango(md: &str) -> String {
     for (i, b) in blocks.iter().enumerate() {
         if i > 0 {
             let list = |s: &str| s.starts_with("  ");
-            out.push_str(if list(b) && list(&blocks[i - 1]) { "\n" } else { "\n\n" });
+            out.push_str(if list(b) && list(&blocks[i - 1]) {
+                "\n"
+            } else {
+                "\n\n"
+            });
         }
         out.push_str(b);
     }
@@ -166,7 +181,14 @@ mod tests {
     #[test]
     fn linux_wording() {
         for t in topics() {
-            for mac in ["⌘", "Finder", "System Settings", "Library/Application Support", ".dmg", "Dock"] {
+            for mac in [
+                "⌘",
+                "Finder",
+                "System Settings",
+                "Library/Application Support",
+                ".dmg",
+                "Dock",
+            ] {
                 assert!(!t.markdown.contains(mac), "{} mentions {mac}", t.id);
             }
         }
@@ -175,8 +197,14 @@ mod tests {
 
     #[test]
     fn inline_markup() {
-        assert_eq!(inline("a **b** `c<d>` *e* & f"), "a <b>b</b> <tt>c&lt;d&gt;</tt> <i>e</i> &amp; f");
-        assert_eq!(inline("see https://x.y/z."), "see <a href=\"https://x.y/z\">https://x.y/z</a>.");
+        assert_eq!(
+            inline("a **b** `c<d>` *e* & f"),
+            "a <b>b</b> <tt>c&lt;d&gt;</tt> <i>e</i> &amp; f"
+        );
+        assert_eq!(
+            inline("see https://x.y/z."),
+            "see <a href=\"https://x.y/z\">https://x.y/z</a>."
+        );
         assert_eq!(inline("**unterminated"), "**unterminated");
         assert_eq!(inline("2 * 3"), "2 * 3");
         assert_eq!(inline("`open"), "`open");

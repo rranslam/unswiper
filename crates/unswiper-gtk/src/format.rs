@@ -9,7 +9,11 @@ use unswiper_core::time::Timestamp;
 /// File-size string like Foundation's `ByteCountFormatter` (`.file` style, decimal units).
 pub fn bytes(n: i64) -> String {
     if n.abs() < 1000 {
-        return if n == 1 { "1 byte".into() } else { format!("{n} bytes") };
+        return if n == 1 {
+            "1 byte".into()
+        } else {
+            format!("{n} bytes")
+        };
     }
     let units = ["KB", "MB", "GB", "TB", "PB"];
     let mut v = n as f64 / 1000.0;
@@ -85,10 +89,24 @@ mod tests {
 
     #[test]
     fn ranges() {
-        let noon = |y, m, d| Local.with_ymd_and_hms(y, m, d, 12, 0, 0).unwrap().with_timezone(&Utc);
-        assert_eq!(date_range(&noon(2026, 1, 5), &noon(2026, 1, 5)), "Jan 5, 2026");
-        assert_eq!(date_range(&noon(2026, 1, 5), &noon(2026, 1, 7)), "Jan 5 – Jan 7, 2026");
-        assert_eq!(date_range(&noon(2025, 12, 30), &noon(2026, 1, 2)), "Dec 30, 2025 – Jan 2, 2026");
+        let noon = |y, m, d| {
+            Local
+                .with_ymd_and_hms(y, m, d, 12, 0, 0)
+                .unwrap()
+                .with_timezone(&Utc)
+        };
+        assert_eq!(
+            date_range(&noon(2026, 1, 5), &noon(2026, 1, 5)),
+            "Jan 5, 2026"
+        );
+        assert_eq!(
+            date_range(&noon(2026, 1, 5), &noon(2026, 1, 7)),
+            "Jan 5 – Jan 7, 2026"
+        );
+        assert_eq!(
+            date_range(&noon(2025, 12, 30), &noon(2026, 1, 2)),
+            "Dec 30, 2025 – Jan 2, 2026"
+        );
         let past = unswiper_core::time::distant_past();
         assert_eq!(date_range(&past, &past), "");
     }
