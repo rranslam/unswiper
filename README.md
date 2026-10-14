@@ -1,10 +1,10 @@
 # Unswiper
 
-Pare down your photos and videos **one visit at a time** (grouped by place and time), instead of swiping left/right through everything. A local **desktop** app for macOS; Linux and mobile later.
+Pare down your photos and videos **one visit at a time** (grouped by place and time), instead of swiping left/right through everything. A local **desktop** app for macOS and Linux; mobile later.
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** macOS SwiftUI MVP in [`apps/macos`](apps/macos) (local tree source). Review fixes P0/P1/P2 applied 2026-10-11 — see [`docs/review-fixes-2026-10-11.md`](docs/review-fixes-2026-10-11.md). Linux, Google source, and mobile not started.
+**Status:** macOS SwiftUI MVP in [`apps/macos`](apps/macos) (local tree source). Review fixes P0/P1/P2 applied 2026-10-11 — see [`docs/review-fixes-2026-10-11.md`](docs/review-fixes-2026-10-11.md). Linux app (GTK 4, Rust core) released in 0.2.0 as AppImage and Flatpak. Google source and mobile not started.
 
 ## Download & Install (macOS)
 
@@ -14,16 +14,16 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
-3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.1.2.dmg`**. Do *not* click "Source code".
+3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.2.0.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
 
 ### Step 2 — Install
 
 1. Open **Finder** (the blue-and-white smiley face at the left end of the Dock, the row of icons at the bottom of your screen).
 2. In the Finder window's left sidebar, click **Downloads**.
-3. **Double-click** `Unswiper-0.1.2.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
+3. **Double-click** `Unswiper-0.2.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
 4. **Click and hold** on the Unswiper icon, **drag** it on top of the Applications folder icon, and let go. This copies the app into your Applications folder.
-5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.1.2** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
+5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.2.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
 
 ### Step 3 — Open it the first time
 
@@ -59,6 +59,8 @@ Once Unswiper is open, click **Help** in the menu bar at the top of the screen a
 
 Your settings and decisions are kept when you update.
 
+**Updating from 0.1.x to 0.2.0:** the app's internal ID changed to `io.github.rranslam.Unswiper`. Your libraries and decisions are kept, but macOS asks **once more** for permission to open your photo folders. Click **Allow**.
+
 ### Uninstalling
 
 1. Quit Unswiper (**⌘ + Q**).
@@ -67,6 +69,60 @@ Your settings and decisions are kept when you update.
 4. Empty the Trash if you want (right-click the Trash in the Dock → **Empty Trash**).
 
 Uninstalling never touches your photos. Files you rejected are in the macOS Trash or in a `_Rejected/Unswiper` folder inside your photo folder (older versions used `_Rejected/visit-media-reduce`) until you delete them yourself.
+
+## Download & Install (Linux)
+
+Works on 64-bit PCs (x86_64) with a recent Linux, for example **Ubuntu 24.04 or newer** (GNOME) and **Arch / Omarchy** (Hyprland). Pick **one** of the two downloads below. If you're unsure, use the **AppImage**.
+
+### Option A — AppImage (one file, nothing to install)
+
+1. Open **https://github.com/rranslam/unswiper/releases/latest** in your browser.
+2. Under **Assets**, click **`Unswiper-x86_64.AppImage`**. It is saved to your **Downloads** folder.
+3. Open a **Terminal** (Ubuntu: press the **Super/Windows key**, type `Terminal`, press Enter. Omarchy: **Super + Enter**).
+4. Type these lines, pressing **Enter** after each one:
+   ```bash
+   cd ~/Downloads
+   chmod +x Unswiper-x86_64.AppImage
+   ./Unswiper-x86_64.AppImage
+   ```
+   `chmod +x` marks the file as a program. You only need to do it once.
+5. Unswiper opens.
+
+**If nothing happens and you see an error mentioning `libfuse.so.2` or FUSE** (common on Ubuntu 24.04), install FUSE 2 once and try step 4 again:
+```bash
+sudo apt install libfuse2t64
+```
+(On Ubuntu 22.04 the package is called `libfuse2`. On Arch/Omarchy: `sudo pacman -S fuse2`.) Without FUSE you can still run it with `./Unswiper-x86_64.AppImage --appimage-extract-and-run`.
+
+**Tip:** Move the file somewhere permanent, e.g. `mkdir -p ~/Applications && mv ~/Downloads/Unswiper-x86_64.AppImage ~/Applications/`. To update, download the new AppImage and replace the old file (repeat the `chmod +x`).
+
+### Option B — Flatpak (sandboxed, adds Unswiper to your app menu)
+
+1. Make sure Flatpak and the Flathub source are set up (one time):
+   - **Ubuntu 24.04:** `sudo apt install flatpak`, then log out and back in.
+   - **Arch / Omarchy:** `sudo pacman -S flatpak`.
+   - Then, on both: `flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo`
+2. From the [latest release](https://github.com/rranslam/unswiper/releases/latest), download **`Unswiper-x86_64.flatpak`** to **Downloads**.
+3. In a Terminal:
+   ```bash
+   cd ~/Downloads
+   flatpak install --user Unswiper-x86_64.flatpak
+   ```
+   Answer **y** when asked. The first install also downloads the GNOME runtime and video codecs from Flathub (several hundred MB, one time only).
+4. Start it from your app menu (**Unswiper**), or with `flatpak run io.github.rranslam.Unswiper`.
+
+To update, download the new `.flatpak` and run the same `flatpak install --user` command. To uninstall: `flatpak uninstall --user io.github.rranslam.Unswiper`. Unswiper is not on Flathub yet.
+
+### Notes for Arch / Omarchy (Hyprland)
+
+- Both downloads run natively on **Wayland**/Hyprland; no X11 needed.
+- For the AppImage, install FUSE 2 once: `sudo pacman -S fuse2`.
+- The Flatpak adds Unswiper to the Omarchy app launcher (Super + Space) automatically; the AppImage doesn't, so start it from a terminal.
+- Choosing a library folder uses the desktop's file dialog portal. Omarchy ships `xdg-desktop-portal-gtk`/`-hyprland`; if the folder dialog doesn't open, install `xdg-desktop-portal-gtk`.
+
+### Where Linux keeps its data
+
+Decisions and commit history: `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
 
 ## Build from source (macOS)
 
@@ -91,7 +147,7 @@ To build the downloadable app and `.dmg` yourself:
 apps/macos/scripts/build-dmg.sh 0.1.2
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.1.2.dmg`). Pushing a tag such as `v0.1.2` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg` and attaches it to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.2.0.dmg`). Pushing a tag such as `v0.1.2` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg` and attaches it to a GitHub Release.
 
 Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
 
