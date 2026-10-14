@@ -24,6 +24,10 @@ jobs:
           swift --version
       - name: Build
         run: swift build
+      - name: App icon (iconutil accepts the iconset)
+        run: |
+          iconutil -c icns Resources/AppIcon.iconset -o "$RUNNER_TEMP/AppIcon.icns"
+          ls -l "$RUNNER_TEMP/AppIcon.icns"
       - name: Test (with coverage)
         run: swift test --enable-code-coverage
       - name: Coverage report
