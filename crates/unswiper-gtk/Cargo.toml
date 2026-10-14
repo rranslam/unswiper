@@ -15,9 +15,11 @@ name = "unswiper"
 path = "src/main.rs"
 
 [features]
-default = ["heif"]
+default = ["heif", "gstreamer"]
 # HEIC/HEIF thumbnails through libheif (required for release builds, plan §14).
 heif = ["dep:libheif-rs"]
+# Video thumbnails through GStreamer (playback plugins decide which codecs work).
+gstreamer = ["dep:gst", "dep:gst-app", "dep:gst-video"]
 
 [dependencies]
 unswiper-core = { path = "../unswiper-core" }
@@ -26,6 +28,10 @@ relm4 = { version = "0.11", default-features = false, features = ["macros", "lib
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 libheif-rs = { version = "3", default-features = false, features = ["v1_17"], optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+
+gst = { package = "gstreamer", version = "0.24", optional = true }
+gst-app = { package = "gstreamer-app", version = "0.24", optional = true }
+gst-video = { package = "gstreamer-video", version = "0.24", optional = true }
 
 [dev-dependencies]
 tempfile = "3"

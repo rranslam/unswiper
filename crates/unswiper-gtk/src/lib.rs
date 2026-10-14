@@ -10,6 +10,7 @@ pub mod icons;
 pub mod state;
 pub mod thumbs;
 pub mod ui;
+pub mod video;
 
 /// Application ID (Linux only; the macOS bundle ID is decided separately).
 pub const APP_ID: &str = "io.github.rranslam.Unswiper";

@@ -2,13 +2,11 @@
 // Copyright (c) 2026 Rob Ranslam
 
 //! Thumbnails without a display: stills through the `image` crate, HEIC/HEIF through libheif
-//! (required), video frames through `ffmpeg` when it is installed (optional; otherwise the UI
-//! shows a film icon). Results are cached as PNG in `$XDG_CACHE_HOME/unswiper/thumbs`.
+//! (required), video frames through GStreamer ([`crate::video`]; codecs depend on the installed
+//! plugins, otherwise the UI shows the video placeholder). Results are cached as PNG in `$XDG_CACHE_HOME/unswiper/thumbs`.
 
 use std::io::Cursor;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::sync::OnceLock;
 use unswiper_core::group::fnv1a;
 use unswiper_core::MediaKind;
 
@@ -21,7 +19,7 @@ pub struct Thumb {
 }
 
 impl Thumb {
-    fn from_image(img: image::DynamicImage, max: u32) -> Thumb {
+    pub(crate) fn from_image(img: image::DynamicImage, max: u32) -> Thumb {
         let t = img.thumbnail(max, max).to_rgba8();
         Thumb {
             width: t.width(),
@@ -45,20 +43,6 @@ pub fn default_cache_dir() -> PathBuf {
         None => PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".cache"),
     }
     .join("unswiper/thumbs")
-}
-
-/// Whether `ffmpeg` can be run (checked once).
-pub fn ffmpeg_available() -> bool {
-    static AVAILABLE: OnceLock<bool> = OnceLock::new();
-    *AVAILABLE.get_or_init(|| {
-        Command::new("ffmpeg")
-            .arg("-version")
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false)
-    })
 }
 
 /// Whether HEIC/HEIF decoding was compiled in.
@@ -99,7 +83,7 @@ pub fn load(path: &Path, kind: MediaKind, max: u32, cache: Option<&Path>) -> Opt
     }
     let thumb = match kind {
         MediaKind::Photo => photo(path, max),
-        MediaKind::Video => video(path, max),
+        MediaKind::Video => crate::video::frame(path, max),
     }?;
     if let (Some(c), Some(png)) = (&cached, thumb.to_png()) {
         if let Some(dir) = c.parent() {
@@ -148,39 +132,6 @@ fn heif(_path: &Path, _max: u32) -> Option<Thumb> {
     None
 }
 
-fn video(path: &Path, max: u32) -> Option<Thumb> {
-    if !ffmpeg_available() {
-        return None;
-    }
-    // Try 1 s in (skips black first frames), then the very first frame for short clips.
-    for seek in ["1", "0"] {
-        let out = Command::new("ffmpeg")
-            .args(["-v", "error", "-ss", seek, "-i"])
-            .arg(path)
-            .args([
-                "-frames:v",
-                "1",
-                "-vf",
-                &format!("scale={max}:{max}:force_original_aspect_ratio=decrease"),
-                "-f",
-                "image2pipe",
-                "-vcodec",
-                "png",
-                "-",
-            ])
-            .stdin(Stdio::null())
-            .stderr(Stdio::null())
-            .output()
-            .ok()?;
-        if out.status.success() && !out.stdout.is_empty() {
-            if let Ok(img) = image::load_from_memory(&out.stdout) {
-                return Some(Thumb::from_image(img, max));
-            }
-        }
-    }
-    None
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,34 +175,6 @@ mod tests {
         std::fs::write(&v, b"not a video").unwrap();
         assert!(load(&v, MediaKind::Video, 64, None).is_none());
         assert!(heif_supported() || !cfg!(feature = "heif"));
-    }
-
-    #[test]
-    fn video_frame_with_ffmpeg() {
-        if !ffmpeg_available() {
-            eprintln!("ffmpeg not installed; skipping");
-            return;
-        }
-        let d = tempfile::tempdir().unwrap();
-        let v = d.path().join("clip.mp4");
-        let ok = Command::new("ffmpeg")
-            .args([
-                "-v",
-                "error",
-                "-f",
-                "lavfi",
-                "-i",
-                "testsrc=duration=2:size=320x240:rate=10",
-                "-pix_fmt",
-                "yuv420p",
-            ])
-            .arg(&v)
-            .status()
-            .unwrap()
-            .success();
-        assert!(ok);
-        let t = load(&v, MediaKind::Video, 100, None).unwrap();
-        assert_eq!((t.width, t.height), (100, 75));
     }
 
     #[test]
