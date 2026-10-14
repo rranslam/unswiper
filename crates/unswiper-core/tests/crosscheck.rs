@@ -6,6 +6,19 @@
 //! `fixtures/crosscheck/swift/` is written on a Mac by `CrossCheckFixtureTests.swift`
 //! (see `fixtures/crosscheck/README.md`). When it's missing, the real comparison is skipped;
 //! the same comparison code is still exercised against Rust-generated output.
+//!
+//! Legitimate platform differences the comparison allows for (everything else must match):
+//! - **Unicode normalization of paths:** macOS (APFS/Foundation) hands back file names in NFD
+//!   (`E\u{301}te\u{301}`), Linux keeps the bytes as created (NFC). Paths are compared after NFC
+//!   normalization. (The Swift visit-ID formula is still checked on Swift's own NFD strings.)
+//! - **TIFF-only JPEGs:** ImageIO's `CGImageDestination` does not write TIFF `DateTime` into a
+//!   JPEG (see `IndexerTests.testJpegWithoutDateHasNoCaptureDate`), so the Swift fixture for a
+//!   spec entry with only `tiff` has no date at all. The Rust tree mirrors that file content by
+//!   dropping `tiff`; the TIFF fallback itself is covered by the Rust indexer tests.
+//! - **Root folder name** (`relativeFolder` of root files, Undated `folderHint`): temp names differ.
+//! - **Order of equal-date items in non-visit groups** (e.g. Undated): Swift sorts with an
+//!   unstable sort over dictionary order, so it isn't deterministic; membership must match and
+//!   no ID depends on it. Visit groups still require the same first item (it feeds the ID).
 
 mod common;
 use chrono::{DateTime, Utc};
@@ -13,9 +26,14 @@ use common::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use unicode_normalization::UnicodeNormalization;
 use unswiper_core::group::{fnv1a, stable_group_id};
 use unswiper_core::index::{index, MetadataDates};
 use unswiper_core::{apple_json, AppConfig, LibrarySnapshot, MediaItem, VisitGroup};
+
+fn nfc(s: &str) -> String {
+    s.nfc().collect()
+}
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -94,7 +112,8 @@ fn rust_index(spec: &Spec) -> (tempfile::TempDir, PathBuf, Vec<MediaItem>, Vec<V
             write(
                 &root,
                 &f.path,
-                &jpeg_with_exif(f.exif.as_deref(), f.tiff.as_deref()),
+                // ImageIO never writes TIFF DateTime into JPEGs: mirror the Swift fixture's bytes.
+                &jpeg_with_exif(f.exif.as_deref(), None),
             );
         } else {
             write(&root, &f.path, &vec![0x5A; f.bytes.unwrap_or(16)]);
@@ -225,8 +244,18 @@ fn compare(dir: &Path) -> Vec<String> {
     }
     let (_d, root, items, groups) = rust_index(&spec());
     let mine = table_from(&root, &items, &groups, table.gap_hours);
-    let theirs: BTreeMap<&str, &TItem> = table.items.iter().map(|i| (i.path.as_str(), i)).collect();
-    let ours: BTreeMap<&str, &TItem> = mine.items.iter().map(|i| (i.path.as_str(), i)).collect();
+    let norm_item = |i: &TItem| {
+        let mut i = i.clone_for_compare();
+        i.path = nfc(&i.path);
+        i.folder_path = i.folder_path.map(|f| nfc(&f));
+        i.relative_folder = nfc(&i.relative_folder);
+        i.sidecars = i.sidecars.iter().map(|s| nfc(s)).collect();
+        i
+    };
+    let theirs_v: Vec<TItem> = table.items.iter().map(norm_item).collect();
+    let ours_v: Vec<TItem> = mine.items.iter().map(norm_item).collect();
+    let theirs: BTreeMap<&str, &TItem> = theirs_v.iter().map(|i| (i.path.as_str(), i)).collect();
+    let ours: BTreeMap<&str, &TItem> = ours_v.iter().map(|i| (i.path.as_str(), i)).collect();
     if theirs.keys().collect::<Vec<_>>() != ours.keys().collect::<Vec<_>>() {
         bad.push(format!(
             "item paths differ: swift {:?} rust {:?}",
@@ -243,13 +272,11 @@ fn compare(dir: &Path) -> Vec<String> {
             o2.relative_folder.clear();
             t2.relative_folder.clear();
         }
-        o2.sidecars.sort_by_key(|s| s.to_lowercase());
-        t2.sidecars.sort_by_key(|s| s.to_lowercase());
         if o2 != t2 {
             bad.push(format!("item {p}: swift {t2:?} rust {o2:?}"));
         }
     }
-    let key = |g: &TGroup| g.item_paths.iter().cloned().collect::<BTreeSet<_>>();
+    let key = |g: &TGroup| g.item_paths.iter().map(|p| nfc(p)).collect::<BTreeSet<_>>();
     let ours_g: BTreeMap<BTreeSet<String>, &TGroup> =
         mine.groups.iter().map(|g| (key(g), g)).collect();
     for g in &table.groups {
@@ -266,11 +293,12 @@ fn compare(dir: &Path) -> Vec<String> {
                 };
                 let english = table.locale.starts_with("en");
                 if !same_id
-                    || o.item_paths[0] != g.item_paths[0]
+                    || (g.id.starts_with("visit-")
+                        && nfc(&o.item_paths[0]) != nfc(&g.item_paths[0]))
                     || o.start_date != g.start_date
                     || o.end_date != g.end_date
-                    || (english && o.title != g.title)
-                    || (o.folder_hint != g.folder_hint && g.id != "undated")
+                    || (english && nfc(&o.title) != nfc(&g.title))
+                    || (nfc(&o.folder_hint) != nfc(&g.folder_hint) && g.id != "undated")
                 {
                     bad.push(format!("group differs: swift {g:?} rust {o:?}"));
                 }

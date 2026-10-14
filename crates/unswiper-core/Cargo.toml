@@ -24,3 +24,4 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 tempfile = "3"
 proptest = "1"
 filetime = "0.2"
+unicode-normalization = "0.1"
