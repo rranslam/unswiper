@@ -47,6 +47,26 @@ fn index_groups_dry_run_restore() {
     let (ok, out, _) = cli(&["commit", "--dry-run", lib.to_str().unwrap()]);
     assert!(ok);
     assert_eq!(out.trim(), "would move 2 items (3 bytes)");
+    // --visit limits the dry run to one visit.
+    let lisbon = out_groups_id(&cli(&["groups", lib.to_str().unwrap()]).1, "Lisbon");
+    let (ok, out, _) = cli(&[
+        "commit",
+        "--dry-run",
+        "--visit",
+        &lisbon,
+        lib.to_str().unwrap(),
+    ]);
+    assert!(ok);
+    assert_eq!(out.trim(), "would move 1 items (2 bytes)");
+    let (ok, _, err) = cli(&[
+        "commit",
+        "--dry-run",
+        "--visit",
+        "nope",
+        lib.to_str().unwrap(),
+    ]);
+    assert!(!ok && err.contains("no visit with id nope"), "{err}");
+    assert!(!cli(&["commit", "--dry-run", "--visit"]).0);
 
     let m = d.path().join("m.json");
     std::fs::write(&m, r#"{"createdAt":"2026-10-12T10:00:00Z","entries":[{"originalPath":"/nonexistent/a.jpg","resultPath":"/nonexistent/q/a.jpg","sizeBytes":3}],"id":"x","mode":"quarantine"}"#).unwrap();
@@ -58,4 +78,9 @@ fn index_groups_dry_run_restore() {
     )
     .unwrap();
     assert!(cli(&["restore", m.to_str().unwrap()]).0);
+}
+
+fn out_groups_id(out: &str, title: &str) -> String {
+    let line = out.lines().find(|l| l.contains(title)).expect(title);
+    line.split_whitespace().next().unwrap().to_string()
 }

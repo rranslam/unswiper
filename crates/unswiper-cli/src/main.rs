@@ -11,7 +11,8 @@ use unswiper_core::{commit, group, index, store, CommitMode, LibrarySnapshot};
 const USAGE: &str = "usage:
   unswiper-cli index <folder> [--gap-hours N] [--json]   index a folder and list visits
   unswiper-cli groups <library.json>                      list visits in a saved library
-  unswiper-cli commit --dry-run <library.json>            what a commit would move (never moves)
+  unswiper-cli commit --dry-run [--visit ID] <library.json>  what a commit would move (never moves);
+                                                          --visit limits it to one visit, like the apps
   unswiper-cli restore <manifest.json>                    move files from a commit back
   unswiper-cli --version";
 
@@ -88,11 +89,26 @@ fn run(args: &[String]) -> Result<(), String> {
             if args.get(1).map(String::as_str) != Some("--dry-run") {
                 return Err("only `commit --dry-run` is supported by the CLI".into());
             }
-            let snap = load(args.get(2).ok_or(USAGE)?)?;
+            let (visit, lib) = match args.get(2).map(String::as_str) {
+                Some("--visit") => (Some(args.get(3).ok_or(USAGE)?), args.get(4)),
+                _ => (None, args.get(2)),
+            };
+            let snap = load(lib.ok_or(USAGE)?)?;
+            let items = match visit {
+                None => snap.items.clone(),
+                Some(id) => {
+                    let groups = group::group(&snap.items, snap.config.visit_gap_hours);
+                    let g = groups
+                        .iter()
+                        .find(|g| &g.id == id)
+                        .ok_or_else(|| format!("no visit with id {id} (see `groups`)"))?;
+                    commit::visit_members(&snap.items, g)
+                }
+            };
             let st = store::LibraryStore::new(std::env::temp_dir());
             let root = snap.config.root_path.as_deref().map(Path::new);
             let trash = unswiper_core::trash::FreedesktopTrash::home();
-            let r = commit::commit_rejects(&snap.items, CommitMode::DryRun, root, &st, &trash)
+            let r = commit::commit_rejects(&items, CommitMode::DryRun, root, &st, &trash)
                 .map_err(|e| e.to_string())?;
             println!("would move {} items ({} bytes)", r.would_move, r.bytes);
             Ok(())
