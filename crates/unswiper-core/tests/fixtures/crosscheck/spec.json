@@ -1,0 +1,23 @@
+{
+  "gapHours": 36,
+  "files": [
+    {"path": "2026/01/01/a.jpg", "bytes": 11},
+    {"path": "2026/02/b.jpg", "bytes": 12},
+    {"path": "2025-07-04 Beach/c.jpg", "bytes": 13},
+    {"path": "Lisbon/IMG_1.jpg", "exif": "2026:03:03 10:00:00"},
+    {"path": "Lisbon/IMG_1.mov", "bytes": 21},
+    {"path": "Lisbon/IMG_1.AAE", "bytes": 22},
+    {"path": "Lisbon/IMG_2.JPG", "exif": "2026:03:04 09:00:00"},
+    {"path": "Lisbon/nodate.jpg", "bytes": 14},
+    {"path": "Porto/x.jpg", "bytes": 15},
+    {"path": "Porto/old/y.mov", "bytes": 16},
+    {"path": "Trip/t1.jpg", "tiff": "2026:05:01 08:00:00"},
+    {"path": "Trip/t2.jpg", "exif": "2026:05:02 20:00:00", "tiff": "2020:01:01 00:00:00"},
+    {"path": "Trip/t3.jpg", "exif": "2026:05:04 08:00:01"},
+    {"path": "Été 2026/Côte.jpg", "exif": "2026:08:01 18:30:00"},
+    {"path": "root.jpg", "bytes": 17},
+    {"path": "clip.mp4", "bytes": 18},
+    {"path": ".hidden.jpg", "bytes": 19},
+    {"path": "_Rejected/Unswiper/z.jpg", "bytes": 20}
+  ]
+}
