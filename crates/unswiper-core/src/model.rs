@@ -414,8 +414,10 @@ mod tests {
 
     #[test]
     fn bookmark_base64_round_trip_and_error() {
-        let mut c = AppConfig::default();
-        c.bookmark_data = Some(vec![1, 2, 3, 255]);
+        let c = AppConfig {
+            bookmark_data: Some(vec![1, 2, 3, 255]),
+            ..Default::default()
+        };
         let v = serde_json::to_value(&c).unwrap();
         assert_eq!(v["bookmarkData"], "AQID/w==");
         let back: AppConfig = serde_json::from_value(v).unwrap();

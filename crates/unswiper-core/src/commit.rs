@@ -219,7 +219,7 @@ fn run(items: &[MediaItem], o: Options) -> std::io::Result<CommitResult> {
                 if planned_names.contains(&name.to_lowercase()) {
                     name = format!(
                         "{}-{name}",
-                        &uuid::Uuid::new_v4().simple().to_string()[..8].to_uppercase()
+                        uuid::Uuid::new_v4().simple().to_string()[..8].to_uppercase()
                     );
                 }
                 planned_names.insert(name.to_lowercase());

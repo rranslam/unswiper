@@ -117,7 +117,7 @@ pub fn group(items: &[MediaItem], gap_hours: f64) -> Vec<VisitGroup> {
     }
 
     let mut result: Vec<VisitGroup> = clusters.iter().map(|c| make_visit(c)).collect();
-    result.sort_by(|a, b| b.total_bytes.cmp(&a.total_bytes));
+    result.sort_by_key(|g| std::cmp::Reverse(g.total_bytes));
 
     let mut folders: Vec<String> = named.keys().cloned().collect();
     folders.sort_by(|a, b| natural_cmp(a, b));

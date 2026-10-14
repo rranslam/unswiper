@@ -624,6 +624,7 @@ name = "unswiper-cli"
 version = "0.2.0-dev"
 dependencies = [
  "serde_json",
+ "tempfile",
  "unswiper-core",
 ]
 
