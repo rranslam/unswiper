@@ -193,7 +193,7 @@ Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (s
 - [`docs/linux-port-plan.md`](docs/linux-port-plan.md) — Rust core, Linux app, packaging, and the roadmap (blur §15, video playback §16)
 - [`docs/checkout-0.2.0.md`](docs/checkout-0.2.0.md) — manual release checklist per platform
 - [`docs/architecture.md`](docs/architecture.md), [`docs/ux-model.md`](docs/ux-model.md), [`docs/sources-and-setup.md`](docs/sources-and-setup.md) — original design notes
-- History: [`SESSION.md`](SESSION.md) (original planning notes), [`docs/architecture-android-mvp.md`](docs/architecture-android-mvp.md), [`docs/architecture-draft-v0.md`](docs/architecture-draft-v0.md), [`snapshots/`](snapshots/)
+- History: [`docs/architecture-android-mvp.md`](docs/architecture-android-mvp.md), [`docs/architecture-draft-v0.md`](docs/architecture-draft-v0.md)
 
 ## Tree
 
