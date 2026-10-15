@@ -10,7 +10,10 @@ pub const WORK_EDGE: u32 = 1024;
 /// Tile grid is GRID × GRID.
 pub const GRID: usize = 4;
 /// Tiles whose intensity standard deviation is below this are "flat" and skipped.
-pub const FLAT_STD: f32 = 6.0;
+pub const FLAT_STD: f32 = 4.0;
+/// Tiles with an intensity standard deviation below this have their Laplacian variance
+/// scaled up as if they had this contrast.
+pub const REF_CONTRAST: f32 = 30.0;
 /// Below this mean luma (0–255) a photo is too dark to judge.
 pub const DARK_LUMA: f32 = 40.0;
 
@@ -96,7 +99,7 @@ impl Gray {
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Score {
-    /// p90 of per-tile Laplacian variance over textured tiles (higher = sharper).
+    /// p90 over textured tiles of Laplacian variance, low-contrast tiles lifted (higher = sharper).
     pub sharpness: f32,
     /// Laplacian variance of the whole frame.
     pub global: f32,
@@ -173,8 +176,13 @@ pub fn score(g: &Gray) -> Score {
                     }
                 }
             }
-            if variance(&px).sqrt() >= FLAT_STD && !lp.is_empty() {
-                tile_scores.push(variance(&lp));
+            let pv = variance(&px);
+            if pv.sqrt() >= FLAT_STD && !lp.is_empty() {
+                // Low-contrast tiles (fog, snow, pale text) are lifted to a reference
+                // contrast so a sharp but faint scene isn't mistaken for blur; normal tiles
+                // keep their raw Laplacian variance.
+                let lift = (REF_CONTRAST * REF_CONTRAST / pv).max(1.0);
+                tile_scores.push(variance(&lp) * lift);
             }
         }
     }
@@ -273,6 +281,15 @@ mod tests {
         let s = score_image(&dark);
         assert!(s.mean_luma < DARK_LUMA);
         assert!(s.confidence < 0.5);
+    }
+
+    #[test]
+    fn faint_but_sharp_is_not_soft() {
+        let s = synth::faint(&synth::scene(9, 512, 384), 0.12);
+        let sharp = score_image(&s).sharpness;
+        let soft = score_image(&synth::defocus(&s, 4.0)).sharpness;
+        assert!(sharp > 30.0, "faint sharp scored {sharp}");
+        assert!(soft < 5.0, "faint blurry scored {soft}");
     }
 
     #[test]

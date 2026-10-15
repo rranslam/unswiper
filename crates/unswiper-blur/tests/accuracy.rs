@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Rob Ranslam
 
 //! Accuracy gate (plan §15.6) on a labeled synthetic set generated from deterministic
-//! scenes: sharp, defocus, motion, bokeh-sharp, night-sharp, low-texture-sharp and bursts.
+//! scenes: sharp, defocus, motion, bokeh-sharp, night-sharp, low-texture-sharp, faint (low-contrast) sharp and bursts.
 //! Gate: precision ≥ 0.95, recall ≥ 0.70, zero flags on bokeh-sharp / night-sharp /
 //! low-texture-sharp. Calibration on Rob's real photos is a follow-up (see blur docs).
 
@@ -20,6 +20,7 @@ enum Label {
     NightSharp,
     NightBlurry,
     LowTextureSharp,
+    FaintSharp,
 }
 
 impl Label {
@@ -29,7 +30,7 @@ impl Label {
     fn must_not_flag(self) -> bool {
         matches!(
             self,
-            Label::BokehSharp | Label::NightSharp | Label::LowTextureSharp
+            Label::BokehSharp | Label::NightSharp | Label::LowTextureSharp | Label::FaintSharp
         )
     }
 }
@@ -79,6 +80,12 @@ fn fixture_set() -> Vec<(String, i64, Label, image::DynamicImage)> {
             format!("nightblur-{seed}"),
             Label::NightBlurry,
             synth::darken(&synth::defocus(&s, 4.0), 0.18),
+            3600,
+        );
+        push(
+            format!("faint-{seed}"),
+            Label::FaintSharp,
+            synth::faint(&s, 0.15),
             3600,
         );
         push(

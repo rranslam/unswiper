@@ -100,6 +100,14 @@ pub fn darken(img: &DynamicImage, f: f32) -> DynamicImage {
     DynamicImage::ImageLuma8(g)
 }
 
+/// Squeezes contrast around mid-grey by `f` (fog, pale text on a pale background).
+pub fn faint(img: &DynamicImage, f: f32) -> DynamicImage {
+    let mut g = img.to_luma8();
+    g.pixels_mut()
+        .for_each(|p| p.0[0] = (180.0 + (p.0[0] as f32 - 128.0) * f).clamp(0.0, 255.0) as u8);
+    DynamicImage::ImageLuma8(g)
+}
+
 /// Mostly plain sky with one small sharp object.
 pub fn low_texture(seed: u64, w: u32, h: u32) -> DynamicImage {
     let detail = scene(seed, w, h).to_luma8();
