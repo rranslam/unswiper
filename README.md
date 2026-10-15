@@ -149,6 +149,13 @@ To update, download the new `.flatpak` and run the same `flatpak install --user`
 
 Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
 
+## Known issues
+
+- **Linux, older Intel graphics (for example Haswell, 4th-generation Core):** when started from a terminal, the Flatpak or AppImage may print warnings such as `MESA-INTEL: warning: Haswell Vulkan support is incomplete` or lines containing `FINISHME`. They are harmless: Unswiper works normally. To silence them, make GTK draw with OpenGL instead of Vulkan:
+  - Flatpak: `GSK_RENDERER=ngl flatpak run io.github.rranslam.Unswiper`
+  - AppImage: `GSK_RENDERER=ngl ./Unswiper-x86_64.AppImage`
+  - To make it permanent for the Flatpak: `flatpak override --user --env=GSK_RENDERER=ngl io.github.rranslam.Unswiper` (undo with `flatpak override --user --unset-env=GSK_RENDERER io.github.rranslam.Unswiper`).
+
 ## Blurry photo detection (v0.3, Linux and Mac)
 
 Unswiper can find photos that are probably out of focus or shaken and mark them **Reject** for you, with an orange **Blurry?** badge. **Nothing is moved or deleted automatically:** marked photos move only when you open their visit and click **Review & Commit…**, like any other rejected photo. Your own Keep/Reject choices always win. It is **on** by default, runs entirely on your computer, and you can turn it off: on Linux in the main menu (**☰**) under **Blurry Photos**, on a Mac in the **Blurry Photos** menu at the top of the screen. Inside the app, open Help (**F1** on Linux, **⌘?** on a Mac) and read the **Blurry Photos** page for the full steps.
