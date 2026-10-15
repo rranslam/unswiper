@@ -4,7 +4,7 @@ Pare down your photos and videos **one visit at a time** (grouped by place and t
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** macOS SwiftUI MVP in [`apps/macos`](apps/macos) (local tree source). Review fixes P0/P1/P2 applied 2026-10-11 — see [`docs/review-fixes-2026-10-11.md`](docs/review-fixes-2026-10-11.md). Linux app (GTK 4, Rust core) released in 0.2.0 as AppImage and Flatpak. Google source and mobile not started.
+**Status:** v0.2.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64). Next: blur detection and video playback (v0.3). See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
 
 ## Download & Install (macOS)
 
@@ -169,10 +169,10 @@ swift test
 To build the downloadable app and `.dmg` yourself:
 
 ```
-apps/macos/scripts/build-dmg.sh 0.1.2
+apps/macos/scripts/build-dmg.sh 0.2.0
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.2.0.dmg`). Pushing a tag such as `v0.1.2` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg` and attaches it to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.2.0.dmg`). Pushing a tag such as `v0.2.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
 
 Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
 
@@ -187,56 +187,35 @@ Try it on a **copy** of a small photo folder first. Re-index after upgrading (ne
 
 Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (stub left at that path). The GitHub repo was renamed to `unswiper` (old links redirect); the local folder may still be named `visit-media-reduce`.
 
-## Restart here
+## Project docs
 
-1. [`STATUS.md`](STATUS.md) — current direction and resume checklist  
-2. [`SESSION.md`](SESSION.md) — full prompts + chats  
-3. Product docs:
-   - [`docs/architecture.md`](docs/architecture.md) — staged architecture (desktop-first, cross-platform)
-   - [`docs/ux-model.md`](docs/ux-model.md) — desktop MVP UX
-   - [`docs/sources-and-setup.md`](docs/sources-and-setup.md) — **Google API** *or* **local tree** config
-4. History:
-   - [`docs/architecture-android-mvp.md`](docs/architecture-android-mvp.md) — prior Android-first MVP (superseded as primary target)
-   - [`docs/architecture-draft-v0.md`](docs/architecture-draft-v0.md) — earliest flat scan draft
-   - [`snapshots/`](snapshots/) — dated freezes
-
-## Product one-liner
-
-Point at a **local media tree** *or* connect **Google** (OAuth) → form visit groups → reduce with context (e.g. keep ~10 of 50 from a Mt Hood trip) → commit rejects safely on disk (and/or via API where allowed).
+- [`STATUS.md`](STATUS.md) — current direction
+- [`docs/linux-port-plan.md`](docs/linux-port-plan.md) — Rust core, Linux app, packaging, and the roadmap (blur §15, video playback §16)
+- [`docs/checkout-0.2.0.md`](docs/checkout-0.2.0.md) — manual release checklist per platform
+- [`docs/architecture.md`](docs/architecture.md), [`docs/ux-model.md`](docs/ux-model.md), [`docs/sources-and-setup.md`](docs/sources-and-setup.md) — original design notes
+- History: [`SESSION.md`](SESSION.md) (original planning notes), [`docs/architecture-android-mvp.md`](docs/architecture-android-mvp.md), [`docs/architecture-draft-v0.md`](docs/architecture-draft-v0.md), [`snapshots/`](snapshots/)
 
 ## Tree
 
 ```
-unswiper/   (repo folder)
-├── README.md
-├── STATUS.md
-├── SESSION.md
-├── apps/macos/               ← SwiftUI macOS MVP (Swift Package)
-├── config/examples/          ← sample config for Google + local tree
-├── docs/
-│   ├── architecture.md
-│   ├── review-fixes-2026-10-11.md
-│   ├── ux-model.md
-│   ├── sources-and-setup.md
-│   ├── architecture-android-mvp.md
-│   └── architecture-draft-v0.md
-└── snapshots/
-    ├── 2026-10-11/           ← Android-era planning freeze
-    └── 2026-10-11-desktop-refactor/
+unswiper/
+├── apps/macos/            ← SwiftUI macOS app (Swift Package)
+├── crates/
+│   ├── unswiper-core/     ← shared Rust core (index, group, commit, restore)
+│   ├── unswiper-cli/      ← `unswiper` command-line tool
+│   └── unswiper-gtk/      ← GTK 4 + libadwaita Linux app (+ AppImage script)
+├── packaging/flatpak/     ← Flatpak manifest
+├── docs/                  ← plans and design notes
+└── .github/workflows/     ← CI and release builds
 ```
 
-## Cursor chat reference
+## Roadmap
 
-- Transcript id: `f5c9a60c-cfae-4433-bec3-3e9030987803`
-- Path: `~/.cursor/projects/Users-rranslam/agent-transcripts/f5c9a60c-cfae-4433-bec3-3e9030987803/`
+v0.3: blur detection and video playback (Linux and Mac) → geo grouping → Google Photos source. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–16.
 
-## Suggested next steps
+## Contributing
 
-- Test the macOS MVP on a copied real library; collect UX issues  
-- Add tests for commit validation, restore, and visit grouping  
-- Geo-aware grouping and better visit titles  
-- Google source (OAuth desktop) using `docs/sources-and-setup.md`  
-- Linux build path (shared domain core) and later mobile
+Bug reports and ideas are welcome in [Issues](https://github.com/rranslam/unswiper/issues). Pull requests: please run `cargo fmt`, `cargo clippy -- -D warnings` and `cargo test` (Linux) or `swift test` in `apps/macos` (Mac) first. Try changes on a **copy** of a photo folder.
 
 ## License
 
