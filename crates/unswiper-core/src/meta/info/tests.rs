@@ -460,3 +460,28 @@ proptest! {
         }
     }
 }
+
+#[test]
+fn compare_strip() {
+    let photo = MediaInfo {
+        focal_mm: Some(6.765),
+        focal_35mm: Some(24),
+        f_number: Some(1.78),
+        exposure_s: Some(1.0 / 120.0),
+        iso: Some(64),
+        ..Default::default()
+    };
+    assert_eq!(
+        strip(&photo, Some(Sharpness::Sharp)),
+        "6.8 mm (24 mm equiv.) · f/1.8 · 1/120 s · ISO 64 · Sharp"
+    );
+    assert_eq!(strip(&MediaInfo::default(), None), "");
+    let video = MediaInfo {
+        is_video: true,
+        duration_s: Some(7.4),
+        width: Some(1080),
+        height: Some(1920),
+        ..Default::default()
+    };
+    assert_eq!(strip(&video, Some(Sharpness::Blurry)), "0:07 · 1080 × 1920");
+}

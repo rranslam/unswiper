@@ -685,6 +685,28 @@ pub fn format(info: &MediaInfo, file: &FileFacts, opts: &FormatOptions) -> Vec<R
     rows
 }
 
+/// One-line summary for the Compare strip (selected item only): exposure for photos,
+/// duration and size for videos, then the blur word, e.g.
+/// `6.8 mm (24 mm equiv.) · f/1.8 · 1/120 s · ISO 64 · Sharp`. Empty when nothing is known.
+pub fn strip(info: &MediaInfo, sharpness: Option<Sharpness>) -> String {
+    let mut parts: Vec<String> = vec![];
+    if info.is_video {
+        parts.extend(info.duration_s.and_then(duration));
+        parts.extend(
+            info.width
+                .zip(info.height)
+                .map(|(w, h)| format!("{w} × {h}")),
+        );
+    } else {
+        parts.extend(focal(info.focal_mm, info.focal_35mm));
+        parts.extend(info.f_number.and_then(aperture));
+        parts.extend(info.exposure_s.and_then(shutter));
+        parts.extend(info.iso.map(|i| format!("ISO {i}")));
+        parts.extend(sharpness.map(|s| s.label().to_string()));
+    }
+    parts.join(" · ")
+}
+
 /// `HEVC (hvc1)`, `H.264 (avc1)`, or the FourCC.
 pub fn codec_name(fourcc: &str) -> String {
     let name = match fourcc {
