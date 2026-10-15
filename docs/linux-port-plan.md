@@ -41,7 +41,7 @@ Why:
 | "Show in Finder" | Mapped to FileManager1 | **Not in the app** | Moved to "new features" |
 | Folder access | Bookmarks | Security-scoped bookmark is stored in `config.bookmarkData` (base64 in JSON), used even though the app isn't sandboxed | Linux ignores the field but keeps it on round-trip |
 | Thumbnails | QuickLook | `QLThumbnailGenerator` in `ThumbnailView` | As planned |
-| Packaging | — | SwiftPM, macOS 14, bundle ID `com.rranslam.unswiper`, universal build with arm64 fallback, **ad-hoc** codesign, `hdiutil` UDZO. `release.yml` runs on tag `v*` on `macos-latest` with `softprops/action-gh-release@v2`. **No test target** | §8 + §9 |
+| Packaging | — | SwiftPM, macOS 14, bundle ID `io.github.rranslam.Unswiper` (was `com.rranslam.unswiper` up to 0.1.2; §14.3), universal build with arm64 fallback, **ad-hoc** codesign, `hdiutil` UDZO. `release.yml` runs on tag `v*` on `macos-latest` with `softprops/action-gh-release@v2`. **No test target** | §8 + §9 |
 
 ## 3. Feature parity and macOS → Linux mapping
 
@@ -153,7 +153,7 @@ Desktop file, AppStream metainfo and icons all use `io.github.rranslam.Unswiper`
 3. `release.yml` (macOS job): create a temporary keychain → import the cert → `build-dmg.sh` signs with `codesign --force --options runtime --timestamp --sign "Developer ID Application: … ($TEAM_ID)"` (sign the nested UniFFI dylib/framework first, **no `--deep`**). Add an entitlements file (no sandbox, no special entitlements needed today). Sign the DMG → `xcrun notarytool submit --wait` → `xcrun stapler staple` the DMG → verify with `spctl -a -vvv -t install` and `codesign --verify --strict` → upload.
 4. Keep ad-hoc signing as the fallback when secrets are missing (forks, PRs).
 5. The README and Help page `08-install-update.md` drop the "Open Anyway" steps once the first notarized release is out.
-6. Bundle ID: keep `com.rranslam.unswiper` on macOS (it's what's installed; changing it resets permissions), or switch to `io.github.rranslam.Unswiper` at the first signed release. **Open decision** (§13).
+6. Bundle ID: **`io.github.rranslam.Unswiper`** on macOS too (decided 14 Oct 2026, §14.3). Preferences are migrated once from `com.rranslam.unswiper`; library data never depended on the ID.
 
 ## 10. Automated testing
 
@@ -252,6 +252,8 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **UniFFI + notarization:** nested binaries must be signed inside-out with hardened runtime. Test in CI before the first signed release.
 
 ## 13. Roadmap after the Linux port
+Order approved 14 Oct 2026 (§15.8): Linux v0.2.0 → **v0.3: blur detection (§15) + video playback (§16)** → geo grouping → Google Photos.
+
 1. **Geo grouping:** split and merge visits by GPS (EXIF GPS, QuickTime ISO 6709) with distance thresholds. Offline reverse-geocoding for titles.
 2. **Google Photos source:** read-only via the Photos Library/Picker API. Decisions export to an album, since the API can't delete.
 3. Extra RAW formats (CR2/CR3/NEF/ARW/ORF/RAF), "Show in file manager", restore any past commit, (live folder watching moved into v1).
@@ -272,7 +274,111 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **AppImage:** stays in the plan (Phase 5, alongside Flatpak, .deb and AUR).
 - **Repo visibility:** `rranslam/unswiper` stays **private until v0.2.0** ships.
 - **Apple Developer ID:** pending; Rob is setting it up. §9.2 applies once the certificate exists.
-- **Only open item:** the macOS bundle ID (see §14.3).
+- **Only open item:** the macOS bundle ID (resolved; see §14.3).
 
-### 14.3 Still open
-1. **macOS bundle ID:** keep `com.rranslam.unswiper`, or move to `io.github.rranslam.Unswiper` at the first signed release?
+### 14.3 Resolved (14 Oct 2026)
+1. **macOS bundle ID:** `io.github.rranslam.Unswiper`, the same as Linux (`build-dmg.sh` Info.plist). Data in
+   `~/Library/Application Support/Unswiper` is not keyed by the ID, so libraries, decisions and commit records
+   carry over unchanged. `BundleIDMigration` copies the old `UserDefaults` domain once (window state). macOS will
+   ask again for folder-access permissions (they are per bundle ID) and treats it as a new app in Login Items/
+   Launchpad. Nothing is open in §14 any more.
+
+## 15. Blur / out-of-focus detection (new feature, Rob 14 Oct 2026)
+
+**Goal:** find out-of-focus or shaky photos automatically and pre-mark them so they're easy to drop. Runs offline with no external API. Setting **on by default**. Evaluation: `docs/blur-evaluation.md`.
+
+### 15.1 Approach
+- **New crate `crates/unswiper-blur`** (MIT, pure Rust: `image`, `imageproc`, `rayon`). It decodes through the core's existing image path (libheif for HEIC), so no new system dependencies are needed and Flatpak/AppImage are unaffected.
+- **Where it runs (both, sharing one crate):**
+  1. **Core background job** (`unswiper-core::quality`). After indexing, unscored photos go on a low-priority worker queue: `nice`/QoS background, N−1 threads, cancellable. The open visit is scored first. Live folder watching enqueues new files.
+  2. **CLI `unswiper-blur`**: `unswiper-blur scan <dir|library.json> [--json] [--threshold] [--write-cache]`. Use it for big backlogs, headless runs, and threshold tuning. It shares the cache format, so the app picks its results up.
+- **Score:**
+  1. Decode to a 1024 px long edge (use the embedded preview when it's large enough), convert to grayscale, Gaussian σ=1.
+  2. Split into a 4×4 tile grid. Take the Laplacian variance and Tenengrad for each tile, and skip flat tiles (low intensity variance).
+  3. `sharpness = p90 over tiles` (tolerates bokeh, since a sharp subject anywhere passes). If AF-point metadata exists, use the AF tiles instead.
+  4. Also store `global` and a `motion` flag (gradient-orientation anisotropy) for display.
+- **Decision (two-stage, conservative):**
+  - *Relative:* within a visit/burst (≥3 photos taken within a few seconds), flag a photo if `sharpness < 0.35 × burst max`.
+  - *Absolute floor:* flag a photo with `sharpness < T_abs`, where `T_abs` is calibrated on the fixture set and set low.
+  - *Never flag:* low-confidence cases (dark: mean luma < 40/255; very high ISO), Portrait/depth photos, screenshots and non-camera images, videos.
+  - Sensitivity setting: Low / **Normal** / High scales both thresholds.
+
+### 15.2 Semantics: suggest, never move
+- Auto-reject = **"reject-suggested"** (a new decision source), shown as Reject with a "blurry" badge. It counts toward Commit like any reject, but the confirmation lists "N suggested as blurry" separately, and nothing moves until the user commits the visit (the existing Commit-open-visit rule still applies).
+- **Manual decisions always win.** Never override Keep/Reject/Undecided that the user set. Pressing U on a suggested item clears it and records `blurDismissed`, so rescans don't re-flag it.
+- If the setting is turned off, suggestions become hidden and uncounted (cached scores stay).
+- Filter: "Show blurry suggestions" in the visit view, plus "Keep all in visit" / "Reject all suggested."
+
+### 15.3 Data / schema
+- Additive, optional fields per item in library.json: `quality: { v: 1, sharpness, global, motion, confidence, scoredAt, fileSize, mtime }` and decision source `"auto-blur"`. Cache key = size + mtime + algorithm version. A changed file or a bumped algorithm triggers a rescore.
+- Works with v1 and v2: the Rust reader keeps unknown fields (`serde(flatten)`). **Caveat:** the current Swift app's Codable reader *ignores* unknown keys but *drops* them on save. Until Phase 6 (Mac on core), the Mac app either (a) adds the optional fields to its model (small change), or (b) keeps scores in a sidecar `quality-cache.json`. Recommendation: **sidecar cache** for scores (rebuildable, can't corrupt library.json), and only the suggestion/dismissal state in library.json via (a).
+
+### 15.4 Settings and UI
+- Setting "Detect blurry photos" (default **On**), Sensitivity (Low/Normal/High), and "Rescan library."
+- Linux: Preferences window (`AdwPreferencesWindow`, switch row + combo row), progress in the header bar ("Checking sharpness 120/900"), a blur badge on thumbnails.
+- macOS: Settings scene (⌘,), Toggle + Picker, progress in the toolbar, and the same badge. Before Phase 6, the Mac app calls the `unswiper-blur` crate through UniFFI (or runs the CLI as a helper) rather than re-implementing it in Swift. Both must produce identical scores (cross-check test).
+- Help page: what's flagged, why, and how to undo.
+
+### 15.5 Performance targets
+- ≤ 40 ms per 12 MP JPEG and ≤ 80 ms per HEIC per core on a 2020-era laptop (decode-bound). 1,000 photos in under 30 s on 4 cores.
+- UI stays responsive (scoring off the main thread, no frame > 16 ms). Memory < 200 MB extra.
+- The rescan cost is near zero when the cache hits.
+
+### 15.6 Test plan
+- **Labeled fixture set** `tests/fixtures/blur/`: about 60–100 small (1024 px) images, CC0 or Rob's own, with labels in `labels.csv` (sharp / defocus / motion / bokeh-sharp / night-sharp / night-blurry / low-texture-sharp / burst sets). Synthetic blur (Gaussian, motion kernels) is generated from sharp originals by `xtask`.
+- Unit tests: tile scoring, flat-tile skip, monotonicity (more blur gives a lower score: proptest), resolution invariance (same image at 2 sizes within ±10%), relative burst logic, manual-decision precedence, cache invalidation.
+- **Accuracy gate in CI:** on the fixture set, **precision ≥ 0.95** for suggestions (false rejects are the costly error) and recall ≥ 0.70; zero flags on bokeh-sharp and night-sharp.
+- Benchmark (`criterion`), not gating, tracked over time.
+- Cross-check: the Rust CLI vs the Mac binding produce identical JSON.
+- Coverage: the crate is inside the 85% core gate.
+
+### 15.7 Placement and effort
+Order: **Flatpak (finish) → AppImage in CI → v0.2.0 Linux release → 15. Blur detection (v0.3) → Geo grouping → Google Photos.**
+Rationale: packaging is nearly done and gates v0.2. Blur is self-contained in core, which makes it the most useful next culling feature. It also benefits Google Photos later (scoring downloaded thumbnails). The Mac app gets it fully in Phase 6, with an interim UniFFI/CLI bridge.
+Effort: 6–9 days. Crate + CLI 2–3, core job + cache 1–2, Linux UI 1, Mac UI/bridge 1–2, fixtures/calibration 1–2.
+Optional v2: a permissively licensed ONNX model through `tract` for better bokeh handling.
+
+### 15.8 Decisions (Rob, 14 Oct 2026)
+- **Approved:** the plan above and the order in §15.7: Flatpak → AppImage in CI → **Linux v0.2.0** → **blur detection (v0.3)** → geo grouping → Google Photos.
+- **Decided:** blurry photos are **pre-marked Reject and moved only on commit**. They are never moved or deleted automatically, manual decisions always win, and the existing commit-the-open-visit rule applies.
+- **Deferred** until v0.3 work starts: the score storage (sidecar cache vs library.json fields, §15.3), the Mac bridge (UniFFI vs CLI helper, §15.4), the sensitivity defaults and accuracy-gate numbers (§15.6), and the optional ONNX model.
+
+## 16. Video playback during review (new feature, Rob 14 Oct 2026; plan only)
+
+Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a clip means opening it in another app. Users need to play videos inside Unswiper while reviewing a visit, on both Linux and Mac. Nothing here is implemented yet.
+
+### 16.1 Linux (GTK 4)
+- Use **`gtk::Video`** with a **`gtk::MediaFile`** (`MediaFile::for_file`). GTK 4's media backend is GStreamer (`libmedia-gstreamer`), which the Flatpak (GNOME 50 runtime) and the AppImage already ship for thumbnails. No new dependency.
+- AppImage: also bundle GTK's media module (`gtk-4.0/<ver>/media/libmedia-gstreamer.so`) and the audio side of playback: add the `autodetect`, `pulseaudio`, `pipewire`, `volume`, `audioconvert` and `audioresample` plugins to the list in `build-appimage.sh` (video goes through GTK's own sink). Check `GTK_MEDIA` isn't overridden.
+- The viewer is an `adw::Dialog` (or a full-window overlay page) holding the `gtk::Video` with GTK's built-in controls (play/pause, scrub bar, volume).
+
+### 16.2 Mac
+- **AVKit `AVPlayerView`** (wrapped in `NSViewRepresentable`) with an `AVPlayer` per open clip, `controlsStyle = .inline`. HEVC/H.264 decode in hardware; no extra code for codecs.
+
+### 16.3 UX (same on both)
+- Video tiles get a **play badge** (▶ plus duration) so they're recognisable at a glance.
+- **Space** or **double-click** opens the viewer on the selected item; Space again (or Esc) closes it. Left/Right arrows go to the previous/next item, so photos open in the same viewer as a large preview.
+- Playback starts **muted** (a mute toggle remembers the last choice per session); it autoplays and loops short clips (< 10 s).
+- Scrubbing via the built-in controls; **J/K/L-free**: the existing **K / R / U keys keep working inside the viewer** (Keep / Reject / Undecided apply to the shown item and show the badge), so a whole visit can be reviewed without leaving the viewer.
+- **Live Photos (option, off by default):** play the paired `.mov` motion part when the still is opened, or on hover/press-and-hold. Uses the existing Live Photo pairing in the core.
+- Playing never changes files; decisions are still applied only by Commit on the open visit.
+
+### 16.4 Codecs
+- Linux: H.264 and HEVC need `gst-libav` (or VA-API). The **Flatpak** gets them from the auto-installed `org.freedesktop.Platform.codecs-extra` extension; the **AppImage** bundles `libav` (already done for thumbnails). On a distro build without codecs, the viewer shows "This video format can't be played here" with an **Open in default app** button (`gtk::FileLauncher`), never a blank window.
+- Mac: AVFoundation covers H.264/HEVC/ProRes; unsupported files get the same fallback via `NSWorkspace.open`.
+
+### 16.5 Tests
+- Core/state (Rust): the viewer navigation model (next/prev within the visit, filters honoured) and "decision keys act on the viewed item", unit-tested in `state.rs` without GTK.
+- GTK: an Xvfb test that opens the viewer on the generated H.264 test clip and checks that the `MediaFile` reaches *prepared* with a duration > 0 and no error (both AppImage CI arches and the Flatpak build run it via `--present-viewer` like `--present-dialog`).
+- Mac: XCTest for the navigation model; a UI test that the player item becomes `.readyToPlay` on a bundled short HEVC clip.
+- Manual checkout step: play an iPhone HEVC clip in each package; Live Photo option.
+
+### 16.6 Open questions
+1. Viewer as a dialog over the grid, or a full-window page with a back button (better for large screens)?
+2. Autoplay and loop defaults, and whether the mute state should persist across launches.
+3. Live Photo motion: on open, on hover, or only on press-and-hold?
+4. Trim/"keep only part of a clip": out of scope (Unswiper never edits media)? Recommend yes, out of scope.
+5. Should photos also open in the viewer (large preview with zoom)? Cheap to add with the same navigation.
+
+### 16.7 Release slot
+**Decided (Rob, 14 Oct 2026): all video playback ships in v0.3, together with blur detection (§15).** That covers basic playback (viewer, Space/double-click, scrubbing, mute, decision keys in the viewer) and the Live Photo motion option, on Linux and Mac. There is no v0.2.1 playback release. Order otherwise unchanged (§15.8).

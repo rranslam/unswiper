@@ -1,0 +1,370 @@
+{
+  "config" : {
+    "commitMode" : "trash",
+    "keepTargetDefault" : 10,
+    "keepTargets" : {
+      "visit-example" : 3
+    },
+    "rootPath" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+    "visitGapHours" : 36
+  },
+  "groups" : [
+    {
+      "endDate" : "2026-03-04T17:00:00Z",
+      "folderHint" : "Lisbon",
+      "id" : "visit-b37213f7327c4326",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/IMG_1.jpg",
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/IMG_2.JPG",
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/nodate.jpg"
+      ],
+      "photoCount" : 3,
+      "startDate" : "2026-03-03T18:00:00Z",
+      "title" : "Mar 3–Mar 4 · Lisbon",
+      "totalBytes" : 1649,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "2026-05-03T03:00:00Z",
+      "folderHint" : "Trip",
+      "id" : "visit-3cfdae8e820160fe",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Trip\/t2.jpg",
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Trip\/t1.jpg"
+      ],
+      "photoCount" : 2,
+      "startDate" : "2026-05-03T03:00:00Z",
+      "title" : "May 2 · Trip",
+      "totalBytes" : 1624,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "2026-05-04T15:00:01Z",
+      "folderHint" : "Trip",
+      "id" : "visit-4f841081ad3a7f10",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Trip\/t3.jpg"
+      ],
+      "photoCount" : 1,
+      "startDate" : "2026-05-04T15:00:01Z",
+      "title" : "May 4 · Trip",
+      "totalBytes" : 796,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "2026-08-02T01:30:00Z",
+      "folderHint" : "Été 2026",
+      "id" : "visit-b0bcdd9f1ab5acf3",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Été 2026\/Côte.jpg"
+      ],
+      "photoCount" : 1,
+      "startDate" : "2026-08-02T01:30:00Z",
+      "title" : "Aug 1 · Été 2026",
+      "totalBytes" : 796,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "2025-07-04T19:00:00Z",
+      "folderHint" : "2025-07-04 Beach",
+      "id" : "visit-7003d3f08bc617a8",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/2025-07-04 Beach\/c.jpg"
+      ],
+      "photoCount" : 1,
+      "startDate" : "2025-07-04T19:00:00Z",
+      "title" : "Jul 4 · 2025-07-04 Beach",
+      "totalBytes" : 13,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "2026-02-01T20:00:00Z",
+      "folderHint" : "2026",
+      "id" : "visit-4c37874307b0ea9a",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/2026\/02\/b.jpg"
+      ],
+      "photoCount" : 1,
+      "startDate" : "2026-02-01T20:00:00Z",
+      "title" : "Feb 1 · 2026",
+      "totalBytes" : 12,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "2026-01-01T20:00:00Z",
+      "folderHint" : "2026",
+      "id" : "visit-6bcbf6245c8297e0",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/2026\/01\/01\/a.jpg"
+      ],
+      "photoCount" : 1,
+      "startDate" : "2026-01-01T20:00:00Z",
+      "title" : "Jan 1 · 2026",
+      "totalBytes" : 11,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "Porto",
+      "id" : "folder-d9bce896fc4c09eb",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Porto\/x.jpg"
+      ],
+      "photoCount" : 1,
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "Porto",
+      "totalBytes" : 15,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "Porto\/old",
+      "id" : "folder-1f21f4f446f932b1",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Porto\/old\/y.mov"
+      ],
+      "photoCount" : 0,
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "old",
+      "totalBytes" : 16,
+      "videoCount" : 1
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+      "id" : "undated",
+      "itemPaths" : [
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/root.jpg",
+        "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/clip.mp4"
+      ],
+      "photoCount" : 1,
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "Undated",
+      "totalBytes" : 35,
+      "videoCount" : 1
+    }
+  ],
+  "items" : [
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "Porto\/old",
+      "isUndated" : true,
+      "kind" : "video",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Porto\/old\/y.mov",
+      "relativeFolder" : "Porto",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 16,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "Porto",
+      "isUndated" : true,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Porto\/x.jpg",
+      "relativeFolder" : "Porto",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 15,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "",
+      "isUndated" : true,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/root.jpg",
+      "relativeFolder" : "library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 17,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "",
+      "isUndated" : true,
+      "kind" : "video",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/clip.mp4",
+      "relativeFolder" : "library-C7573FCD-C5AE-429C-A532-4E475A10536D",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 18,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "Trip",
+      "isUndated" : true,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Trip\/t1.jpg",
+      "relativeFolder" : "Trip",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 796,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "Lisbon",
+      "isUndated" : true,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/nodate.jpg",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 14,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    },
+    {
+      "dateSource" : "folder",
+      "decision" : "undecided",
+      "folderPath" : "2025-07-04 Beach",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/2025-07-04 Beach\/c.jpg",
+      "relativeFolder" : "2025-07-04 Beach",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 13,
+      "takenAt" : "2025-07-04T19:00:00Z"
+    },
+    {
+      "dateSource" : "folder",
+      "decision" : "undecided",
+      "folderPath" : "2026\/01\/01",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/2026\/01\/01\/a.jpg",
+      "relativeFolder" : "2026",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 11,
+      "takenAt" : "2026-01-01T20:00:00Z"
+    },
+    {
+      "dateSource" : "folder",
+      "decision" : "undecided",
+      "folderPath" : "2026\/02",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/2026\/02\/b.jpg",
+      "relativeFolder" : "2026",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 12,
+      "takenAt" : "2026-02-01T20:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "decision" : "undecided",
+      "folderPath" : "Lisbon",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/IMG_1.jpg",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+        {
+          "modifiedAt" : "2026-10-14T01:12:21Z",
+          "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/IMG_1.AAE",
+          "sizeBytes" : 22
+        },
+        {
+          "modifiedAt" : "2026-10-14T01:12:21Z",
+          "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/IMG_1.mov",
+          "sizeBytes" : 21
+        }
+      ],
+      "sizeBytes" : 796,
+      "takenAt" : "2026-03-03T18:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "decision" : "undecided",
+      "folderPath" : "Lisbon",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Lisbon\/IMG_2.JPG",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 796,
+      "takenAt" : "2026-03-04T17:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "decision" : "undecided",
+      "folderPath" : "Trip",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Trip\/t2.jpg",
+      "relativeFolder" : "Trip",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 828,
+      "takenAt" : "2026-05-03T03:00:00Z"
+    },
+    {
+      "dateSource" : "capture",
+      "decision" : "undecided",
+      "folderPath" : "Trip",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Trip\/t3.jpg",
+      "relativeFolder" : "Trip",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 796,
+      "takenAt" : "2026-05-04T15:00:01Z"
+    },
+    {
+      "dateSource" : "capture",
+      "decision" : "undecided",
+      "folderPath" : "Été 2026",
+      "isUndated" : false,
+      "kind" : "photo",
+      "modifiedAt" : "2026-10-14T01:12:21Z",
+      "path" : "\/private\/var\/folders\/n5\/sstgf4gn5b17r_4kjfdqng5r0000gn\/T\/library-C7573FCD-C5AE-429C-A532-4E475A10536D\/Été 2026\/Côte.jpg",
+      "relativeFolder" : "Été 2026",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 796,
+      "takenAt" : "2026-08-02T01:30:00Z"
+    }
+  ],
+  "lastIndexedAt" : "2025-10-09T08:53:20Z",
+  "schemaVersion" : 1
+}

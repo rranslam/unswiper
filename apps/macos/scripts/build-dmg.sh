@@ -6,8 +6,8 @@
 set -euo pipefail
 
 APP_NAME="Unswiper"
-BUNDLE_ID="com.rranslam.unswiper"
-VERSION="${1:-${VERSION:-0.1.2}}"
+BUNDLE_ID="io.github.rranslam.Unswiper"  # same as Linux; com.rranslam.unswiper up to 0.1.2
+VERSION="${1:-${VERSION:-0.2.0}}"
 VERSION="${VERSION#v}"
 MIN_MACOS="14.0"
 
@@ -38,11 +38,14 @@ if [ ! -d "$APP/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle" ]; then
   exit 1
 fi
 
-ICON_KEY=""
-if [ -f "$PKG_DIR/Resources/AppIcon.icns" ]; then
-  cp "$PKG_DIR/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-  ICON_KEY="<key>CFBundleIconFile</key><string>AppIcon</string>"
+# App icon: built from the iconset with Apple's iconutil (Resources/README.md).
+ICONSET="$PKG_DIR/Resources/AppIcon.iconset"
+if [ ! -d "$ICONSET" ]; then
+  echo "!! $ICONSET missing" >&2
+  exit 1
 fi
+iconutil -c icns "$ICONSET" -o "$APP/Contents/Resources/AppIcon.icns"
+ICON_KEY="<key>CFBundleIconFile</key><string>AppIcon</string>"
 
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>

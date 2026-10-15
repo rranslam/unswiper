@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Rob Ranslam -->
+<component type="desktop-application">
+  <id>io.github.rranslam.Unswiper</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Unswiper</name>
+  <summary>Sort trip photos into visits, keep the best, set aside the rest</summary>
+  <developer id="io.github.rranslam"><name>Rob Ranslam</name></developer>
+  <description>
+    <p>Unswiper groups the photos and videos in a folder into visits by date, lets you mark each one Keep or Reject with the keyboard, and moves the rejects to the Trash or a quarantine folder only when you commit. Every commit can be undone.</p>
+    <ul>
+      <li>Works on any folder; nothing is uploaded</li>
+      <li>HEIC, JPEG, PNG, RAW sidecars and videos</li>
+      <li>Watches the folder and updates live</li>
+      <li>Restore Last Commit puts files back</li>
+    </ul>
+  </description>
+  <icon type="stock">io.github.rranslam.Unswiper</icon>
+  <categories>
+    <category>Graphics</category>
+    <category>Photography</category>
+  </categories>
+  <branding>
+    <color type="primary" scheme_preference="light">#ffbe6f</color>
+    <color type="primary" scheme_preference="dark">#c64600</color>
+  </branding>
+  <launchable type="desktop-id">io.github.rranslam.Unswiper.desktop</launchable>
+  <url type="homepage">https://github.com/rranslam/unswiper</url>
+  <url type="bugtracker">https://github.com/rranslam/unswiper/issues</url>
+  <content_rating type="oars-1.1"/>
+  <provides><binary>unswiper</binary></provides>
+  <requires><display_length compare="ge">720</display_length></requires>
+  <recommends><control>keyboard</control><control>pointing</control></recommends>
+  <screenshots>
+    <screenshot type="default"><caption>Reviewing a visit</caption><image>https://raw.githubusercontent.com/rranslam/unswiper/main/crates/unswiper-gtk/data/screenshot.png</image></screenshot>
+  </screenshots>
+  <releases>
+    <release version="0.2.0" date="2026-10-13"><description><p>First Linux release: GTK 4 app on the shared Rust core, as Flatpak and AppImage. Video thumbnails via GStreamer, HEIC via libheif, new icon. Commit applies only to the open visit.</p></description></release>
+    <release version="0.1.0" date="2026-10-13"><description><p>First Linux preview.</p></description></release>
+  </releases>
+</component>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SPDX-License-Identifier: MIT -->
+<!-- Copyright (c) 2026 Rob Ranslam -->
+<!-- Symbolic (monochrome, 16x16) Unswiper icon: funnel over a kept photo. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+  <path fill="#2e3436" d="M2 1h4v3H2zM10 1h4v3h-4zM0 5h16v1.5L10 11v1H6v-1L0 6.5z"/>
+  <path fill="#2e3436" d="M1 13h7v3H1z"/>
+  <path fill="none" stroke="#2e3436" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" d="M9.8 13.6l1.6 1.6 3.4-3.6"/>
+</svg>

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+[Desktop Entry]
+Type=Application
+Name=Unswiper
+GenericName=Photo Culler
+Comment=Sort trip photos into visits, keep the best, set aside the rest
+Exec=unswiper
+Icon=io.github.rranslam.Unswiper
+Terminal=false
+Categories=Graphics;Photography;GTK;GNOME;
+Keywords=photos;videos;cull;sort;trip;heic;
+StartupNotify=true

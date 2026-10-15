@@ -25,3 +25,6 @@ thumb-cache/
 .env
 .env.*
 apps/macos/dist/
+
+# Rust
+/target/

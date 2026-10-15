@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# Builds the Flatpak bundle for x86_64 and aarch64 and uploads Unswiper-<arch>.flatpak artifacts (also called by release.yml). Nothing is published.
+name: Flatpak
+
+on:
+  push:
+    branches: ["main", "phase*"]
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "packaging/flatpak/**", ".github/workflows/flatpak.yml"]
+  pull_request:
+    paths: ["crates/**", "Cargo.toml", "Cargo.lock", "packaging/flatpak/**", ".github/workflows/flatpak.yml"]
+  workflow_dispatch:
+  workflow_call:
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends appstream desktop-file-utils
+      - run: appstreamcli validate --no-net crates/unswiper-gtk/data/io.github.rranslam.Unswiper.metainfo.xml
+      - run: desktop-file-validate crates/unswiper-gtk/data/io.github.rranslam.Unswiper.desktop
+
+  flatpak:
+    # Runs on the host, not in the flatpak-github-actions container: the hosted runner's ~14 GB
+    # free disk ran out when exporting the build (run 38607788232), and a container job can't
+    # remove the host's preinstalled toolchains. Here we free ~25 GB first, delete each module's
+    # build dir as soon as it is done, and remove the build tree before bundling.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    name: flatpak (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Free disk space (unused preinstalled toolchains)
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/.ghcup \
+            /opt/hostedtoolcache /usr/local/share/boost /usr/share/swift /usr/local/share/powershell
+          sudo docker image prune --all --force >/dev/null || true
+          df -h /
+      - uses: actions/checkout@v4
+      - name: Install flatpak and org.flatpak.Builder
+        # flatpak-builder comes from Flathub (org.flatpak.Builder), not apt: it bundles current
+        # appstream, eu-strip and friends, matching the gnome-50 container. Ubuntu 24.04's
+        # flatpak-builder 1.4 + appstream 1.0 failed in `appstreamcli compose` (run 38611263435).
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends flatpak dbus
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.flatpak.Builder \
+            org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
+      - name: Build
+        run: |
+          # dbus-run-session: org.flatpak.Builder asks the host flatpak for the SDK over the session bus,
+          # which the runner doesn't have ("Unable to find sdk org.gnome.Sdk version 50" without it).
+          dbus-run-session -- flatpak run org.flatpak.Builder --user --disable-rofiles-fuse --force-clean --delete-build-dirs \
+            --repo=repo build-dir packaging/flatpak/io.github.rranslam.Unswiper.yml
+          rm -rf build-dir .flatpak-builder/build
+          df -h /
+      - name: Bundle
+        run: flatpak build-bundle repo Unswiper-${{ matrix.arch }}.flatpak io.github.rranslam.Unswiper --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Unswiper-${{ matrix.arch }}.flatpak
+          path: Unswiper-${{ matrix.arch }}.flatpak
+          if-no-files-found: error
