@@ -252,7 +252,7 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **UniFFI + notarization:** nested binaries must be signed inside-out with hardened runtime. Test in CI before the first signed release.
 
 ## 13. Roadmap after the Linux port
-Order approved 14 Oct 2026 (§15.8): Linux v0.2.0 → blur detection v0.3 (§15) → geo grouping → Google Photos.
+Order approved 14 Oct 2026 (§15.8): Linux v0.2.0 → **v0.3: blur detection (§15) + video playback (§16)** → geo grouping → Google Photos.
 
 1. **Geo grouping:** split and merge visits by GPS (EXIF GPS, QuickTime ISO 6709) with distance thresholds. Offline reverse-geocoding for titles.
 2. **Google Photos source:** read-only via the Photos Library/Picker API. Decisions export to an album, since the API can't delete.
@@ -381,4 +381,4 @@ Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a cl
 5. Should photos also open in the viewer (large preview with zoom)? Cheap to add with the same navigation.
 
 ### 16.7 Release slot
-Recommended **v0.2.x (v0.2.1)** for basic playback (viewer, Space/double-click, mute, keys in viewer) on both platforms: it is small, uses components already shipped, and is the most requested gap after v0.2.0. Live Photo motion and photo preview/zoom go into **v0.3** alongside blur detection. Order otherwise unchanged (§15.8).
+**Decided (Rob, 14 Oct 2026): all video playback ships in v0.3, together with blur detection (§15).** That covers basic playback (viewer, Space/double-click, scrubbing, mute, decision keys in the viewer) and the Live Photo motion option, on Linux and Mac. There is no v0.2.1 playback release. Order otherwise unchanged (§15.8).
