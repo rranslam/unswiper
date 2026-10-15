@@ -1988,6 +1988,7 @@ dependencies = [
  "image",
  "libheif-rs",
  "relm4",
+ "serde_json",
  "tempfile",
  "unswiper-blur",
  "unswiper-core",

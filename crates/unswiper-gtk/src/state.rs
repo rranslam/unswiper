@@ -106,6 +106,9 @@ impl CommitPlan {
     }
 }
 
+/// Config key for the Live Photo motion option (absent = off).
+pub const KEY_LIVE_MOTION: &str = "livePhotoMotion";
+
 pub struct AppState {
     pub store: LibraryStore,
     pub snap: LibrarySnapshot,
@@ -117,6 +120,10 @@ pub struct AppState {
     /// Shown once after launch when library.json couldn't be read.
     pub load_problem: Option<String>,
     dirty: bool,
+    /// The item open in the media viewer (plan §16), if any.
+    pub viewer: Option<String>,
+    /// Viewer sound: starts muted, remembered for this session only.
+    pub muted: bool,
 }
 
 impl AppState {
@@ -133,6 +140,8 @@ impl AppState {
             filter: Filter::All,
             load_problem: r.problem,
             dirty: false,
+            viewer: None,
+            muted: true,
         };
         if let Some(root) = s.root() {
             if root.is_dir() {
@@ -222,6 +231,7 @@ impl AppState {
         }
         let paths: BTreeSet<&str> = self.snap.items.iter().map(|i| i.path.as_str()).collect();
         self.selection.retain(|p| paths.contains(p.as_str()));
+        self.check_viewer();
         self.dirty = true;
     }
 
@@ -257,6 +267,7 @@ impl AppState {
         self.visit = None;
         self.selection.clear();
         self.anchor = None;
+        self.viewer = None;
     }
 
     pub fn current_group(&self) -> Option<&VisitGroup> {
@@ -299,6 +310,7 @@ impl AppState {
             .map(|i| i.path.clone())
             .collect();
         self.selection.retain(|p| visible.contains(p));
+        self.check_viewer();
     }
 
     /// Click on a thumbnail: plain = select only this, Ctrl = toggle, Shift = range from anchor.
@@ -651,6 +663,97 @@ impl AppState {
             for i in &self.snap.items {
                 live.sync_item(i);
             }
+        }
+    }
+
+    // ---- Media viewer (plan §16) ----
+
+    /// Opens the viewer on `path` (must be visible in the open visit) and selects it alone,
+    /// so K / R / U act on the shown item.
+    pub fn open_viewer(&mut self, path: &str) -> bool {
+        if !self.visible_items().iter().any(|i| i.path == path) {
+            return false;
+        }
+        self.viewer = Some(path.to_string());
+        self.selection = BTreeSet::from([path.to_string()]);
+        self.anchor = Some(path.to_string());
+        true
+    }
+
+    /// Space: opens the first selected item (in grid order), or the first item.
+    pub fn open_viewer_on_selection(&mut self) -> bool {
+        let pick = {
+            let vis = self.visible_items();
+            vis.iter()
+                .find(|i| self.selection.contains(&i.path))
+                .or(vis.first())
+                .map(|i| i.path.clone())
+        };
+        pick.is_some_and(|p| self.open_viewer(&p))
+    }
+
+    pub fn close_viewer(&mut self) {
+        self.viewer = None;
+    }
+
+    /// Left/Right: the previous/next item in grid order (no wrap). Returns whether it moved.
+    pub fn viewer_step(&mut self, delta: i32) -> bool {
+        let Some((idx, total)) = self.viewer_position() else {
+            return false;
+        };
+        let next = idx as i64 + delta as i64;
+        if next < 0 || next >= total as i64 {
+            return false;
+        }
+        let p = self.visible_items()[next as usize].path.clone();
+        self.open_viewer(&p)
+    }
+
+    /// (0-based index, count) of the viewed item among the visible items.
+    pub fn viewer_position(&self) -> Option<(usize, usize)> {
+        let v = self.viewer.as_ref()?;
+        let vis = self.visible_items();
+        vis.iter()
+            .position(|i| &i.path == v)
+            .map(|i| (i, vis.len()))
+    }
+
+    pub fn viewer_item(&self) -> Option<&MediaItem> {
+        self.item(self.viewer.as_ref()?)
+    }
+
+    /// What the viewer should show and play.
+    pub fn viewer_media(&self) -> Option<crate::player::ViewerMedia> {
+        let it = self.viewer_item()?;
+        Some(crate::player::media_for(it, self.live_motion()))
+    }
+
+    /// "Play Live Photo motion" option (default off, stored in library.json config).
+    pub fn live_motion(&self) -> bool {
+        self.snap
+            .config
+            .extra
+            .get(KEY_LIVE_MOTION)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    pub fn set_live_motion(&mut self, on: bool) {
+        if on {
+            self.snap
+                .config
+                .extra
+                .insert(KEY_LIVE_MOTION.into(), serde_json::Value::Bool(true));
+        } else {
+            self.snap.config.extra.remove(KEY_LIVE_MOTION);
+        }
+        self.dirty = true;
+    }
+
+    /// Closes the viewer when its item is gone or filtered out.
+    fn check_viewer(&mut self) {
+        if self.viewer.is_some() && self.viewer_position().is_none() {
+            self.viewer = None;
         }
     }
 
@@ -1102,5 +1205,84 @@ mod tests {
             &MetadataDates,
         );
         assert!(s.is_blur_suggested(&all[0]));
+    }
+
+    #[test]
+    fn viewer_navigation_and_decisions() {
+        let (_t, mut s) = setup(&["a.jpg", "b.jpg", "c.mp4"]);
+        assert!(!s.open_viewer_on_selection(), "no visit open");
+        open_first(&mut s);
+        let order: Vec<String> = s.visible_items().iter().map(|i| i.path.clone()).collect();
+        // Space with nothing selected opens the first item.
+        assert!(s.open_viewer_on_selection());
+        assert_eq!(s.viewer_position(), Some((0, 3)));
+        assert!(!s.viewer_step(-1), "no wrap at the start");
+        assert!(s.viewer_step(1));
+        assert_eq!(s.viewer.as_deref(), Some(order[1].as_str()));
+        assert_eq!(s.selection, BTreeSet::from([order[1].clone()]));
+        // K / R / U act on the viewed item.
+        assert_eq!(s.decide_selected(Decision::Reject), 1);
+        assert_eq!(s.viewer_item().unwrap().decision, Decision::Reject);
+        assert!(s.viewer_step(1));
+        assert!(!s.viewer_step(1), "no wrap at the end");
+        let m = s.viewer_media().unwrap();
+        assert_eq!(m.play.as_deref(), Some(order[2].as_str()));
+        // Selection decides where Space opens.
+        s.close_viewer();
+        s.click(&order[1], false, false);
+        assert!(s.open_viewer_on_selection());
+        assert_eq!(s.viewer_position(), Some((1, 3)));
+        assert!(!s.open_viewer("/not/here"));
+        assert!(s.muted, "starts muted");
+    }
+
+    #[test]
+    fn viewer_follows_filter_and_removals() {
+        let (t, mut s) = setup(&["a.jpg", "c.mp4"]);
+        open_first(&mut s);
+        let video = s
+            .visible_items()
+            .iter()
+            .find(|i| i.kind == MediaKind::Video)
+            .unwrap()
+            .path
+            .clone();
+        assert!(s.open_viewer(&video));
+        s.set_filter(Filter::Videos);
+        assert_eq!(s.viewer_position(), Some((0, 1)), "still visible");
+        s.set_filter(Filter::Photos);
+        assert!(s.viewer.is_none(), "filtered out: viewer closes");
+        s.set_filter(Filter::All);
+        assert!(s.open_viewer(&video));
+        std::fs::remove_file(&video).unwrap();
+        s.apply_watch(
+            &WatchBatch::Paths([PathBuf::from(&video)].into_iter().collect()),
+            &MetadataDates,
+        );
+        assert!(s.viewer.is_none(), "removed: viewer closes");
+        let a = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&a));
+        s.close_visit();
+        assert!(s.viewer.is_none());
+        let _ = t;
+    }
+
+    #[test]
+    fn live_motion_setting() {
+        let (t, mut s) = setup(&["IMG_1.HEIC", "IMG_1.MOV"]);
+        open_first(&mut s);
+        assert!(!s.live_motion());
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        assert_eq!(s.viewer_media().unwrap().play, None);
+        s.set_live_motion(true);
+        let m = s.viewer_media().unwrap();
+        assert!(m.is_motion);
+        assert!(m.play.unwrap().ends_with("IMG_1.MOV"));
+        s.save().unwrap();
+        let s2 = AppState::new(LibraryStore::new(t.base.join("support")));
+        assert!(s2.live_motion());
+        s.set_live_motion(false);
+        assert!(!s.live_motion());
     }
 }
