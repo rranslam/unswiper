@@ -34,8 +34,10 @@ jobs:
           T="$RUNNER_TEMP/smoke"; mkdir -p "$T/lib" "$T/home"
           ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x240:rate=10 -t 1 -c:v libx264 -pix_fmt yuv420p "$T/lib/clip.mov"
           ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x240 -frames:v 1 "$T/lib/IMG_0001.jpg"
-          xvfb-run -a env -i PATH=/usr/bin:/bin HOME="$T/home" APPIMAGE_EXTRACT_AND_RUN=1 \
-            target/appimage/Unswiper-x86_64.AppImage --open "$T/lib" --open-first-visit --quit-after 12
+          # env -i runs inside xvfb-run's shell so DISPLAY/XAUTHORITY (set by xvfb-run) survive the wipe.
+          T="$T" A="$PWD/target/appimage/Unswiper-x86_64.AppImage" xvfb-run -a sh -c \
+            'exec env -i PATH=/usr/bin:/bin HOME="$T/home" DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" \
+              APPIMAGE_EXTRACT_AND_RUN=1 "$A" --open "$T/lib" --open-first-visit --quit-after 12'
           test -s "$T/home/.local/share/unswiper/library.json"
           ls -l "$T/home/.cache/unswiper/thumbs"
           test -n "$(ls -A "$T/home/.cache/unswiper/thumbs")"
