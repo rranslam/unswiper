@@ -8,6 +8,7 @@ pub mod blur;
 pub mod format;
 pub mod help;
 pub mod icons;
+pub mod info;
 pub mod player;
 pub mod state;
 pub mod thumbs;
