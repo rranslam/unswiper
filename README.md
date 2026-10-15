@@ -117,6 +117,8 @@ chmod +x Unswiper-aarch64.AppImage
 
 **Tip:** Move the file somewhere permanent, e.g. `mkdir -p ~/Applications && mv ~/Downloads/Unswiper-x86_64.AppImage ~/Applications/`. To update, download the new AppImage and replace the old file (repeat the `chmod +x`).
 
+**AppImage messages in the terminal you can ignore:** older AppImages (0.2.0) printed lines like `libgvfscommon.so: undefined symbol: g_variant_builder_init_static` or `Failed to load module: …/gio/modules/libgvfsdbus.so` on newer systems such as Ubuntu 26.04. They're harmless (the app still works) and are gone in later builds, which no longer load the system's GIO modules. Warnings about the *accessibility bus* are harmless too.
+
 ### Option B — Flatpak (sandboxed, adds Unswiper to your app menu)
 
 1. Make sure Flatpak and the Flathub source are set up (one time):

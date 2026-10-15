@@ -73,6 +73,22 @@ if grep -rn 'GDK_BACKEND' "$appdir/apprun-hooks/"; then echo "GDK_BACKEND still 
 sed -i '/export GTK_THEME=/d' "$appdir"/apprun-hooks/*gtk*.sh
 if grep -rn 'export GTK_THEME=' "$appdir/apprun-hooks/"; then echo "GTK_THEME still set" >&2; exit 1; fi
 
+# Keep host modules out of the bundled GLib/GStreamer. The bundle carries GLib from the build distro
+# (Ubuntu 24.04); newer hosts' GVFS GIO modules need newer GLib symbols ("libgvfscommon.so: undefined
+# symbol: g_variant_builder_init_static"). Unswiper only needs local files (it uses the freedesktop
+# Trash directly and portals over D-Bus), so load no GIO modules and use the local VFS.
+# GStreamer and gdk-pixbuf already point at the bundle (plugin hooks); also pin the unversioned
+# GStreamer path so a host GST_PLUGIN_SYSTEM_PATH can't add host plugins.
+hook="$appdir/apprun-hooks/linuxdeploy-plugin-gtk.sh"
+if ! grep -q 'GIO_MODULE_DIR' "$hook"; then
+  mkdir -p "$appdir/usr/lib/gio/modules"
+  cat >> "$hook" <<'HOOK'
+export GIO_MODULE_DIR="$APPDIR/usr/lib/gio/modules" # bundled, empty: no host GVFS/dconf modules
+export GIO_USE_VFS=local
+export GST_PLUGIN_SYSTEM_PATH="$APPDIR/usr/lib/gstreamer-1.0"
+HOOK
+fi
+
 rm -f "$out"/Unswiper*.AppImage
 VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \
   linuxdeploy-$ARCH.AppImage --appdir "$appdir" --output appimage
