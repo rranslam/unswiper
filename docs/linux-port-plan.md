@@ -354,7 +354,7 @@ Blur detection end to end on Linux plus the core. Decisions taken while building
 - **Accuracy gate:** synthetic only for now (`crates/unswiper-blur/tests/accuracy.rs`, generated scenes: sharp, defocus, motion, bokeh-sharp, night, low-texture, faint, bursts). Currently precision 1.00 and recall 0.98 against the ≥ 0.95 / ≥ 0.70 gate. **Calibration on real photos is still needed** before release: a labeled set of ~60–100 of Rob's photos.
 - **Not in M1:** Mac app parity (bridge choice UniFFI vs CLI helper still open), the cross-check test Rust vs Mac, `criterion` benchmark, AppImage/Flatpak shipping of the `unswiper-blur` CLI.
 
-## 16. Video playback during review (new feature, Rob 14 Oct 2026; plan only)
+## 16. Video playback during review (new feature, Rob 14 Oct 2026; M2 built 15 Oct 2026, see §16.8)
 
 Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a clip means opening it in another app. Users need to play videos inside Unswiper while reviewing a visit, on both Linux and Mac. Nothing here is implemented yet.
 
@@ -393,3 +393,15 @@ Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a cl
 
 ### 16.7 Release slot
 **Decided (Rob, 14 Oct 2026): all video playback ships in v0.3, together with blur detection (§15).** That covers basic playback (viewer, Space/double-click, scrubbing, mute, decision keys in the viewer) and the Live Photo motion option, on Linux and Mac. There is no v0.2.1 playback release. Order otherwise unchanged (§15.8).
+
+### 16.8 M2 built (15 Oct 2026)
+Answers to §16.6 as built (change any of them on request):
+1. **Full-window page** with a **Grid** back button (not a dialog): more room for video, and the sidebar stays visible on Linux.
+2. Autoplay on open; loop under 10 s (and Live Photo motion always loops); **mute is per session only** (starts muted every launch).
+3. Live Photo motion plays **on open** in the viewer when the option is on (Linux menu ☰ → Viewer, Mac View menu); no hover. Stored as `livePhotoMotion` in the config extras (Linux).
+4. Trim: out of scope.
+5. Photos open in the same viewer as a large preview (no zoom yet).
+
+Linux: `player.rs` (pure rules: motion clip = a `.mov/.mp4/.m4v` sidecar of a photo, loop rule, duration format), viewer model in `state.rs` (navigation without wrap, follows filters/removals, decisions act on the viewed item), `gtk::Video` + `MediaFile` in `ui.rs`, durations on tiles via `video::duration`. Smoke test `viewer_plays_a_video` runs `--present-viewer` on a generated clip and needs `viewer: prepared duration_ms>0`. Timed runs (`--quit-after`) are `NON_UNIQUE`. AppImage bundles `libmedia-gstreamer.so` (GTK_PATH, GTK_MEDIA=gstreamer) plus autodetect/pulseaudio/pipewire/volume/audioconvert/audioresample.
+Mac: `ViewerModel.swift` (pure, XCTest `ViewerModelTests`) and `MediaViewer.swift` (AVPlayerView `.inline`, muted start, loop, NSWorkspace fallback). **Not compiled on the box**: build and test on a Mac.
+Not done: AppImage CI smoke of `--present-viewer` (the Rust test-linux job covers it), photo zoom, Mac `.readyToPlay` UI test.

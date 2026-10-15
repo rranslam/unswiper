@@ -161,6 +161,10 @@ Unswiper can find photos that are probably out of focus or shaken and mark them 
 3. It prints one line per photo: the sharpness score, then **BLURRY** or **ok**, then the file name. Lower numbers are blurrier.
 4. Optional: add `--sensitivity low` (fewer photos marked) or `--sensitivity high` (more), or `--json` for machine-readable output. Add `--write-cache` to save the scores so the app doesn't have to check those photos again.
 
+## Watching videos while you review (v0.3)
+
+Double-click a photo or video in a visit (or click it once and press **Space**) to open it in a large viewer. Videos play right there, **muted** at first; click the speaker icon for sound. **←/→** go to the previous/next item, **K / R / U** still Keep / Reject / Clear, and **Space** or **Esc** goes back to the grid. Video tiles show **▶** and the clip length. Optional: turn on **Play Live Photo Motion** (Linux: main menu **☰** → **Viewer**; Mac: **View** menu) to play the short video part of iPhone Live Photos. If a video can't be played, click **Open in Default App**. Watching never changes your files. In the app, press **F1** (Linux) and open **Watching Videos and Large Previews**.
+
 ## Build from source (macOS)
 
 Requires full **Xcode** (not just Command Line Tools) with the license accepted.
