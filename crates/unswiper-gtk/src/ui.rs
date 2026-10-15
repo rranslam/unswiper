@@ -32,6 +32,9 @@ pub struct Options {
     pub open_first_visit: bool,
     /// Quit after this many seconds (headless smoke test).
     pub quit_after: Option<u32>,
+    /// Show a dialog a few seconds after start (screenshots): "about", or "commit" (rejects
+    /// everything in the open visit, then opens Review & Commit; nothing is moved unless confirmed).
+    pub present_dialog: Option<String>,
 }
 
 pub fn run(opts: Options) {
@@ -55,6 +58,14 @@ const CSS: &str = "
 .badge.keep { background: @success_bg_color; color: @success_fg_color; }
 .badge.reject { background: @error_bg_color; color: @error_fg_color; }
 .thumb.rejected picture { opacity: 0.45; }
+/* Dialogs (AdwAlertDialog, AdwAboutDialog) float over a busy photo grid: give them a visible edge
+   and a stronger shadow, and dim the window behind them. currentColor-based, so it works in light
+   and dark mode. */
+floating-sheet > sheet, bottom-sheet > sheet {
+  box-shadow: 0 0 0 1px alpha(currentColor, 0.30), 0 0 0 2px alpha(black, 0.12),
+              0 10px 36px 6px alpha(black, 0.45), 0 3px 8px alpha(black, 0.30);
+}
+floating-sheet > dimming, bottom-sheet > dimming { background-color: alpha(black, 0.38); }
 ";
 
 pub struct ThumbMsg(pub thumbs::Thumb);
@@ -506,6 +517,17 @@ impl Component for App {
             });
             let w = root.clone();
             glib::idle_add_local_once(move || d.present(Some(&w)));
+        }
+        if let Some(which) = opts.present_dialog.clone() {
+            let s = sender.clone();
+            glib::timeout_add_seconds_local_once(3, move || match which.as_str() {
+                "commit" => {
+                    s.input(Msg::SelectAll);
+                    s.input(Msg::Decide(Decision::Reject));
+                    s.input(Msg::ReviewCommit);
+                }
+                _ => s.input(Msg::About),
+            });
         }
         if let Some(secs) = opts.quit_after {
             let s = sender.clone();

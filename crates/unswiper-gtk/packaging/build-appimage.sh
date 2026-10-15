@@ -65,7 +65,13 @@ linuxdeploy-$ARCH.AppImage --appdir "$appdir" --plugin gtk --plugin gstreamer \
 # The GTK plugin's AppRun hook forces GDK_BACKEND=x11 ("Crash with Wayland"). GTK 4 is fine on
 # Wayland (Hyprland, GNOME), so drop that line and let GTK pick the backend.
 sed -i '/GDK_BACKEND=x11/d' "$appdir"/apprun-hooks/*gtk*.sh
-! grep -rn 'GDK_BACKEND' "$appdir/apprun-hooks/"
+if grep -rn 'GDK_BACKEND' "$appdir/apprun-hooks/"; then echo "GDK_BACKEND still set" >&2; exit 1; fi
+# It also exports GTK_THEME=Adwaita:<light|dark>. With libadwaita that loads GTK's own built-in
+# Adwaita theme over libadwaita's stylesheet: dialogs lose their rounded sheet, shadow and backdrop
+# dimming (they blend into the photo grid), and the system dark/light setting is ignored.
+# libadwaita picks the colour scheme from the settings portal itself, so drop the export.
+sed -i '/export GTK_THEME=/d' "$appdir"/apprun-hooks/*gtk*.sh
+if grep -rn 'export GTK_THEME=' "$appdir/apprun-hooks/"; then echo "GTK_THEME still set" >&2; exit 1; fi
 
 rm -f "$out"/Unswiper*.AppImage
 VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \
