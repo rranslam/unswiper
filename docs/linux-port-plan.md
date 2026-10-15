@@ -495,3 +495,61 @@ New order: v0.3 (blur + video) → **v0.4: photo info (§17) → geo grouping** 
 - **Approved:** both the right-click **Show Info** popover and the inspector (I, ⌘I / Ctrl+I); fields camera and lens, exposure (shutter, aperture, ISO, focal length), date, dimensions/size and file info; **GPS shown locally, hideable, default on, never sent anywhere**; blur shown as words **Sharp / Soft / Blurry** (no numbers); Compare shows info for the selected item only; the Mac uses the shared Rust reader through the bundled helper.
 - **Milestones:** M1 Rust reader + formatter → M2 GTK popover + inspector → M3 Mac popover + inspector + helper `info`, CHANGELOG and Help.
 - **M1:** `unswiper_core::meta::info` reads `MediaInfo` with `kamadak-exif` (JPEG, TIFF/DNG, HEIC, PNG, WebP; JPEG SOF / PNG IHDR for the size when EXIF has none) and, for videos, `meta::quicktime::video_facts` (duration from `mvhd`, display size from the video `tkhd` incl. 90° rotation, codec FourCC from `stsd`, Apple make/model/creation date/ISO 6709 location, `udta/©xyz` fallback). `info::format(info, file, options) -> Vec<Row{group, label, value, short}>` is the one formatter; `short` marks the popover rows. Rules: the Exposure group shows "—" for values a camera didn't record, but is left out for files with no camera data (screenshots) and for videos; the lens maker is added only for third-party lenses; exposure compensation beyond ±20 EV and x/0 rationals count as missing. `unswiper_blur::decide::sharpness_word` gives the words: Blurry when suggested or below the floor, Soft below 2× the floor, otherwise Sharp; low-confidence photos are "Not checked" (videos always are). Golden table `crates/unswiper-core/testdata/info-format-golden.json` (5 cases), to be reused by the Mac tests.
+
+### 17.10 M2: Linux (built 15 Oct 2026)
+- **Right-click** a tile → a popover with the `short` rows (camera, lens, shutter, aperture, ISO, focal length, date, dimensions, size, format, sharpness) and **Show All Info (I)**. The EXIF/moov read for the popover is synchronous (one small read).
+- **Inspector**: an `adw::OverlaySplitView` sidebar on the right of the grid/viewer stack, toggled by **I** / **Ctrl+I**, the stateful `win.info` action and ☰ → **Show Photo Info**. Closed at start; open/closed is per session (`AppState::info_open`). It shows `AppState::info_target()`: the viewer item, else the first selected item in grid order with "(and N more selected)". Groups are `adw::PreferencesGroup`s of `ActionRow`s with selectable values. Reading happens on a thread ("Reading…"), cached in memory per path and size+mtime (`info::InfoCache`). Below 1100 sp wide the sidebar floats over the grid (breakpoint).
+- **Location**: shown by default; ☰ → **Show Location in Photo Info** turns it off (config key `infoShowLocation: false`, absent = on). The map button opens OpenStreetMap through `gtk::UriLauncher`, only on click. Coordinates are never written (smoke test checks library.json).
+- **Compare strip**: Linux has no Compare view yet, so the strip is one caption line under the grid with `info::strip()` for the **selected item only** (e.g. `3.8 mm · f/2 · 1/45 s · ISO 342 · Sharp`); hidden in the viewer and with nothing selected.
+- **Sharpness**: from `quality-cache.json` (reloaded after each scan) via `sharpness_word`; a blur suggestion in library.json wins. Off when blur detection is off; "Not checked" for screenshots, unscored photos and videos.
+- **Tests**: `info.rs` unit tests (file facts incl. sidecars, words from the cache, grouping, cache invalidation), `AppState` tests (target follows viewer/selection/filter; location setting round-trip), and an Xvfb smoke `--present-info` that prints the rows, opens the panel and the popover, checks that library.json holds no coordinates, and that the setting hides the Location rows.
+
+## 18. Content hashes for change and bit-rot detection (TBD: explore only, unscheduled)
+
+Rob asked (15 Oct 2026) whether Unswiper should keep a **per-file content hash** of every photo and video, to notice when a file changed (a delta), got corrupted, or silently rotted on disk. Nothing here is scheduled; this section only explores the options.
+
+### 18.1 What a hash would give us
+- **Bit rot / corruption:** a file whose size and mtime are unchanged but whose hash changed was damaged (disk, copy, sync tool). Today nothing notices this.
+- **Deltas:** "what changed since last time" across re-indexes, independent of mtimes (which copies and sync tools rewrite).
+- **Identity across moves/renames:** the same bytes under a new path are the same photo, so decisions, blur scores and (later) geo data could follow the file.
+- **Duplicates:** identical files in two folders (a by-product, not a goal; near-duplicates need perceptual hashes, a different feature).
+
+### 18.2 Algorithm
+- **BLAKE3** (CC0/Apache-2.0, pure Rust crate `blake3`, SIMD, multi-threaded for large files): about 1–3 GB/s per core, so a 50 GB library is minutes of disk-bound reading, not CPU-bound. **SHA-256** is the conservative alternative (standard tools everywhere: `sha256sum`, `shasum -a 256`, `Get-FileHash`), at roughly a third of the speed without SHA extensions.
+- Both are far beyond what bit-rot detection needs; the choice is about **interoperability vs speed**. Store the algorithm name with every hash (`"blake3:…"` / `"sha256:…"`) so it can change later.
+- Hash the **whole file bytes** (metadata edits count as changes). A separate "pixel hash" ignoring metadata is out of scope.
+
+### 18.3 Single source of truth (Rob's main concern)
+| Option | Pros | Cons |
+|---|---|---|
+| **A. In library.json** (per item) | One file, already synced between the Mac and Linux apps | library.json is per library *view*, rewritten often, grows with every item; a damaged library.json loses the hashes too; it is keyed by path, so moves look like delete + add |
+| **B. Sidecar per photo** (`IMG_1.JPG.b3`) or per folder (`.unswiper-hashes`) | Travels with the files across machines, disks and backups; any tool can verify | Writes into Rob's photo folders (Unswiper avoids that today); clutters; other apps and sync tools may drop or duplicate it |
+| **C. Separate hash DB** next to library.json (`hashes.sqlite` or `hashes.json` in the support folder) | Not in the photo folders; can be large; can index by hash *and* by path; separate from decisions, so either can be rebuilt | Another file to back up; per machine unless synced; needs a format and a migration story |
+
+**Leaning:** **C**, a separate store in the support folder, keyed by content hash with the last known path(s), size and mtime, and **library.json referencing only the hash** (one short field per item) once it exists. The hash store is the single source of truth for hashes; library.json stays the source of truth for decisions. A per-folder **export** (`SHA256SUMS`/`B3SUMS` in the standard `sha256sum -c` format) can be written **on request** for archiving, not kept in sync automatically.
+
+### 18.4 Moves, renames and edits
+- Re-index already sees adds/removes. With hashes, a removed path + an added path with the **same hash and size** is a **move/rename**: carry the decision, blur score and info over (as `quality::carry_over` does for blur today).
+- Same path, same size+mtime, different hash → **possible corruption**: flag it, never "fix" it. Same path, new mtime, new hash → an **edit** (normal).
+- Copies (same hash, two paths) are reported as duplicates only on request.
+- Cost: hashing only happens for **new or changed (size/mtime) files**; a full **verify** pass (re-read everything and compare) is a separate, explicit action ("Verify Library…", resumable, low priority, with progress), never automatic on launch.
+
+### 18.5 Multiple machines and platforms
+- Paths differ between the Mac, Linux and Windows (`/Users/rob/Pictures` vs `/home/rob/Pictures` vs `D:\Photos`), so the store must key by **hash + path relative to the library root**, not absolute paths. That also lets two machines compare notes.
+- Sync tools (iCloud, Syncthing, Dropbox) preserve bytes but not always mtimes; hashes make "unchanged" detection robust there.
+- Line endings / case-insensitive file systems: hash bytes only; compare paths with the platform's case rules (APFS and NTFS are case-insensitive by default).
+- Windows needs no special handling for the hash itself; the store and paths use `/` separators internally (as library.json does).
+
+### 18.6 Companion app or CLI?
+- Hashing and verifying a whole library is **batch work** that fits a CLI better than the review UI: `unswiper-hash scan|verify|export|diff <library>` (Rust, shares the store format), runnable from cron/launchd/Task Scheduler on a NAS or server without a display. The app would only **read** the store (show a "changed/damaged" badge, carry decisions across moves) and offer "Verify Library…" that runs the same code.
+- A separate companion GUI is not worth it; mature tools already exist for pure integrity checking (e.g. `rhash`, `hashdeep`, `par2`, `snapraid`, ZFS/Btrfs scrubbing). Unswiper's value is tying hashes to **its** decisions and visits, not replacing those tools.
+
+### 18.7 Open questions
+1. BLAKE3 (fast, needs our tool to verify) or SHA-256 (slower, verifiable with built-in OS tools)?
+2. Is a support-folder store acceptable, or does Rob want hashes to travel **with** the photos (sidecars / per-folder manifest)?
+3. Should a detected move carry decisions automatically, or ask?
+4. Should verify ever run on its own (e.g. weekly), or only on request?
+
+### 18.8 Recommendation
+Don't build it into v0.4. If wanted later: a **separate hash store in the support folder** (keyed by BLAKE3 + root-relative path, with size/mtime, algorithm tagged), filled incrementally for new/changed files, plus a small **`unswiper-hash` CLI** for scan/verify/export (`B3SUMS`/`SHA256SUMS` on request). The app uses it read-only to carry decisions across moves/renames and to flag possible corruption; library.json gets at most a hash reference per item. Rough effort: CLI + store 2–3 days, app integration (move carry-over, badge, "Verify Library…") 2 days.
+
