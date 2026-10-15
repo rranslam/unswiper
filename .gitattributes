@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: MIT
+# Test fixtures are compared byte for byte (library.json round-trips, Swift cross-check output):
+# never convert their line endings, e.g. on Windows checkouts with core.autocrlf=true.
+crates/*/tests/fixtures/** -text

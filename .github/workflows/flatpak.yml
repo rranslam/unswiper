@@ -5,7 +5,7 @@ name: Flatpak
 
 on:
   push:
-    branches: ["main", "phase*"]
+    branches: ["main", "phase*", "v*"]
     paths: ["crates/**", "Cargo.toml", "Cargo.lock", "packaging/flatpak/**", ".github/workflows/flatpak.yml"]
   pull_request:
     paths: ["crates/**", "Cargo.toml", "Cargo.lock", "packaging/flatpak/**", ".github/workflows/flatpak.yml"]
