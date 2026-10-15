@@ -51,6 +51,26 @@ jobs:
         env:
           TZ: UTC
 
+  # Windows: core + CLI only (no GTK). Catches path, case and Unicode issues early; not a Windows port.
+  # Unix-only tests are #[cfg(unix)]; known Windows path gaps are #[cfg_attr(windows, ignore = ...)]
+  # and show up as "ignored" in this job's output.
+  test-windows:
+    runs-on: windows-latest
+    continue-on-error: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # Windows ignores TZ; set the runner's zone so local-time tests match the Linux job.
+      - name: Time zone (Pacific)
+        run: tzutil /s "Pacific Standard Time"
+      - run: cargo clippy -p unswiper-core -p unswiper-cli --all-targets -- -D warnings
+      - run: cargo test -p unswiper-core -p unswiper-cli --no-fail-fast
+        env:
+          PROPTEST_CASES: "256"
+
   coverage:
     runs-on: ubuntu-24.04
     steps:
