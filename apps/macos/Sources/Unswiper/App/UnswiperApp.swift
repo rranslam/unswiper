@@ -6,6 +6,7 @@ import SwiftUI
 @main
 struct UnswiperApp: App {
     @StateObject private var state = AppState()
+    @AppStorage(ViewerRules.liveMotionKey) private var liveMotion = false
 
     init() {
         // Diagnostic used by the release checks: prints the loaded help topics and exits.
@@ -35,6 +36,9 @@ struct UnswiperApp: App {
                     Task { await state.reindex() }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .toolbar) {
+                Toggle("Play Live Photo Motion", isOn: $liveMotion)
             }
             CommandGroup(replacing: .help) {
                 HelpMenuItems()
