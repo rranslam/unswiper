@@ -5,6 +5,7 @@
 //! "blurry" costs a good photo, so both stages are tuned for precision.
 
 use crate::score::Score;
+pub use unswiper_core::meta::info::Sharpness;
 use unswiper_core::quality::Sensitivity;
 
 /// Photos taken within this many seconds of each other form a burst.
@@ -126,6 +127,23 @@ pub fn suggest(cands: &[Candidate], th: Thresholds) -> Vec<Option<Reason>> {
         .collect()
 }
 
+/// Below this multiple of the absolute floor a photo that isn't suggested is called "Soft".
+pub const SOFT_FACTOR: f32 = 2.0;
+
+/// The blur result in words for the photo info view (plan §17, Rob: words, not numbers).
+/// `suggested` is this photo's result from [`suggest`] (it already covers shake and bursts).
+pub fn sharpness_word(score: &Score, suggested: Option<Reason>, th: Thresholds) -> Sharpness {
+    if score.confidence < MIN_CONFIDENCE {
+        Sharpness::NotChecked
+    } else if suggested.is_some() || score.sharpness < th.abs {
+        Sharpness::Blurry
+    } else if score.sharpness < th.abs * SOFT_FACTOR {
+        Sharpness::Soft
+    } else {
+        Sharpness::Sharp
+    }
+}
+
 /// File types that come from cameras. Others (PNG screenshots, GIFs, BMPs) are never
 /// suggested (plan §15.1 "never flag").
 pub fn is_camera_format(path: &str) -> bool {
@@ -137,6 +155,41 @@ pub fn is_camera_format(path: &str) -> bool {
         ext.as_str(),
         "jpg" | "jpeg" | "heic" | "heif" | "tif" | "tiff" | "webp"
     )
+}
+
+#[cfg(test)]
+mod sharpness_word_tests {
+    use super::*;
+
+    fn sc(sharpness: f32, confidence: f32) -> Score {
+        Score {
+            sharpness,
+            global: sharpness,
+            motion: 0.1,
+            mean_luma: 0.5,
+            confidence,
+        }
+    }
+
+    #[test]
+    fn words_follow_the_normal_thresholds() {
+        let th = Thresholds::for_sensitivity(Sensitivity::Normal); // abs 13
+        assert_eq!(sharpness_word(&sc(100.0, 1.0), None, th), Sharpness::Sharp);
+        assert_eq!(sharpness_word(&sc(26.0, 1.0), None, th), Sharpness::Sharp);
+        assert_eq!(sharpness_word(&sc(20.0, 1.0), None, th), Sharpness::Soft);
+        assert_eq!(sharpness_word(&sc(12.0, 1.0), None, th), Sharpness::Blurry);
+        assert_eq!(
+            sharpness_word(&sc(100.0, 1.0), Some(Reason::Burst), th),
+            Sharpness::Blurry
+        );
+        assert_eq!(
+            sharpness_word(&sc(1.0, 0.2), None, th),
+            Sharpness::NotChecked
+        );
+        // High sensitivity calls more photos soft
+        let hi = Thresholds::for_sensitivity(Sensitivity::High); // abs 25
+        assert_eq!(sharpness_word(&sc(40.0, 1.0), None, hi), Sharpness::Soft);
+    }
 }
 
 #[cfg(test)]

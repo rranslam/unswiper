@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rob Ranslam
 
-//! Date metadata: EXIF/TIFF for stills, QuickTime/MP4 for videos, folder names (plan §7).
+//! Metadata: dates (EXIF/TIFF for stills, QuickTime/MP4 for videos, folder names; plan §7) and the
+//! photo info view (plan §17).
 
 pub mod exif;
 pub mod folder_date;
+pub mod info;
 pub mod quicktime;
 
 use crate::time::Timestamp;
