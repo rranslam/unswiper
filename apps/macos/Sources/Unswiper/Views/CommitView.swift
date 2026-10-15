@@ -52,6 +52,15 @@ struct CommitView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
 
+            let suggested = rejects.filter(BlurRules.isSuggested).count
+            if suggested > 0 {
+                Label(suggested == 1
+                      ? "1 of them was suggested as blurry by Unswiper. Press Cancel to look at it first."
+                      : "\(suggested) of them were suggested as blurry by Unswiper. Press Cancel to look at them first.",
+                      systemImage: "camera.metering.unknown")
+                    .foregroundStyle(.orange)
+            }
+
             if !undecided.isEmpty {
                 Label("\(undecided.count) still undecided — they will not be moved.", systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.orange)

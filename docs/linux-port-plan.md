@@ -354,6 +354,24 @@ Blur detection end to end on Linux plus the core. Decisions taken while building
 - **Accuracy gate:** synthetic only for now (`crates/unswiper-blur/tests/accuracy.rs`, generated scenes: sharp, defocus, motion, bokeh-sharp, night, low-texture, faint, bursts). Currently precision 1.00 and recall 0.98 against the ≥ 0.95 / ≥ 0.70 gate. **Calibration on real photos is still needed** before release: a labeled set of ~60–100 of Rob's photos.
 - **Not in M1:** Mac app parity (bridge choice UniFFI vs CLI helper still open), the cross-check test Rust vs Mac, `criterion` benchmark, AppImage/Flatpak shipping of the `unswiper-blur` CLI.
 
+### 15.10 v0.3 milestone 3 — calibration and Mac parity (15 Oct 2026)
+- **Calibration:** 85 of Rob's real photos (not committed). The shake rule flagged sharp seascapes and panels, so anisotropy went 0.5 → 0.7 and the floors went 8/15/30 → 7/13/25. False positives on sharp photos are now Low 1.3 %, Normal 6.4 %, High 12.8 % (were 6.4 / 14.1 / 23.1 %). Full numbers and the method are in `docs/blur-evaluation.md`.
+- **Mac bridge: bundled CLI helper**, not UniFFI. `Unswiper.app/Contents/MacOS/unswiper-blur` is a universal Rust build without libheif; it reads HEIC through macOS `sips`.
+  - The app saves library.json, then runs `unswiper-blur scan library.json --json --write-cache --sensitivity S --only <visit list>` for the open visit, then once more for the whole library. It applies the verdict in Swift with `BlurRules`, a line-for-line port of `unswiper_core::quality`.
+  - Why the helper: it needs no FFI, no Xcode project change and no Swift–Rust ABI. It shares the score cache (`quality-cache.json`) and the rules with Linux. A crash in the helper can't take the app down.
+  - The cost is one process per check, which is cheap because cached scores aren't recomputed.
+- **Mac library.json** now models `decisionSource`/`blurDismissed` (items) and `blurDetection`/`blurSensitivity` (config), so they survive Mac saves. Before this, a Mac save dropped them. Other unknown keys are still dropped by the Mac app; that's tracked for 1.0.
+- **Mac UI:**
+  - an orange **Blurry?** badge
+  - an All/Photos/Videos/**Blurry** filter
+  - a per-visit **Blurry?** menu
+  - a **Blurry Photos** menu bar menu
+  - **U**/Clear in the grid
+  - a commit-sheet note
+  - a "Checking sharpness…" line
+  - a Help page (13 topics)
+- **Tests:** XCTest for the rules (same cases as Rust), key round-trip, the AppState flow with a fake checker, helper argument and JSON parsing, and an end-to-end test with the real helper. CI builds the helper and sets `UNSWIPER_BLUR_HELPER`. The Mac CI now also runs on `v*` branches.
+
 ## 16. Video playback during review (new feature, Rob 14 Oct 2026; M2 built 15 Oct 2026, see §16.8)
 
 Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a clip means opening it in another app. Users need to play videos inside Unswiper while reviewing a visit, on both Linux and Mac. Nothing here is implemented yet.

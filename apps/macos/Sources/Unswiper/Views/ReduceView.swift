@@ -13,13 +13,14 @@ struct ReduceView: View {
     @State private var viewer = ViewerModel()
 
     enum MediaFilter: String, CaseIterable, Identifiable {
-        case all, photos, videos
+        case all, photos, videos, blurry
         var id: String { rawValue }
         var label: String {
             switch self {
             case .all: return "All"
             case .photos: return "Photos"
             case .videos: return "Videos"
+            case .blurry: return "Blurry"
             }
         }
     }
@@ -35,6 +36,7 @@ struct ReduceView: View {
         case .all: return all
         case .photos: return all.filter { $0.kind == .photo }
         case .videos: return all.filter { $0.kind == .video }
+        case .blurry: return all.filter(BlurRules.isSuggested)
         }
     }
 
@@ -108,11 +110,28 @@ struct ReduceView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 260)
+                .frame(maxWidth: 320)
+                .help("Blurry shows only the photos Unswiper suggested as blurry")
+                blurMenu(group)
             }
             .font(.subheadline)
         }
         .padding()
+    }
+
+    private func blurMenu(_ group: VisitGroup) -> some View {
+        let n = state.suggestedPaths(in: group).count
+        return Menu {
+            Button("Not Blurry: Clear Suggestions in This Visit") { state.dismissSuggestions(in: group.id) }
+                .disabled(n == 0)
+            Button("Reject All Blurry Suggestions in This Visit") { state.confirmSuggestions(in: group.id) }
+                .disabled(n == 0)
+        } label: {
+            Label(n == 0 ? "Blurry" : "Blurry? \(n)", systemImage: "camera.metering.unknown")
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .help("Photos suggested as blurry in this visit")
     }
 
     private var grid: some View {
@@ -128,7 +147,7 @@ struct ReduceView: View {
                     .contextMenu {
                         Button("Keep") { state.updateDecision(paths: [item.path], decision: .keep) }
                         Button("Reject") { state.updateDecision(paths: [item.path], decision: .reject) }
-                        Button("Clear") { state.updateDecision(paths: [item.path], decision: .undecided) }
+                        Button(BlurRules.isSuggested(item) ? "Clear (Not Blurry)" : "Clear") { state.updateDecision(paths: [item.path], decision: .undecided) }
                     }
                 }
             }
@@ -146,6 +165,9 @@ struct ReduceView: View {
                 .disabled(selected.isEmpty)
             Button("Reject") { apply(.reject) }
                 .keyboardShortcut("r", modifiers: [])
+                .disabled(selected.isEmpty)
+            Button("Clear") { apply(.undecided) }
+                .keyboardShortcut("u", modifiers: [])
                 .disabled(selected.isEmpty)
             Button("View") { viewer.openOnSelection(selected, in: members.map(\.path)) }
                 .keyboardShortcut(.space, modifiers: [])
@@ -189,6 +211,18 @@ struct MediaCell: View {
             ZStack(alignment: .topTrailing) {
                 ThumbnailView(url: item.fileURL, size: 110)
                     .clipShape(RoundedRectangle(cornerRadius: 6))
+                    .overlay(alignment: .topLeading) {
+                        if BlurRules.isSuggested(item) {
+                            Text("Blurry?")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .background(.orange, in: Capsule())
+                                .padding(4)
+                                .help("Unswiper thinks this photo is blurry and marked it Reject. Press K to keep it, or U if it isn't blurry.")
+                        }
+                    }
                     .opacity(item.decision == .reject ? 0.35 : 1)
                     .overlay {
                         RoundedRectangle(cornerRadius: 6)

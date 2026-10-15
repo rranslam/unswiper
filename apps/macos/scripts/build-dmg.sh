@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: MIT
-# Builds Unswiper.app (release, universal if possible), ad-hoc signs it,
+# Builds Unswiper.app (release, universal if possible) with the bundled unswiper-blur helper
+# (needs Rust/cargo), ad-hoc signs it,
 # and packages dist/Unswiper-<version>.dmg.
 # Usage: apps/macos/scripts/build-dmg.sh [version]
 set -euo pipefail
@@ -27,10 +28,29 @@ else
   BIN_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
 fi
 
+echo "==> Building the blur checker helper (Rust unswiper-blur, no libheif: HEIC goes through sips)"
+REPO="$(cd "$PKG_DIR/../.." && pwd)"
+HELPER_OUT="$(mktemp -d)/unswiper-blur"
+command -v cargo >/dev/null || { echo "!! cargo not found: install Rust from https://rustup.rs" >&2; exit 1; }
+built=()
+for target in aarch64-apple-darwin x86_64-apple-darwin; do
+  rustup target add "$target" >/dev/null 2>&1 || true
+  if cargo build --manifest-path "$REPO/Cargo.toml" --release -p unswiper-blur --no-default-features --target "$target"; then
+    built+=("$REPO/target/$target/release/unswiper-blur")
+  else
+    echo "!! unswiper-blur for $target failed"
+  fi
+done
+[ "${#built[@]}" -gt 0 ] || { echo "!! no unswiper-blur build" >&2; exit 1; }
+lipo -create -output "$HELPER_OUT" "${built[@]}"
+
 echo "==> Assembling $APP"
 rm -rf "$DIST"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+# The app finds the helper next to its executable (BlurHelper.locate).
+cp "$HELPER_OUT" "$APP/Contents/MacOS/unswiper-blur"
+chmod 755 "$APP/Contents/MacOS/unswiper-blur"
 # Copy any SwiftPM resource bundles next to the binary.
 find "$BIN_DIR" -maxdepth 1 -name '*.bundle' -exec cp -R {} "$APP/Contents/Resources/" \;
 if [ ! -d "$APP/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle" ]; then
@@ -85,5 +105,7 @@ rm -rf "$STAGE"
 
 echo "==> Done: $DMG"
 lipo -info "$APP/Contents/MacOS/$APP_NAME" || true
+lipo -info "$APP/Contents/MacOS/unswiper-blur" || true
+"$APP/Contents/MacOS/unswiper-blur" --version
 echo "==> Help self-test"
 "$APP/Contents/MacOS/$APP_NAME" --help-selftest
