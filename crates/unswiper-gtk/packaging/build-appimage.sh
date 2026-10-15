@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Rob Ranslam
 #
-# Builds Unswiper-x86_64.AppImage with linuxdeploy + its GTK and GStreamer plugins.
+# Builds Unswiper-$ARCH.AppImage (ARCH = uname -m: x86_64 or aarch64; build natively on that arch) with linuxdeploy + its GTK and GStreamer plugins.
 # Build on the oldest distro you support (CI: Ubuntu 24.04 = GTK 4.14, libadwaita 1.5).
 #
 # Bundled: GTK 4, libadwaita, libheif + libde265, GStreamer core and the plugins needed for video
@@ -13,7 +13,7 @@
 #   libgstreamer-plugins-base1.0-dev, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good,
 #   gstreamer1.0-plugins-bad (parsers), gstreamer1.0-libav, librsvg2-common (SVG icon loader),
 #   dpkg-dev (used by the GTK plugin), wget, file, patchelf.
-# Output: $OUT_DIR (default target/appimage)/Unswiper-x86_64.AppImage
+# Output: $OUT_DIR (default target/appimage)/Unswiper-<arch>.AppImage
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 root="$(cd "$here/../.." && pwd)"
@@ -27,8 +27,10 @@ target_dir="${CARGO_TARGET_DIR:-$root/target}"
 bin="$target_dir/release/unswiper"
 version="$("$bin" --version | cut -d' ' -f2)"
 
+ARCH="${ARCH:-$(uname -m)}"
+case "$ARCH" in x86_64|aarch64) ;; *) echo "unsupported arch $ARCH" >&2; exit 1;; esac
 fetch() { [ -s "$tools/$1" ] || { wget -q -O "$tools/$1" "$2"; chmod +x "$tools/$1"; }; }
-fetch linuxdeploy-x86_64.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+fetch linuxdeploy-$ARCH.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$ARCH.AppImage
 fetch linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
 fetch linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
 
@@ -56,7 +58,7 @@ done
 export GSTREAMER_PLUGINS_DIR="$out/gst-plugins"
 export GSTREAMER_HELPERS_DIR="$(pkg-config --variable=pluginscannerdir gstreamer-1.0)"
 
-linuxdeploy-x86_64.AppImage --appdir "$appdir" --plugin gtk --plugin gstreamer \
+linuxdeploy-$ARCH.AppImage --appdir "$appdir" --plugin gtk --plugin gstreamer \
   --desktop-file "$appdir/usr/share/applications/$id.desktop" \
   --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/$id.png"
 
@@ -66,6 +68,6 @@ sed -i '/GDK_BACKEND=x11/d' "$appdir"/apprun-hooks/*gtk*.sh
 ! grep -rn 'GDK_BACKEND' "$appdir/apprun-hooks/"
 
 rm -f "$out"/Unswiper*.AppImage
-VERSION="$version" LDAI_OUTPUT="Unswiper-x86_64.AppImage" \
-  linuxdeploy-x86_64.AppImage --appdir "$appdir" --output appimage
-ls -l "$out/Unswiper-x86_64.AppImage"
+VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \
+  linuxdeploy-$ARCH.AppImage --appdir "$appdir" --output appimage
+ls -l "$out/Unswiper-$ARCH.AppImage"

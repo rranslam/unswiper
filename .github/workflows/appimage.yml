@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Rob Ranslam
-# Builds Unswiper-x86_64.AppImage on Ubuntu 24.04, smoke-tests it under Xvfb and uploads it as an
-# artifact. Also called by release.yml. Nothing is published here.
+# Builds Unswiper-x86_64.AppImage and Unswiper-aarch64.AppImage natively (ubuntu-24.04 and ubuntu-24.04-arm),
+# smoke-tests each under Xvfb and uploads them as artifacts. Also called by release.yml. Nothing is published here.
 name: AppImage
 
 on:
@@ -15,7 +15,14 @@ on:
 
 jobs:
   appimage:
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    name: appimage (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Install build dependencies
@@ -35,7 +42,7 @@ jobs:
           ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x240:rate=10 -t 1 -c:v libx264 -pix_fmt yuv420p "$T/lib/clip.mov"
           ffmpeg -loglevel error -y -f lavfi -i testsrc=size=320x240 -frames:v 1 "$T/lib/IMG_0001.jpg"
           # env -i runs inside xvfb-run's shell so DISPLAY/XAUTHORITY (set by xvfb-run) survive the wipe.
-          T="$T" A="$PWD/target/appimage/Unswiper-x86_64.AppImage" xvfb-run -a sh -c \
+          T="$T" A="$PWD/target/appimage/Unswiper-${{ matrix.arch }}.AppImage" xvfb-run -a sh -c \
             'exec env -i PATH=/usr/bin:/bin HOME="$T/home" DISPLAY="$DISPLAY" XAUTHORITY="$XAUTHORITY" \
               APPIMAGE_EXTRACT_AND_RUN=1 "$A" --open "$T/lib" --open-first-visit --quit-after 12'
           test -s "$T/home/.local/share/unswiper/library.json"
@@ -43,6 +50,6 @@ jobs:
           test -n "$(ls -A "$T/home/.cache/unswiper/thumbs")"
       - uses: actions/upload-artifact@v4
         with:
-          name: Unswiper-x86_64.AppImage
-          path: target/appimage/Unswiper-x86_64.AppImage
+          name: Unswiper-${{ matrix.arch }}.AppImage
+          path: target/appimage/Unswiper-${{ matrix.arch }}.AppImage
           if-no-files-found: error
