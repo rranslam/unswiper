@@ -1987,6 +1987,7 @@ dependencies = [
  "gstreamer-app",
  "gstreamer-video",
  "image",
+ "kamadak-exif",
  "libheif-rs",
  "relm4",
  "serde_json",

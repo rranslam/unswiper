@@ -37,3 +37,4 @@ gst-video = { package = "gstreamer-video", version = "0.24", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+kamadak-exif = "0.5"

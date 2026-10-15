@@ -18,6 +18,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use unswiper_blur::decide::Thresholds;
 use unswiper_core::index::{index, MetadataDates};
+use unswiper_core::meta::info::{MediaInfo, Row};
 use unswiper_core::quality::Sensitivity;
 use unswiper_core::store::{default_support_dir, LibraryStore};
 use unswiper_core::trash::FreedesktopTrash;
@@ -43,6 +44,9 @@ pub struct Options {
     /// Open the viewer on the first video after the first visit opens (smoke test) and print
     /// `viewer: prepared duration_ms=N` or `viewer: error …` to stdout.
     pub present_viewer: bool,
+    /// Select the first item of the first visit, open the photo info inspector and the
+    /// right-click popover, and print the rows (`info: <group> | <label> | <value>`) to stdout.
+    pub present_info: bool,
 }
 
 pub fn run(opts: Options) {
@@ -154,6 +158,11 @@ pub enum Msg {
     ViewerOpenExternal,
     SetLiveMotion(bool),
     Duration(u64, String, u64),
+    ToggleInfo,
+    SetShowLocation(bool),
+    InfoRead(String, Box<MediaInfo>),
+    InfoPopover(String),
+    OpenMaps(String),
 }
 
 pub struct App {
@@ -167,6 +176,13 @@ pub struct App {
     /// Viewer already reported to stdout (--present-viewer).
     viewer_reported: Rc<Cell<bool>>,
     viewer_presented: bool,
+    /// Photo info read so far (memory only, plan §17.1 privacy).
+    info_cache: crate::info::InfoCache,
+    info_pending: HashSet<String>,
+    /// Blur scores for the info "Sharpness" row, reloaded after each blur scan.
+    quality: unswiper_blur::cache::QualityCache,
+    /// --present-info: 0 = not yet, 1 = waiting for the rows, 2 = reported.
+    info_report: u8,
 }
 
 pub struct Widgets {
@@ -192,6 +208,19 @@ pub struct Widgets {
     blur_status: gtk::Label,
     live_action: gio::SimpleAction,
     syncing: Rc<Cell<bool>>,
+    info: InfoWidgets,
+}
+
+/// Photo info inspector (right-hand sidebar) and the Compare strip (plan §17.2).
+pub struct InfoWidgets {
+    split: adw::OverlaySplitView,
+    title: gtk::Label,
+    body: gtk::Box,
+    strip: gtk::Label,
+    action: gio::SimpleAction,
+    location_action: gio::SimpleAction,
+    /// What the panel shows now: (path, rows), so unchanged state doesn't rebuild it.
+    shown: Option<(String, Vec<Row>, String)>,
 }
 
 /// The full-size viewer page (plan §16.1).
@@ -342,6 +371,13 @@ impl Component for App {
         view.append(Some("Open Viewer (Space)"), Some("win.viewer"));
         view.append(Some("Play Live Photo Motion"), Some("win.live-motion"));
         menu.append_section(Some("Viewer"), &view);
+        let info_menu = gio::Menu::new();
+        info_menu.append(Some("Show Photo Info (I)"), Some("win.info"));
+        info_menu.append(
+            Some("Show Location in Photo Info"),
+            Some("win.info-location"),
+        );
+        menu.append_section(Some("Photo Info"), &info_menu);
         let app_sec = gio::Menu::new();
         app_sec.append(Some("Keyboard Shortcuts & Help"), Some("win.help"));
         app_sec.append(Some("About Unswiper"), Some("win.about"));
@@ -427,6 +463,26 @@ impl Component for App {
             });
         }
         root.add_action(&live_action);
+        let info_action = gio::SimpleAction::new_stateful("info", None, &false.to_variant());
+        {
+            let s = sender.clone();
+            info_action.connect_activate(move |_, _| s.input(Msg::ToggleInfo));
+        }
+        root.add_action(&info_action);
+        let info_location_action = gio::SimpleAction::new_stateful(
+            "info-location",
+            None,
+            &state.show_location().to_variant(),
+        );
+        {
+            let s = sender.clone();
+            info_location_action.connect_activate(move |a, _| {
+                let on = !a.state().and_then(|v| v.get::<bool>()).unwrap_or(true);
+                a.set_state(&on.to_variant());
+                s.input(Msg::SetShowLocation(on));
+            });
+        }
+        root.add_action(&info_location_action);
         let blur_status = gtk::Label::builder()
             .css_classes(["dim-label", "caption"])
             .visible(false)
@@ -448,6 +504,8 @@ impl Component for App {
         shortcut(&ctl, "<Control>w", &sender, || Msg::Quit);
         shortcut(&ctl, "<Control>q", &sender, || Msg::Quit);
         shortcut(&ctl, "Escape", &sender, || Msg::CloseViewer);
+        shortcut(&ctl, "i", &sender, || Msg::ToggleInfo);
+        shortcut(&ctl, "<Control>i", &sender, || Msg::ToggleInfo);
         root.add_controller(ctl);
         let vctl = gtk::ShortcutController::new();
         vctl.set_scope(gtk::ShortcutScope::Managed);
@@ -702,9 +760,76 @@ impl Component for App {
         }
         bar.pack_end(&commit_button);
 
+        // Photo info inspector: a sidebar on the right of the grid/viewer, closed at start.
+        let info_title = gtk::Label::builder()
+            .css_classes(["heading"])
+            .xalign(0.0)
+            .wrap(true)
+            .wrap_mode(gtk::pango::WrapMode::WordChar)
+            .build();
+        let info_body = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(18)
+            .build();
+        let info_close = gtk::Button::builder()
+            .icon_name("window-close-symbolic")
+            .tooltip_text("Hide Photo Info (I)")
+            .css_classes(["flat", "circular"])
+            .valign(gtk::Align::Start)
+            .build();
+        {
+            let s = sender.clone();
+            info_close.connect_clicked(move |_| s.input(Msg::ToggleInfo));
+        }
+        let info_head = gtk::Box::builder().spacing(6).build();
+        info_title.set_hexpand(true);
+        info_head.append(&info_title);
+        info_head.append(&info_close);
+        let info_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(12)
+            .margin_bottom(12)
+            .build();
+        info_box.append(&info_head);
+        info_box.append(&info_body);
+        let info_scroll = gtk::ScrolledWindow::builder()
+            .child(&info_box)
+            .hscrollbar_policy(gtk::PolicyType::Never)
+            .build();
+        let split = adw::OverlaySplitView::builder()
+            .content(&content)
+            .sidebar(&info_scroll)
+            .sidebar_position(gtk::PackType::End)
+            .show_sidebar(false)
+            .min_sidebar_width(260.0)
+            .max_sidebar_width(360.0)
+            .vexpand(true)
+            .build();
+        // Narrow windows: the inspector floats over the grid instead of squeezing it.
+        if let Ok(cond) = adw::BreakpointCondition::parse("max-width: 1100sp") {
+            let bp = adw::Breakpoint::new(cond);
+            bp.add_setter(&split, "collapsed", Some(&true.to_value()));
+            root.add_breakpoint(bp);
+        }
+        // Compare strip: one line of settings for the selected item only.
+        let strip = gtk::Label::builder()
+            .css_classes(["caption", "dim-label"])
+            .xalign(0.0)
+            .margin_start(18)
+            .margin_end(18)
+            .margin_top(4)
+            .ellipsize(gtk::pango::EllipsizeMode::End)
+            .selectable(true)
+            .visible(false)
+            .build();
+
         let right = gtk::Box::new(gtk::Orientation::Vertical, 0);
         right.append(&top);
-        right.append(&content);
+        right.append(&split);
+        right.append(&strip);
         right.append(&bar);
         let paned = gtk::Paned::builder()
             .start_child(&side)
@@ -744,6 +869,10 @@ impl Component for App {
             blur_cancel: None,
             viewer_reported: Rc::new(Cell::new(false)),
             viewer_presented: false,
+            info_cache: Default::default(),
+            info_pending: HashSet::new(),
+            quality: Default::default(),
+            info_report: 0,
         };
         let mut widgets = Widgets {
             toasts,
@@ -779,7 +908,17 @@ impl Component for App {
             blur_status,
             live_action,
             syncing,
+            info: InfoWidgets {
+                split,
+                title: info_title,
+                body: info_body,
+                strip,
+                action: info_action,
+                location_action: info_location_action,
+                shown: None,
+            },
         };
+        model.reload_quality();
 
         if let Some(p) = model.state.load_problem.take() {
             widgets.toasts.add_toast(adw::Toast::new(&p));
@@ -791,6 +930,7 @@ impl Component for App {
             model.start_blur(&sender);
         }
         model.refresh(&mut widgets);
+        model.render_info(&mut widgets, &sender, &root);
         if !model.state.pending_commits().is_empty() {
             let d = adw::AlertDialog::new(
                 Some("Unfinished Commit"),
@@ -906,6 +1046,21 @@ impl Component for App {
                         match first_video {
                             Some(p) => sender.input(Msg::OpenViewer(p)),
                             None => println!("viewer: error no video in the first visit"),
+                        }
+                    }
+                    if self.opts.present_info && self.info_report == 0 {
+                        self.info_report = 1;
+                        if let Some(p) = self.state.visible_items().first().map(|i| i.path.clone())
+                        {
+                            self.state.click(&p, false, false);
+                            // Like a user pressing I once the window is shown.
+                            let s = sender.clone();
+                            glib::timeout_add_local_once(
+                                std::time::Duration::from_millis(800),
+                                move || s.input(Msg::ToggleInfo),
+                            );
+                        } else {
+                            println!("info: error empty visit");
                         }
                     }
                 }
@@ -1032,6 +1187,8 @@ impl Component for App {
                 if last {
                     w.blur_status.set_visible(false);
                     self.blur_cancel = None;
+                    self.reload_quality();
+                    w.info.shown = None;
                 }
                 let r = self.state.apply_blur(&flagged, &scored);
                 changed = r.suggested + r.withdrawn > 0;
@@ -1157,6 +1314,26 @@ impl Component for App {
                     }
                 }
             }
+            Msg::ToggleInfo => {
+                self.state.info_open = !self.state.info_open;
+            }
+            Msg::SetShowLocation(on) => {
+                self.state.set_show_location(on);
+            }
+            Msg::InfoRead(path, info) => {
+                changed = false;
+                self.info_pending.remove(&path);
+                self.info_cache.insert(path, *info);
+            }
+            Msg::InfoPopover(path) => {
+                changed = false;
+                self.show_info_popover(w, &sender, &path);
+            }
+            Msg::OpenMaps(url) => {
+                changed = false;
+                // Only ever on the user's click: this is the one action that sends a location out.
+                gtk::UriLauncher::new(&url).launch(Some(root), None::<&gio::Cancellable>, |_| {});
+            }
             Msg::Quit => {
                 changed = false;
                 if let Some(c) = &self.blur_cancel {
@@ -1171,6 +1348,10 @@ impl Component for App {
         }
         if changed {
             self.refresh(w);
+            w.info.action.set_state(&self.state.info_open.to_variant());
+            w.info
+                .location_action
+                .set_state(&self.state.show_location().to_variant());
             if self.state.needs_save() && !self.save_scheduled {
                 self.save_scheduled = true;
                 let s = sender.clone();
@@ -1179,10 +1360,251 @@ impl Component for App {
                 });
             }
         }
+        self.render_info(w, &sender, root);
     }
 }
 
 impl App {
+    fn reload_quality(&mut self) {
+        self.quality = unswiper_blur::cache::QualityCache::load(
+            &unswiper_blur::cache::QualityCache::path_in(self.state.store.support_dir()),
+        );
+    }
+
+    /// Rows for `item` if its info has been read; otherwise starts reading it in the background.
+    fn info_rows(&mut self, item: &MediaItem, sender: &ComponentSender<Self>) -> Option<Vec<Row>> {
+        if let Some(media) = self.info_cache.get(&item.path) {
+            let sharp = crate::info::sharpness(
+                item,
+                &self.quality,
+                self.state.blur_sensitivity(),
+                self.state.blur_enabled(),
+            );
+            return Some(crate::info::rows(
+                item,
+                media,
+                self.state.show_location(),
+                sharp,
+            ));
+        }
+        if self.info_pending.insert(item.path.clone()) {
+            let tx = sender.input_sender().clone();
+            let path = item.path.clone();
+            std::thread::spawn(move || {
+                let info = crate::info::read(&path);
+                tx.emit(Msg::InfoRead(path, Box::new(info)));
+            });
+        }
+        None
+    }
+
+    /// Syncs the inspector panel and the Compare strip with the selection / viewer item.
+    fn render_info(
+        &mut self,
+        w: &mut Widgets,
+        sender: &ComponentSender<Self>,
+        _root: &adw::ApplicationWindow,
+    ) {
+        let open = self.state.info_open && self.state.visit.is_some();
+        w.info.split.set_show_sidebar(open);
+        w.info.action.set_state(&self.state.info_open.to_variant());
+        let target = self
+            .state
+            .info_target()
+            .map(|(it, others)| (it.clone(), others));
+        let Some((item, others)) = target else {
+            w.info.strip.set_visible(false);
+            if w.info.shown.take().is_some() || w.info.title.label().is_empty() {
+                w.info.title.set_label("Photo Info");
+                clear_box(&w.info.body);
+                w.info.body.append(
+                    &gtk::Label::builder()
+                        .label("Select a photo or video to see its camera, settings, date, size and location.")
+                        .wrap(true)
+                        .xalign(0.0)
+                        .css_classes(["dim-label"])
+                        .build(),
+                );
+            }
+            return;
+        };
+        let heading = crate::info::heading(&item, others);
+        let rows = self.info_rows(&item, sender);
+        let strip = match (&rows, self.info_cache.get(&item.path)) {
+            (Some(_), Some(media)) => {
+                let sharp = crate::info::sharpness(
+                    &item,
+                    &self.quality,
+                    self.state.blur_sensitivity(),
+                    self.state.blur_enabled(),
+                );
+                unswiper_core::meta::info::strip(media, sharp)
+            }
+            _ => String::new(),
+        };
+        w.info.strip.set_label(&strip);
+        w.info
+            .strip
+            .set_visible(!strip.is_empty() && self.state.viewer.is_none());
+        let Some(rows) = rows else {
+            w.info.title.set_label(&heading);
+            clear_box(&w.info.body);
+            w.info.body.append(
+                &gtk::Label::builder()
+                    .label("Reading…")
+                    .xalign(0.0)
+                    .css_classes(["dim-label"])
+                    .build(),
+            );
+            w.info.shown = None;
+            return;
+        };
+        if self.info_report == 1 && open {
+            self.info_report = 2;
+            print!("{}", crate::info::report(&rows));
+            println!("info: panel open");
+            let path = item.path.clone();
+            let s = sender.clone();
+            glib::idle_add_local_once(move || s.input(Msg::InfoPopover(path)));
+        }
+        let key = (item.path.clone(), rows.clone(), heading.clone());
+        if w.info.shown.as_ref() == Some(&key) {
+            return;
+        }
+        w.info.title.set_label(&heading);
+        clear_box(&w.info.body);
+        for (title, group) in crate::info::grouped(&rows, false) {
+            let g = adw::PreferencesGroup::builder().title(title).build();
+            for r in group {
+                let row = adw::ActionRow::builder()
+                    .title(glib::markup_escape_text(&r.label))
+                    .subtitle(glib::markup_escape_text(&r.value))
+                    .subtitle_selectable(true)
+                    .css_classes(["property"])
+                    .build();
+                if r.label == "Coordinates" {
+                    if let Some(g) = self.info_cache.get(&item.path).and_then(|m| m.gps) {
+                        let b = gtk::Button::builder()
+                            .icon_name("mark-location-symbolic")
+                            .tooltip_text("Open in Maps (opens OpenStreetMap in your browser)")
+                            .valign(gtk::Align::Center)
+                            .css_classes(["flat"])
+                            .build();
+                        let s = sender.clone();
+                        let url = unswiper_core::meta::info::maps_url(&g);
+                        b.connect_clicked(move |_| s.input(Msg::OpenMaps(url.clone())));
+                        row.add_suffix(&b);
+                    }
+                }
+                g.add(&row);
+            }
+            if title == "Location" {
+                g.set_description(Some(
+                    "Shown only on this computer. Turn off in the menu: Show Location in Photo Info.",
+                ));
+            }
+            w.info.body.append(&g);
+        }
+        w.info.shown = Some(key);
+    }
+
+    /// Right-click → Show Info: a compact popover next to the tile.
+    fn show_info_popover(&mut self, w: &mut Widgets, sender: &ComponentSender<Self>, path: &str) {
+        let Some(item) = self.state.item(path).cloned() else {
+            return;
+        };
+        let Some((cell, _, _)) = w.cells.get(path) else {
+            return;
+        };
+        if self.info_cache.get(path).is_none() {
+            // A single EXIF/moov read is fast; read it right away for the popover.
+            self.info_cache
+                .insert(path.to_string(), crate::info::read(path));
+        }
+        let Some(rows) = self.info_rows(&item, sender) else {
+            return;
+        };
+        let content = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(8)
+            .margin_start(6)
+            .margin_end(6)
+            .margin_top(6)
+            .margin_bottom(6)
+            .build();
+        content.append(
+            &gtk::Label::builder()
+                .label(item.file_name())
+                .css_classes(["heading"])
+                .xalign(0.0)
+                .build(),
+        );
+        let grid = gtk::Grid::builder()
+            .row_spacing(4)
+            .column_spacing(12)
+            .build();
+        let short: Vec<&Row> = crate::info::grouped(&rows, true)
+            .into_iter()
+            .flat_map(|(_, v)| v)
+            .collect();
+        for (i, r) in short.iter().enumerate() {
+            grid.attach(
+                &gtk::Label::builder()
+                    .label(&r.label)
+                    .xalign(1.0)
+                    .css_classes(["dim-label"])
+                    .build(),
+                0,
+                i as i32,
+                1,
+                1,
+            );
+            grid.attach(
+                &gtk::Label::builder()
+                    .label(&r.value)
+                    .xalign(0.0)
+                    .max_width_chars(40)
+                    .wrap(true)
+                    .build(),
+                1,
+                i as i32,
+                1,
+                1,
+            );
+        }
+        content.append(&grid);
+        let more = gtk::Button::builder()
+            .label("Show All Info (I)")
+            .css_classes(["flat"])
+            .halign(gtk::Align::End)
+            .build();
+        let pop = gtk::Popover::builder()
+            .child(&content)
+            .position(gtk::PositionType::Right)
+            .build();
+        pop.set_parent(cell);
+        {
+            let s = sender.clone();
+            let p = path.to_string();
+            let pp = pop.clone();
+            more.connect_clicked(move |_| {
+                pp.popdown();
+                s.input(Msg::Click(p.clone(), false, false));
+                s.input(Msg::ToggleInfo);
+            });
+        }
+        content.append(&more);
+        pop.connect_closed(|p| {
+            let p = p.clone();
+            glib::idle_add_local_once(move || p.unparent());
+        });
+        pop.popup();
+        if self.info_report == 2 {
+            self.info_report = 3;
+            println!("info: popover rows={}", short.len());
+        }
+    }
+
     /// (Re)starts the background blur scan if the setting is on.
     fn start_blur(&mut self, sender: &ComponentSender<Self>) {
         if let Some(c) = self.blur_cancel.take() {
@@ -1395,6 +1817,13 @@ impl App {
                 ));
             });
             cell.add_controller(click);
+            let menu_click = gtk::GestureClick::builder()
+                .button(gdk::BUTTON_SECONDARY)
+                .build();
+            let s = sender.clone();
+            let p = it.path.clone();
+            menu_click.connect_pressed(move |_, _, _, _| s.input(Msg::InfoPopover(p.clone())));
+            cell.add_controller(menu_click);
             w.grid.append(&cell);
             w.cells.insert(it.path.clone(), (cell, pic, badge));
         }
@@ -1566,6 +1995,12 @@ impl App {
             format!("Review & Commit {}…", plan.items)
         });
         w.syncing.set(false);
+    }
+}
+
+fn clear_box(b: &gtk::Box) {
+    while let Some(c) = b.first_child() {
+        b.remove(&c);
     }
 }
 
