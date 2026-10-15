@@ -2,7 +2,7 @@
 # Copyright (c) 2026 Rob Ranslam
 [workspace]
 resolver = "2"
-members = ["crates/unswiper-core", "crates/unswiper-cli", "crates/unswiper-gtk"]
+members = ["crates/unswiper-core", "crates/unswiper-blur", "crates/unswiper-cli", "crates/unswiper-gtk"]
 
 [workspace.package]
 version = "0.2.0"

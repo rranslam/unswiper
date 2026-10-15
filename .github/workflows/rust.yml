@@ -82,8 +82,8 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: GTK 4 / libadwaita / libheif headers
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgtk-4-dev libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-      - name: Core coverage (gate 85% lines)
-        run: cargo llvm-cov --package unswiper-core --fail-under-lines 85 --summary-only
+      - name: Core + blur coverage (gate 85% lines)
+        run: cargo llvm-cov --package unswiper-core --package unswiper-blur --fail-under-lines 85 --summary-only
       # Approved exclusion (Rob, 2026-10-14): the relm4 widget layer (ui.rs, main.rs) needs a display
       # and is covered by the xvfb smoke test, not line coverage. All GUI logic lives in
       # state/help/thumbs/format/icons and is counted.

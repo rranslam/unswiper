@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+[package]
+name = "unswiper-blur"
+description = "Blur / out-of-focus detection for Unswiper: tiled Laplacian sharpness, burst-relative suggestions, score cache and CLI (plan §15)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "unswiper-blur"
+path = "src/bin/unswiper-blur.rs"
+
+[features]
+default = ["heif"]
+# HEIC/HEIF through libheif (same as the GTK app; required for release builds).
+heif = ["dep:libheif-rs"]
+
+[dependencies]
+unswiper-core = { path = "../unswiper-core" }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
+libheif-rs = { version = "3", default-features = false, features = ["v1_17"], optional = true }
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+tempfile = "3"
+proptest = "1"
