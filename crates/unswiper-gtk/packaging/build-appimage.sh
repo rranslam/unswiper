@@ -12,7 +12,7 @@
 # Needs (Ubuntu 24.04): cargo, libgtk-4-dev, libadwaita-1-dev, libheif-dev, libgstreamer1.0-dev,
 #   libgstreamer-plugins-base1.0-dev, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good,
 #   gstreamer1.0-plugins-bad (parsers), gstreamer1.0-libav, librsvg2-common (SVG icon loader),
-#   dpkg-dev (used by the GTK plugin), wget, file, patchelf.
+#   libgtk-4-media-gstreamer (in-app player), dpkg-dev (used by the GTK plugin), wget, file, patchelf.
 # Output: $OUT_DIR (default target/appimage)/Unswiper-<arch>.AppImage
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -49,10 +49,11 @@ export PATH="$tools:$PATH" DEPLOY_GTK_VERSION=4 APPIMAGE_EXTRACT_AND_RUN=1 NO_ST
 gst_dir="$(pkg-config --variable=pluginsdir gstreamer-1.0)"
 mkdir -p "$out/gst-plugins"
 rm -f "$out/gst-plugins"/*
-# Only what video thumbnails need: uridecodebin/playback, typefind, demuxers, convert/scale,
-# appsink, and the libav (FFmpeg) decoders.
+# Video thumbnails and playback: uridecodebin/playbin, typefind, demuxers, convert/scale, appsink,
+# the libav (FFmpeg) decoders, and audio output (autodetect picks PipeWire or PulseAudio).
 for p in coreelements typefindfunctions playback app videoconvertscale videoconvert videoscale \
-         isomp4 matroska audioparsers videoparsersbad libav; do
+         isomp4 matroska audioparsers videoparsersbad libav autodetect audioconvert \
+         audioresample volume pulseaudio pipewire; do
   for f in "$gst_dir/libgst$p.so"; do [ -e "$f" ] && ln -sf "$f" "$out/gst-plugins/"; done
 done
 export GSTREAMER_PLUGINS_DIR="$out/gst-plugins"
@@ -87,6 +88,19 @@ export GIO_MODULE_DIR="$APPDIR/usr/lib/gio/modules" # bundled, empty: no host GV
 export GIO_USE_VFS=local
 export GST_PLUGIN_SYSTEM_PATH="$APPDIR/usr/lib/gstreamer-1.0"
 HOOK
+fi
+
+# The in-app player (gtk::Video) needs GTK's GStreamer media backend, a module the GTK plugin
+# does not copy. Bundle it and point GTK at it.
+media_src="$(ls -d "$(pkg-config --variable=libdir gtk4)"/gtk-4.0/*/media 2>/dev/null | head -n1)"
+if [ -z "$media_src" ] || [ ! -e "$media_src/libmedia-gstreamer.so" ]; then
+  echo "GTK media module libmedia-gstreamer.so not found (install libgtk-4-media-gstreamer)" >&2; exit 1
+fi
+media_dst="$appdir/usr/lib/gtk-4.0/$(basename "$(dirname "$media_src")")/media" # e.g. 4.0.0/media
+mkdir -p "$media_dst"
+cp -L "$media_src/libmedia-gstreamer.so" "$media_dst/"
+if ! grep -q 'GTK_MEDIA' "$hook"; then
+  echo 'export GTK_PATH="$APPDIR/usr/lib/gtk-4.0" GTK_MEDIA=gstreamer' >> "$hook"
 fi
 
 rm -f "$out"/Unswiper*.AppImage
