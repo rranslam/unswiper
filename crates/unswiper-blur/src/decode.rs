@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Rob Ranslam
 
 //! Decoding photos for scoring: the `image` crate for JPEG/PNG/TIFF/WebP/…, libheif for
-//! HEIC/HEIF (feature `heif`, same as the GTK app's thumbnails).
+//! HEIC/HEIF (feature `heif`, same as the GTK app's thumbnails). The Mac helper is built without
+//! libheif (nothing to bundle) and converts HEIC with macOS's own `sips` instead.
 
 use image::DynamicImage;
 use std::path::Path;
@@ -42,7 +43,34 @@ fn heif(path: &Path) -> Option<DynamicImage> {
     image::RgbImage::from_raw(w, h, rgb).map(DynamicImage::ImageRgb8)
 }
 
-#[cfg(not(feature = "heif"))]
+#[cfg(all(not(feature = "heif"), target_os = "macos"))]
+fn heif(path: &Path) -> Option<DynamicImage> {
+    // `sips` ships with macOS (ImageIO, hardware HEVC). Shrinking to the 1024 px working size
+    // here keeps it fast; the temporary JPEG is removed straight away.
+    let tmp = std::env::temp_dir().join(format!(
+        "unswiper-blur-{}-{}.jpg",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    ));
+    let ok = std::process::Command::new("/usr/bin/sips")
+        .args(["-s", "format", "jpeg", "-Z"])
+        .arg(crate::score::WORK_EDGE.to_string())
+        .arg(path)
+        .arg("--out")
+        .arg(&tmp)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok_and(|s| s.success());
+    let img = ok.then(|| image::open(&tmp).ok()).flatten();
+    let _ = std::fs::remove_file(&tmp);
+    img
+}
+
+#[cfg(all(not(feature = "heif"), not(target_os = "macos")))]
 fn heif(_path: &Path) -> Option<DynamicImage> {
     None
 }
