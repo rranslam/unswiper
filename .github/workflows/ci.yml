@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "v*"]
   pull_request:
 
 concurrency:
@@ -32,6 +32,14 @@ jobs:
         run: |
           iconutil -c icns Resources/AppIcon.iconset -o "$RUNNER_TEMP/AppIcon.icns"
           ls -l "$RUNNER_TEMP/AppIcon.icns"
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+      - name: Blur checker helper for the end-to-end test (Rust unswiper-blur, no libheif)
+        working-directory: .
+        run: |
+          cargo build --release -p unswiper-blur --no-default-features
+          echo "UNSWIPER_BLUR_HELPER=$PWD/target/release/unswiper-blur" >> "$GITHUB_ENV"
       - name: Test (with coverage)
         run: swift test --enable-code-coverage
       - name: Coverage report

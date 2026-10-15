@@ -17,17 +17,19 @@ path = "src/main.rs"
 [features]
 default = ["heif", "gstreamer"]
 # HEIC/HEIF thumbnails through libheif (required for release builds, plan §14).
-heif = ["dep:libheif-rs"]
+heif = ["dep:libheif-rs", "unswiper-blur/heif"]
 # Video thumbnails through GStreamer (playback plugins decide which codecs work).
 gstreamer = ["dep:gst", "dep:gst-app", "dep:gst-video"]
 
 [dependencies]
 unswiper-core = { path = "../unswiper-core" }
+unswiper-blur = { path = "../unswiper-blur", default-features = false }
 # GNOME 46 = GTK 4.14 + libadwaita 1.5, the Ubuntu 24.04 LTS baseline.
 relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 libheif-rs = { version = "3", default-features = false, features = ["v1_17"], optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde_json = "1"
 
 gst = { package = "gstreamer", version = "0.24", optional = true }
 gst-app = { package = "gstreamer-app", version = "0.24", optional = true }

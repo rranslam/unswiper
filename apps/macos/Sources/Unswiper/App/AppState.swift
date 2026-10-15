@@ -26,6 +26,11 @@ final class AppState: ObservableObject {
     @Published var interruptedCommitURL: URL?
     /// Delay for debounced saves (tests shorten it).
     var saveDelay: Duration = .seconds(1)
+    /// Set while the blur checker runs ("Checking sharpness…").
+    @Published var blurProgress: String?
+    /// Tests swap in a fake checker; nil means "find the bundled helper".
+    var blurRunner: ((_ library: URL, _ sensitivity: BlurRules.Sensitivity, _ only: [String]?) async throws -> BlurHelper.Verdict)?
+    private var blurTask: Task<Void, Never>?
 
     enum AppPath: Hashable {
         case home
@@ -194,6 +199,7 @@ final class AppState: ObservableObject {
         statusMessage = "Indexing…"
         let gap = config.visitGapHours
         let decisions = Dictionary(uniqueKeysWithValues: items.map { ($0.path, $0.decision) })
+        let before = items
 
         do {
             let result = try await Task.detached(priority: .userInitiated) {
@@ -204,12 +210,17 @@ final class AppState: ObservableObject {
                     onProgress: { _ in }
                 )
             }.value
-            items = result.items
+            var fresh = result.items
+            BlurRules.carryOver(from: before, to: &fresh)
+            items = fresh
             groups = result.groups
             lastIndexedAt = Date()
             indexProgress = .init(filesSeen: items.count, mediaFound: items.count)
             persist()
             statusMessage = "Indexed \(items.count) items in \(groups.count) visits."
+            isIndexing = false
+            checkBlur(visitFirst: selectedGroupID)
+            return
         } catch {
             statusMessage = "Index failed: \(error.localizedDescription)"
         }
@@ -219,6 +230,7 @@ final class AppState: ObservableObject {
     func openGroup(_ group: VisitGroup) {
         selectedGroupID = group.id
         path = .reduce(group.id)
+        checkBlur(visitFirst: group.id, visitOnly: true)
     }
 
     func items(in group: VisitGroup) -> [MediaItem] {
@@ -230,9 +242,112 @@ final class AppState: ObservableObject {
         let targets = Set(paths)
         // Mutate in place so order is preserved and duplicate paths can't trap.
         for index in items.indices where targets.contains(items[index].path) {
-            items[index].decision = decision
+            // The user's choice always wins over a blur suggestion (and is remembered).
+            BlurRules.setManualDecision(&items[index], decision)
         }
         persist()
+    }
+
+    // MARK: Blur suggestions (plan §15, same rules and keys as Linux)
+
+    var blurEnabled: Bool { BlurRules.enabled(config) }
+    var blurSensitivity: BlurRules.Sensitivity { BlurRules.sensitivity(config) }
+
+    func suggestedPaths(in group: VisitGroup) -> [String] {
+        items(in: group).filter(BlurRules.isSuggested).map(\.path)
+    }
+
+    func isBlurSuggested(_ path: String) -> Bool {
+        items.first { $0.path == path }.map(BlurRules.isSuggested) ?? false
+    }
+
+    func setBlurEnabled(_ on: Bool) {
+        BlurRules.setEnabled(&config, on)
+        if on {
+            persist()
+            checkBlur(visitFirst: selectedGroupID)
+        } else {
+            blurTask?.cancel()
+            blurProgress = nil
+            let n = BlurRules.withdrawAll(&items)
+            persist()
+            statusMessage = n > 0 ? "Blurry-photo detection is off. \(n) suggestion\(n == 1 ? "" : "s") removed." : "Blurry-photo detection is off."
+        }
+    }
+
+    func setBlurSensitivity(_ s: BlurRules.Sensitivity) {
+        BlurRules.setSensitivity(&config, s)
+        persist()
+        checkBlur(visitFirst: selectedGroupID)
+    }
+
+    /// "Not Blurry: Clear Suggestions in This Visit".
+    func dismissSuggestions(in groupID: VisitGroup.ID) {
+        guard let g = groups.first(where: { $0.id == groupID }) else { return }
+        let n = BlurRules.dismiss(&items, paths: Set(g.itemPaths))
+        if n > 0 { persist() }
+        statusMessage = "\(n) suggestion\(n == 1 ? "" : "s") cleared."
+    }
+
+    /// "Reject All Blurry Suggestions in This Visit".
+    func confirmSuggestions(in groupID: VisitGroup.ID) {
+        guard let g = groups.first(where: { $0.id == groupID }) else { return }
+        let n = BlurRules.confirm(&items, paths: Set(g.itemPaths))
+        if n > 0 { persist() }
+        statusMessage = "\(n) photo\(n == 1 ? "" : "s") kept as Reject."
+    }
+
+    /// Runs the blur checker in the background: the open visit first, then (unless `visitOnly`)
+    /// the whole library. Suggestions only ever touch Undecided photos.
+    /// `userAsked` (menu "Check for Blurry Photos Now") reports a missing helper; automatic
+    /// checks stay quiet so a development build without the helper works as before.
+    func checkBlur(visitFirst groupID: VisitGroup.ID?, visitOnly: Bool = false, userAsked: Bool = false) {
+        guard blurEnabled, !items.isEmpty else { return }
+        let runner = blurRunner ?? Self.helperRunner()
+        guard let runner else {
+            if userAsked { statusMessage = BlurHelper.HelperError.notFound.localizedDescription }
+            return
+        }
+        blurTask?.cancel()
+        let visitPaths = groupID.flatMap { id in groups.first { $0.id == id } }.map { $0.itemPaths }
+        let sensitivity = blurSensitivity
+        blurTask = Task { [weak self] in
+            guard let self else { return }
+            var passes: [[String]?] = []
+            if let visitPaths { passes.append(visitPaths) }
+            if !visitOnly || visitPaths == nil { passes.append(nil) }
+            var suggested = 0
+            for only in passes {
+                guard !Task.isCancelled else { break }
+                self.blurProgress = only == nil ? "Checking sharpness…" : "Checking sharpness in this visit…"
+                self.flush() // the helper reads library.json
+                do {
+                    let v = try await runner(LibraryStore.snapshotURL, sensitivity, only)
+                    guard !Task.isCancelled, self.blurEnabled else { break }
+                    let r = BlurRules.apply(&self.items, flagged: v.flagged, scored: v.scored, enabled: true)
+                    suggested += r.suggested
+                    if r != BlurRules.ApplyReport() { self.persist() }
+                } catch {
+                    self.statusMessage = error.localizedDescription
+                    break
+                }
+            }
+            self.blurProgress = nil
+            if suggested > 0, !Task.isCancelled {
+                self.statusMessage = suggested == 1
+                    ? "1 photo looks blurry and was marked Reject. Nothing moves until you commit."
+                    : "\(suggested) photos look blurry and were marked Reject. Nothing moves until you commit."
+            }
+        }
+    }
+
+    private static func helperRunner() -> ((URL, BlurRules.Sensitivity, [String]?) async throws -> BlurHelper.Verdict)? {
+        guard let helper = BlurHelper.locate() else { return nil }
+        return { library, sensitivity, only in
+            try await Task.detached(priority: .utility) {
+                try BlurHelper.run(helper: helper, library: library, sensitivity: sensitivity, only: only)
+            }.value
+        }
     }
 
     /// Keep target for one visit; falls back to the global default.

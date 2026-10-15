@@ -106,6 +106,23 @@ fn rename_and_move_back_keeps_decision() {
 }
 
 #[test]
+fn sync_item_copies_decision_and_extra() {
+    let (_d, r) = root();
+    let a = write(&r, "x/a.jpg", b"a");
+    let mut li = live(&r);
+    let mut src = li.item(&s(&a)).unwrap().clone();
+    src.decision = Decision::Reject;
+    src.extra
+        .insert("decisionSource".into(), serde_json::json!("auto-blur"));
+    assert!(li.sync_item(&src));
+    let got = li.item(&s(&a)).unwrap();
+    assert_eq!(got.decision, Decision::Reject);
+    assert_eq!(got.extra["decisionSource"], "auto-blur");
+    src.path = "/nope".into();
+    assert!(!li.sync_item(&src));
+}
+
+#[test]
 fn live_photo_pair_forms_and_breaks() {
     let (_d, r) = root();
     let heic = write(&r, "t/IMG_1.HEIC", b"heic");

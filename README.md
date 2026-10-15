@@ -4,7 +4,7 @@ Pare down your photos and videos **one visit at a time** (grouped by place and t
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** v0.2.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64). Next: blur detection and video playback (v0.3). See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
+**Status:** v0.3.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64), with blurry-photo detection and in-app video playback. Next: photo info (v0.4), then geo grouping. See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
 
 ## Download & Install (macOS)
 
@@ -14,16 +14,16 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
-3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.2.0.dmg`**. Do *not* click "Source code".
+3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.3.0.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
 
 ### Step 2 — Install
 
 1. Open **Finder** (the blue-and-white smiley face at the left end of the Dock, the row of icons at the bottom of your screen).
 2. In the Finder window's left sidebar, click **Downloads**.
-3. **Double-click** `Unswiper-0.2.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
+3. **Double-click** `Unswiper-0.3.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
 4. **Click and hold** on the Unswiper icon, **drag** it on top of the Applications folder icon, and let go. This copies the app into your Applications folder.
-5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.2.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
+5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.3.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
 
 ### Step 3 — Open it the first time
 
@@ -147,7 +147,30 @@ To update, download the new `.flatpak` and run the same `flatpak install --user`
 
 ### Where Linux keeps its data
 
-Decisions and commit history: `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
+Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
+
+## Known issues
+
+- **Linux, older Intel graphics (for example Haswell, 4th-generation Core):** when started from a terminal, the Flatpak or AppImage may print warnings such as `MESA-INTEL: warning: Haswell Vulkan support is incomplete` or lines containing `FINISHME`. They are harmless: Unswiper works normally. To silence them, make GTK draw with OpenGL instead of Vulkan:
+  - Flatpak: `GSK_RENDERER=ngl flatpak run io.github.rranslam.Unswiper`
+  - AppImage: `GSK_RENDERER=ngl ./Unswiper-x86_64.AppImage`
+  - To make it permanent for the Flatpak: `flatpak override --user --env=GSK_RENDERER=ngl io.github.rranslam.Unswiper` (undo with `flatpak override --user --unset-env=GSK_RENDERER io.github.rranslam.Unswiper`).
+
+## Blurry photo detection (v0.3, Linux and Mac)
+
+Unswiper can find photos that are probably out of focus or shaken and mark them **Reject** for you, with an orange **Blurry?** badge. **Nothing is moved or deleted automatically:** marked photos move only when you open their visit and click **Review & Commit…**, like any other rejected photo. Your own Keep/Reject choices always win. It is **on** by default, runs entirely on your computer, and you can turn it off: on Linux in the main menu (**☰**) under **Blurry Photos**, on a Mac in the **Blurry Photos** menu at the top of the screen. Inside the app, open Help (**F1** on Linux, **⌘?** on a Mac) and read the **Blurry Photos** page for the full steps.
+
+**Command-line checker (optional, for big folders or trying it out).** If you build Unswiper from source, the `unswiper-blur` tool lists photos that look blurry. It only reads your photos; it never moves, deletes or changes anything, and never edits your decisions.
+
+1. Open a Terminal in the Unswiper source folder.
+2. Type this and press Enter (replace the folder with yours):
+   `cargo run --release -p unswiper-blur -- scan ~/Pictures/Trip`
+3. It prints one line per photo: the sharpness score, then **BLURRY** or **ok**, then the file name. Lower numbers are blurrier.
+4. Optional: add `--sensitivity low` (fewer photos marked) or `--sensitivity high` (more), or `--json` for machine-readable output. Add `--write-cache` to save the scores so the app doesn't have to check those photos again.
+
+## Watching videos while you review (v0.3)
+
+Double-click a photo or video in a visit (or click it once and press **Space**) to open it in a large viewer. Videos play right there, **muted** at first; click the speaker icon for sound. **←/→** go to the previous/next item, **K / R / U** still Keep / Reject / Clear, and **Space** or **Esc** goes back to the grid. Video tiles show **▶** and the clip length. Optional: turn on **Play Live Photo Motion** (Linux: main menu **☰** → **Viewer**; Mac: **View** menu) to play the short video part of iPhone Live Photos. If a video can't be played, click **Open in Default App**. Watching never changes your files. In the app, press **F1** (Linux) and open **Watching Videos and Large Previews**.
 
 ## Build from source (macOS)
 
@@ -169,10 +192,10 @@ swift test
 To build the downloadable app and `.dmg` yourself:
 
 ```
-apps/macos/scripts/build-dmg.sh 0.2.0
+apps/macos/scripts/build-dmg.sh 0.3.0
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.2.0.dmg`). Pushing a tag such as `v0.2.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.3.0.dmg`). Pushing a tag such as `v0.3.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
 
 Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
 

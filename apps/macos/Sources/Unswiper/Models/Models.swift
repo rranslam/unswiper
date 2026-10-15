@@ -65,6 +65,10 @@ struct MediaItem: Identifiable, Codable, Hashable {
     var dateSource: DateSource? = nil
     /// Parent folder relative to the library root ("" = the root itself). Nil for older libraries.
     var folderPath: String? = nil
+    /// "auto-blur" while the Reject is an unconfirmed blur suggestion (shared with Linux, plan §15.3).
+    var decisionSource: String? = nil
+    /// True once the user cleared or kept a blur suggestion; rescans never re-flag it.
+    var blurDismissed: Bool? = nil
 
     var fileURL: URL { URL(fileURLWithPath: path) }
     var fileName: String { fileURL.lastPathComponent }
@@ -73,6 +77,7 @@ struct MediaItem: Identifiable, Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case path, kind, sizeBytes, takenAt, relativeFolder, decision, modifiedAt, sidecars, isUndated, dateSource, folderPath
+        case decisionSource, blurDismissed
     }
 }
 
@@ -90,6 +95,8 @@ extension MediaItem {
         isUndated = try c.decodeIfPresent(Bool.self, forKey: .isUndated) ?? false
         dateSource = try c.decodeIfPresent(DateSource.self, forKey: .dateSource)
         folderPath = try c.decodeIfPresent(String.self, forKey: .folderPath)
+        decisionSource = try c.decodeIfPresent(String.self, forKey: .decisionSource)
+        blurDismissed = try c.decodeIfPresent(Bool.self, forKey: .blurDismissed)
     }
 }
 
@@ -155,6 +162,10 @@ struct AppConfig: Codable, Equatable {
     var bookmarkData: Data?
     /// Per-visit keep targets keyed by group id. Optional so older library.json files still decode.
     var keepTargets: [String: Int]? = nil
+    /// Blur detection setting, shared with Linux: nil = on (the default).
+    var blurDetection: Bool? = nil
+    /// "low" | "normal" | "high"; nil = normal.
+    var blurSensitivity: String? = nil
 
     static let `default` = AppConfig(
         rootPath: nil,

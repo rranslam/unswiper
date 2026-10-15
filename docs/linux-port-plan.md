@@ -252,7 +252,7 @@ Add a `testTarget("UnswiperTests")` to `Package.swift` and split the logic into 
 - **UniFFI + notarization:** nested binaries must be signed inside-out with hardened runtime. Test in CI before the first signed release.
 
 ## 13. Roadmap after the Linux port
-Order approved 14 Oct 2026 (§15.8): Linux v0.2.0 → **v0.3: blur detection (§15) + video playback (§16)** → geo grouping → Google Photos.
+Order approved 14 Oct 2026 (§15.8): Linux v0.2.0 → **v0.3: blur detection (§15) + video playback (§16)** → **v0.4: photo info (§17)** → geo grouping → Google Photos.
 
 1. **Geo grouping:** split and merge visits by GPS (EXIF GPS, QuickTime ISO 6709) with distance thresholds. Offline reverse-geocoding for titles.
 2. **Google Photos source:** read-only via the Photos Library/Picker API. Decisions export to an album, since the API can't delete.
@@ -343,7 +343,36 @@ Optional v2: a permissively licensed ONNX model through `tract` for better bokeh
 - **Decided:** blurry photos are **pre-marked Reject and moved only on commit**. They are never moved or deleted automatically, manual decisions always win, and the existing commit-the-open-visit rule applies.
 - **Deferred** until v0.3 work starts: the score storage (sidecar cache vs library.json fields, §15.3), the Mac bridge (UniFFI vs CLI helper, §15.4), the sensitivity defaults and accuracy-gate numbers (§15.6), and the optional ONNX model.
 
-## 16. Video playback during review (new feature, Rob 14 Oct 2026; plan only)
+### 15.9 v0.3 milestone 1 — what was built (15 Oct 2026)
+Blur detection end to end on Linux plus the core. Decisions taken while building (open to change):
+- **Storage (the deferred §15.3 question):** recommendation (b) as written. Scores live in the sidecar `quality-cache.json` (support folder, next to library.json; keyed by size + mtime + algorithm version; rebuildable). library.json gets only the optional item keys `decisionSource: "auto-blur"` and `blurDismissed: true`, and config keys `blurDetection` (absent = on) and `blurSensitivity` (absent = normal), all omitted when unused, so v1 files are byte-identical. Code: `unswiper-core::quality`.
+- **Crate layout:** `crates/unswiper-blur` holds the score, decision rules, cache, parallel scan and the `unswiper-blur` binary. It depends on `unswiper-core` (not the other way round), so the core stays free of image decoding. The app's background job lives in `unswiper-gtk::blur` instead of `unswiper-core::quality` for the same reason.
+- **Score:** as §15.1, with two changes found in testing: (1) tiles with low contrast (std < 30) are scaled up to that contrast, so faint but sharp scenes (fog, pale text) aren't flagged; (2) the flat-tile cutoff is std 4. Tenengrad and AF-point tiles are not used yet. The embedded EXIF preview is not used yet (full decode, then resize).
+- **Rules:** absolute floor (Low 7 / Normal 13 / High 25; was 8/15/30 before the 15 Oct real-photo calibration), burst-relative (≥3 photos ≤3 s apart; 0.25 / 0.35 / 0.45 × burst max), plus a shake rule (gradient anisotropy ≥ 0.7 (was 0.5) and sharpness < 4 × floor). Never flagged: confidence < 0.5 (mean luma < 40, or fewer than 2 textured tiles), videos, PNG/GIF/BMP, undated photos in bursts. Portrait/depth and high-ISO detection need EXIF and are not done yet.
+- **Settings UI:** a **Blurry Photos** section in the main menu (toggle, sensitivity radio submenu, "Check now", clear / confirm all in visit) rather than an `AdwPreferencesWindow`, to match the existing Commit Mode menu. Easy to move into a Preferences window later.
+- **Background work:** all cores but one (rayon), cancellable, open visit scored first; not yet `nice`d.
+- **Accuracy gate:** synthetic only for now (`crates/unswiper-blur/tests/accuracy.rs`, generated scenes: sharp, defocus, motion, bokeh-sharp, night, low-texture, faint, bursts). Currently precision 1.00 and recall 0.98 against the ≥ 0.95 / ≥ 0.70 gate. **Calibration on real photos is still needed** before release: a labeled set of ~60–100 of Rob's photos.
+- **Not in M1:** Mac app parity (bridge choice UniFFI vs CLI helper still open), the cross-check test Rust vs Mac, `criterion` benchmark, AppImage/Flatpak shipping of the `unswiper-blur` CLI.
+
+### 15.10 v0.3 milestone 3 — calibration and Mac parity (15 Oct 2026)
+- **Calibration:** 85 of Rob's real photos (not committed). The shake rule flagged sharp seascapes and panels, so anisotropy went 0.5 → 0.7 and the floors went 8/15/30 → 7/13/25. False positives on sharp photos are now Low 1.3 %, Normal 6.4 %, High 12.8 % (were 6.4 / 14.1 / 23.1 %). Full numbers and the method are in `docs/blur-evaluation.md`.
+- **Mac bridge: bundled CLI helper**, not UniFFI. `Unswiper.app/Contents/MacOS/unswiper-blur` is a universal Rust build without libheif; it reads HEIC through macOS `sips`.
+  - The app saves library.json, then runs `unswiper-blur scan library.json --json --write-cache --sensitivity S --only <visit list>` for the open visit, then once more for the whole library. It applies the verdict in Swift with `BlurRules`, a line-for-line port of `unswiper_core::quality`.
+  - Why the helper: it needs no FFI, no Xcode project change and no Swift–Rust ABI. It shares the score cache (`quality-cache.json`) and the rules with Linux. A crash in the helper can't take the app down.
+  - The cost is one process per check, which is cheap because cached scores aren't recomputed.
+- **Mac library.json** now models `decisionSource`/`blurDismissed` (items) and `blurDetection`/`blurSensitivity` (config), so they survive Mac saves. Before this, a Mac save dropped them. Other unknown keys are still dropped by the Mac app; that's tracked for 1.0.
+- **Mac UI:**
+  - an orange **Blurry?** badge
+  - an All/Photos/Videos/**Blurry** filter
+  - a per-visit **Blurry?** menu
+  - a **Blurry Photos** menu bar menu
+  - **U**/Clear in the grid
+  - a commit-sheet note
+  - a "Checking sharpness…" line
+  - a Help page (13 topics)
+- **Tests:** XCTest for the rules (same cases as Rust), key round-trip, the AppState flow with a fake checker, helper argument and JSON parsing, and an end-to-end test with the real helper. CI builds the helper and sets `UNSWIPER_BLUR_HELPER`. The Mac CI now also runs on `v*` branches.
+
+## 16. Video playback during review (new feature, Rob 14 Oct 2026; M2 built 15 Oct 2026, see §16.8)
 
 Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a clip means opening it in another app. Users need to play videos inside Unswiper while reviewing a visit, on both Linux and Mac. Nothing here is implemented yet.
 
@@ -382,3 +411,82 @@ Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a cl
 
 ### 16.7 Release slot
 **Decided (Rob, 14 Oct 2026): all video playback ships in v0.3, together with blur detection (§15).** That covers basic playback (viewer, Space/double-click, scrubbing, mute, decision keys in the viewer) and the Live Photo motion option, on Linux and Mac. There is no v0.2.1 playback release. Order otherwise unchanged (§15.8).
+
+### 16.8 M2 built (15 Oct 2026)
+Answers to §16.6 as built (change any of them on request):
+1. **Full-window page** with a **Grid** back button (not a dialog): more room for video, and the sidebar stays visible on Linux.
+2. Autoplay on open; loop under 10 s (and Live Photo motion always loops); **mute is per session only** (starts muted every launch).
+3. Live Photo motion plays **on open** in the viewer when the option is on (Linux menu ☰ → Viewer, Mac View menu); no hover. Stored as `livePhotoMotion` in the config extras (Linux).
+4. Trim: out of scope.
+5. Photos open in the same viewer as a large preview (no zoom yet).
+
+Linux: `player.rs` (pure rules: motion clip = a `.mov/.mp4/.m4v` sidecar of a photo, loop rule, duration format), viewer model in `state.rs` (navigation without wrap, follows filters/removals, decisions act on the viewed item), `gtk::Video` + `MediaFile` in `ui.rs`, durations on tiles via `video::duration`. Smoke test `viewer_plays_a_video` runs `--present-viewer` on a generated clip and needs `viewer: prepared duration_ms>0`. Timed runs (`--quit-after`) are `NON_UNIQUE`. AppImage bundles `libmedia-gstreamer.so` (GTK_PATH, GTK_MEDIA=gstreamer) plus autodetect/pulseaudio/pipewire/volume/audioconvert/audioresample.
+Mac: `ViewerModel.swift` (pure, XCTest `ViewerModelTests`) and `MediaViewer.swift` (AVPlayerView `.inline`, muted start, loop, NSWorkspace fallback). **Not compiled on the box**: build and test on a Mac.
+Not done: AppImage CI smoke of `--present-viewer` (the Rust test-linux job covers it), photo zoom, Mac `.readyToPlay` UI test.
+
+## 17. Photo info (EXIF) view (new feature, Rob 15 Oct 2026; plan only)
+
+Rob tested the 0.3.0-dev Mac build: blur detection is good as is. Artistic, intentional blur is hit and miss, which is acceptable because **U** clears a suggestion for good. The next request is a way to see the key camera and settings info while choosing between similar shots. Nothing here is implemented yet.
+
+### 17.1 Fields (one shared list, same order on both platforms)
+| Group | Field | Photo source | Video source |
+|---|---|---|---|
+| Camera | Camera (Make + Model), Lens (LensMake/LensModel) | EXIF 0x010F/0x0110, 0xA433/0xA434 | QuickTime `com.apple.quicktime.make/model` |
+| Settings | Focal length (+ 35 mm equivalent), Aperture (f/), Shutter (1/250 s), ISO, Flash (fired / off), Exposure compensation (±EV) | EXIF FocalLength, FocalLengthIn35mmFilm, FNumber, ExposureTime, PhotographicSensitivity, Flash, ExposureBiasValue | none (shown as "—") |
+| When | Date/time **with time zone** (OffsetTimeOriginal; otherwise "time zone unknown") and the date source the index used (EXIF / file name / folder / file time) | EXIF DateTimeOriginal + OffsetTimeOriginal | QuickTime creation date (UTC) / `com.apple.quicktime.creationdate` (has offset) |
+| Image | Dimensions (after orientation), Orientation, Duration (video), Codec (video), Frame rate (video) | EXIF PixelX/YDimension or the decoder | GStreamer / AVAsset |
+| File | File name, size (with sidecars: "+ IMG_1234.MOV, 2.1 MB"), format (HEIC, JPEG, …), folder (click to reveal in Files/Finder) | filesystem + core item | same |
+| Location | GPS latitude/longitude (+ altitude), "Open in Maps" link | EXIF GPS IFD | QuickTime ISO 6709 (`©xyz`, `com.apple.quicktime.location.ISO6709`) |
+| Unswiper | Decision (Keep/Reject/Undecided, "suggested as blurry"), **blur score** (sharpness, motion, confidence) and suggestion reason (soft / shake / burst / not checked: video, screenshot, too dark) | quality-cache.json + library.json | "not checked (video)" |
+
+Missing values are left out (no row), except in the Settings group, where "—" makes it clear that the camera didn't record the value. Values are formatted for people, e.g. "f/1.8", "1/120 s", "ISO 64", "26 mm (26 mm equiv.)", "+0.7 EV", "12.2 MP · 4032 × 3024".
+
+**GPS privacy note:** coordinates are personal. They are read and shown only on this computer, never uploaded, logged, or written into library.json or the cache. Unswiper doesn't change the photo's own metadata. "Open in Maps" is the only action that sends anything out, and only when the user clicks it (it opens the default maps app or OpenStreetMap in the browser). There is a setting **Show Location in Photo Info** (proposed default: on, see §17.7). The Help page says where the location comes from and how to strip it (outside Unswiper).
+
+### 17.2 Access (same on both platforms)
+- **Right-click → Show Info** on a tile opens a **popover** next to it: a compact view of Camera, Settings, When, File and Unswiper.
+- **Inspector panel** (toggle): **I** in a visit / the viewer, **⌘I** on Mac and **Ctrl+I** on Linux. It's also in the menus: Mac **View → Show Inspector**, Linux main menu ☰ → **Show Photo Info**. It shows the full list for the **selected** item (or the item open in the viewer), and with several selected it shows the first one plus "N selected". It follows selection changes and Left/Right in the viewer.
+- **Compare (Mac)**: one info line per photo under each picture (focal length, f/, shutter, ISO, blur score), because that is where choosing between shots happens. On Linux, once Compare exists.
+- The panel's open/closed state is remembered per session (proposed). Keys don't clash: K/R/U decide, I shows info, Space opens the viewer.
+
+### 17.3 Linux (GTK 4 / libadwaita)
+- Popover: a plain `gtk::Popover` with an `adw::PreferencesGroup`-style list of `adw::ActionRow`s (title = field, subtitle = value, selectable text).
+- Panel: an `adw::OverlaySplitView` (sidebar on the right, collapses on narrow windows) wrapping the grid/viewer `content` stack, with an `adw::PreferencesPage` of groups. Toggled by `win.info` (stateful action, I/Ctrl+I), works the same way in the viewer.
+- Location row: an "Open in Maps" button using `gtk::UriLauncher` with `geo:lat,lon` (falls back to an OpenStreetMap https URL).
+- Reading happens off the main thread (like thumbnails); the panel shows "Reading…" and updates when done. Results are cached per path+mtime in memory only.
+
+### 17.4 Mac (SwiftUI)
+- Panel: `.inspector(isPresented:)` (macOS 14) on the visit grid and the viewer, toggled with ⌘I/I, with `Form`/`LabeledContent` sections. Popover: `.popover` from the context menu's **Show Info**.
+- **Data source (choose in M1 of §17):** (a) Swift ImageIO `CGImageSourceCopyPropertiesAtIndex` + AVAsset metadata: native, handles HEIC/ProRAW for free, no helper call; or (b) a new helper command `unswiper-blur info <file> --json` (rename the helper to `unswiper-helper` at that point) for one formatter shared with Linux. **Recommendation:** (b) for the field list, wording and formatting, so both apps match and the tests are shared. The helper decodes HEIC metadata through the EXIF reader (HEIC carries an ordinary Exif box; `kamadak-exif` reads it from the ISOBMFF container) with `sips -g all` only as a fallback. Keep (a) as the fallback if the helper call is too slow for scrolling (target: < 50 ms per photo, cached).
+
+### 17.5 Data: Rust core
+- **Extend `unswiper_core::meta::exif`** (today it only reads dates) into `meta::info::photo_info(path) -> PhotoInfo { make, model, lens, focal_mm, focal_35mm, f_number, exposure_s, iso, flash, exposure_bias_ev, taken_at, offset, width, height, orientation, gps: Option<Gps> }` using the existing `kamadak-exif` dependency (MIT/Apache). It already parses JPEG, TIFF, HEIF/HEIC (ISOBMFF) and PNG `eXIf`, so no libheif call is needed for metadata. Use libheif (Linux) / sips (Mac helper) only for the dimensions of HEIC files without the EXIF size tags.
+- **Videos:** extend `meta::quicktime` (already reads the creation date) for duration, dimensions, codec FourCC, make/model and ISO 6709 location from the `moov/udta`/`meta` keys, in pure Rust and testable. GTK can fill gaps from **GStreamer Discoverer** (`gst_pbutils::Discoverer`: duration, codecs, frame rate, tags) and Mac from **AVAsset** (`load(.duration)`, `.metadata`). The pure-Rust reader stays the source of truth for tests.
+- `meta::info::format(&PhotoInfo) -> Vec<(Group, Label, Value)>`: the shared, human-readable formatter (rounding rules, "1/120 s", "f/1.8", "+0.7 EV", GPS to 5 decimals). Linux uses it directly; Mac gets it through the helper's JSON (`[{group, label, value}]` plus raw numbers for Compare).
+- **Blur:** the panel reads the score and reason from `quality-cache.json` (`unswiper_blur::cache`) and the suggestion state from library.json. New small API: `explain(score, thresholds) -> Reason/“ok” text` (for example "Sharpness 6.5 (blurry below 13 at Normal)").
+- Nothing new is written to library.json. GPS is never stored (§17.1). Geo grouping (§13.1) will reuse `Gps` from the same reader.
+
+### 17.6 Tests
+- **Rust unit tests** for each field on small generated fixtures: build JPEGs with known EXIF via a tiny EXIF writer in test code (as the date tests do), a HEIC fixture from libheif in CI, and a QuickTime fixture with ISO 6709. Cover missing tags, odd rationals (0/0, 1/0), Flash bit fields, negative exposure bias, southern/western GPS, the OffsetTime* variants, and the orientation swapping width/height.
+- **Formatter golden tests:** one table `fields → expected strings`, shared by Rust and Swift (the Mac test decodes the helper JSON and compares it with the same table).
+- **Property test:** the formatter never panics and never prints "NaN"/"inf" for arbitrary rationals.
+- **Privacy test:** after showing info for a GPS photo and saving, library.json and quality-cache.json contain no coordinates.
+- **GTK:** state tests for the panel model (follows selection and the viewer, multiple selection text) and an Xvfb smoke `--present-info` that prints the formatted rows for the first photo. **Mac:** XCTest for the inspector model plus the helper `info` call (skipped without the helper, like today's blur integration test).
+- Manual checkout: an iPhone HEIC, a Live Photo, an Android JPEG, a DSLR JPEG, a screenshot (no EXIF), an MP4/MOV with location.
+
+### 17.7 Open questions for Rob
+1. **Default view:** popover only, panel only, or both (proposed: both; the panel starts closed, I/⌘I opens it)?
+2. **Which fields** in the short popover (proposed: camera, lens, focal/f/shutter/ISO, date with zone, size, blur score)? Is anything in §17.1 unwanted?
+3. **GPS:** show coordinates at all? If so, on by default with the setting to hide them (proposed), or off by default? Is "Open in Maps" OK given that it opens a web/maps app?
+4. Show the raw blur numbers (sharpness/motion/confidence) or just the reason in words (proposed: the words, with the numbers as smaller text)?
+5. Should the Compare view (Mac) get the one-line settings strip now, or wait for the panel?
+6. Mac data source: shared Rust formatter through the helper (recommended) or native ImageIO?
+
+### 17.8 Suggested release slot
+**v0.4, as the first item, before geo grouping.** The GPS reader (EXIF GPS IFD + QuickTime ISO 6709) and its tests are exactly what geo grouping needs (§13.1), so building info first gives geo a tested foundation and lets Rob see whether his photos actually carry location before it's used for grouping. Rough effort:
+- Rust reader + formatter + tests: about 2 days.
+- GTK popover/panel: 1.5 days.
+- Mac inspector/popover + helper `info`: 1.5 days.
+- Docs/Help: 0.5 day.
+
+New order: v0.3 (blur + video) → **v0.4: photo info (§17) → geo grouping** → Google Photos.

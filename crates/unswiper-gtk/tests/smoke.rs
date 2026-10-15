@@ -69,3 +69,48 @@ fn launches_indexes_and_quits() {
         std::fs::read_to_string(support.join("library.json")).expect("library.json saved on quit");
     assert!(json.contains("a.png") && json.contains("b.png"), "{json}");
 }
+
+#[test]
+fn viewer_plays_a_video() {
+    if std::env::var_os("DISPLAY").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        eprintln!("no display; skipping (run under xvfb-run)");
+        return;
+    }
+    let d = tempfile::tempdir().unwrap();
+    let lib = d.path().join("lib");
+    std::fs::create_dir(&lib).unwrap();
+    let Some(_clip) = unswiper_gtk::video::make_test_clip(&lib) else {
+        eprintln!("no GStreamer encoder; skipping");
+        return;
+    };
+    let support = d.path().join("support");
+    let out = Command::new(BIN)
+        .args([
+            "--library-dir",
+            support.to_str().unwrap(),
+            "--open",
+            lib.to_str().unwrap(),
+            "--open-first-visit",
+            "--present-viewer",
+            "--quit-after",
+            "8",
+        ])
+        .env("XDG_CACHE_HOME", d.path().join("cache"))
+        .env("GTK_A11Y", "none")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let ms: u64 = stdout
+        .lines()
+        .find_map(|l| l.strip_prefix("viewer: prepared duration_ms="))
+        .unwrap_or_else(|| panic!("viewer never prepared: {stdout}"))
+        .trim()
+        .parse()
+        .unwrap();
+    assert!(ms > 0, "{stdout}");
+}

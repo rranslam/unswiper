@@ -4,16 +4,21 @@
 //! The relm4 layer: builds the GNOME window and turns signals into [`AppState`] calls.
 //! Everything worth testing lives in [`crate::state`]; this module only wires widgets.
 
+use crate::blur::{BlurEvent, BlurJob};
 use crate::state::{AppState, Filter};
 use crate::{help, thumbs, APP_ID, ISSUES, VERSION, WEBSITE};
 use relm4::adw::prelude::*;
 use relm4::gtk::{gdk, gio, glib};
 use relm4::{adw, gtk, Component, ComponentParts, ComponentSender};
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use unswiper_blur::decide::Thresholds;
 use unswiper_core::index::{index, MetadataDates};
+use unswiper_core::quality::Sensitivity;
 use unswiper_core::store::{default_support_dir, LibraryStore};
 use unswiper_core::trash::FreedesktopTrash;
 use unswiper_core::watch::{FolderWatcher, WatchBatch, DEFAULT_MAX_WAIT, DEFAULT_QUIET};
@@ -35,10 +40,18 @@ pub struct Options {
     /// Show a dialog a few seconds after start (screenshots): "about", or "commit" (rejects
     /// everything in the open visit, then opens Review & Commit; nothing is moved unless confirmed).
     pub present_dialog: Option<String>,
+    /// Open the viewer on the first video after the first visit opens (smoke test) and print
+    /// `viewer: prepared duration_ms=N` or `viewer: error …` to stdout.
+    pub present_viewer: bool,
 }
 
 pub fn run(opts: Options) {
     let app = relm4::RelmApp::new(APP_ID).with_args(vec![]);
+    // Timed runs (--quit-after: tests, screenshots) are separate instances, so parallel tests and
+    // an already-open window don't swallow them as a second launch of the same app.
+    if opts.quit_after.is_some() {
+        relm4::main_application().set_flags(gtk::gio::ApplicationFlags::NON_UNIQUE);
+    }
     relm4::set_global_css(CSS);
     // Fallback icon path so the window and About dialog have the icon when uninstalled.
     if let (Some(display), Ok(dir)) = (
@@ -57,7 +70,12 @@ const CSS: &str = "
 .badge { border-radius: 99px; padding: 2px 8px; margin: 6px; font-weight: bold; }
 .badge.keep { background: @success_bg_color; color: @success_fg_color; }
 .badge.reject { background: @error_bg_color; color: @error_fg_color; }
+.badge.blurry { background: #b5560b; color: white; }
 .thumb.rejected picture { opacity: 0.45; }
+.thumb.rejected .duration { opacity: 0.6; }
+.duration { background: alpha(black, 0.65); color: white; border-radius: 6px; padding: 1px 6px;
+  margin: 6px; font-size: 0.85em; font-weight: bold; }
+.viewer-media { background: black; }
 /* Dialogs (AdwAlertDialog, AdwAboutDialog) float over a busy photo grid: give them a visible edge
    and a stronger shadow, and dim the window behind them. currentColor-based, so it works in light
    and dark mode. */
@@ -120,6 +138,22 @@ pub enum Msg {
     Help,
     About,
     Quit,
+    BlurProgress(usize, usize),
+    BlurResult(HashSet<String>, HashSet<String>, bool),
+    BlurSetEnabled(bool),
+    BlurSetSensitivity(Sensitivity),
+    BlurRescan,
+    BlurClearVisit,
+    BlurConfirmVisit,
+    OpenViewer(String),
+    ToggleViewer,
+    CloseViewer,
+    ViewerStep(i32),
+    ViewerImage(String, ThumbMsg),
+    ViewerMuted(bool),
+    ViewerOpenExternal,
+    SetLiveMotion(bool),
+    Duration(u64, String, u64),
 }
 
 pub struct App {
@@ -129,6 +163,10 @@ pub struct App {
     thumb_gen: u64,
     save_scheduled: bool,
     indexing: bool,
+    blur_cancel: Option<Arc<AtomicBool>>,
+    /// Viewer already reported to stdout (--present-viewer).
+    viewer_reported: Rc<Cell<bool>>,
+    viewer_presented: bool,
 }
 
 pub struct Widgets {
@@ -141,12 +179,62 @@ pub struct Widgets {
     keep_status: gtk::Label,
     grid: gtk::FlowBox,
     cells: HashMap<String, (gtk::Box, gtk::Picture, gtk::Label)>,
+    durations: HashMap<String, gtk::Label>,
+    content: gtk::Stack,
+    viewer: ViewerWidgets,
     selection_label: gtk::Label,
     commit_button: gtk::Button,
     filter_buttons: Vec<(Filter, gtk::ToggleButton)>,
     restore_action: gio::SimpleAction,
     mode_action: gio::SimpleAction,
+    blur_action: gio::SimpleAction,
+    blur_sens_action: gio::SimpleAction,
+    blur_status: gtk::Label,
+    live_action: gio::SimpleAction,
     syncing: Rc<Cell<bool>>,
+}
+
+/// The full-size viewer page (plan §16.1).
+pub struct ViewerWidgets {
+    title: gtk::Label,
+    position: gtk::Label,
+    badge: gtk::Label,
+    media: gtk::Stack,
+    picture: gtk::Picture,
+    video: gtk::Video,
+    error: adw::StatusPage,
+    prev: gtk::Button,
+    next: gtk::Button,
+    /// Path the current picture/stream belongs to.
+    shown: Option<String>,
+}
+
+/// Viewer keys (Space, arrows) run in the capture phase so a focused button doesn't eat
+/// Space; skip them while a dialog or a text/spin field has focus.
+fn viewer_key(
+    ctl: &gtk::ShortcutController,
+    trigger: &str,
+    sender: &ComponentSender<App>,
+    msg: fn() -> Msg,
+) {
+    let s = sender.clone();
+    let act = gtk::CallbackAction::new(move |w, _| {
+        let focus = w.root().and_then(|r| r.focus());
+        let busy = focus.is_some_and(|f| {
+            f.ancestor(adw::Dialog::static_type()).is_some()
+                || f.is::<gtk::Text>()
+                || f.ancestor(gtk::SpinButton::static_type()).is_some()
+        });
+        if busy {
+            return glib::Propagation::Proceed;
+        }
+        s.input(msg());
+        glib::Propagation::Stop
+    });
+    ctl.add_shortcut(gtk::Shortcut::new(
+        gtk::ShortcutTrigger::parse_string(trigger),
+        Some(act),
+    ));
 }
 
 fn mode_name(m: CommitMode) -> &'static str {
@@ -230,6 +318,30 @@ impl Component for App {
         );
         modes.append(Some("Dry Run"), Some("win.mode::dry-run"));
         menu.append_section(Some("Commit Mode"), &modes);
+        let blur = gio::Menu::new();
+        blur.append(Some("Detect Blurry Photos"), Some("win.blur"));
+        let sens = gio::Menu::new();
+        for s in Sensitivity::ALL {
+            sens.append(
+                Some(s.label()),
+                Some(&format!("win.blur-sensitivity::{}", s.as_str())),
+            );
+        }
+        blur.append_submenu(Some("Blur Sensitivity"), &sens);
+        blur.append(Some("Check for Blurry Photos Now"), Some("win.blur-rescan"));
+        blur.append(
+            Some("Not Blurry: Clear Suggestions in This Visit"),
+            Some("win.blur-clear"),
+        );
+        blur.append(
+            Some("Reject All Blurry Suggestions in This Visit"),
+            Some("win.blur-confirm"),
+        );
+        menu.append_section(Some("Blurry Photos"), &blur);
+        let view = gio::Menu::new();
+        view.append(Some("Open Viewer (Space)"), Some("win.viewer"));
+        view.append(Some("Play Live Photo Motion"), Some("win.live-motion"));
+        menu.append_section(Some("Viewer"), &view);
         let app_sec = gio::Menu::new();
         app_sec.append(Some("Keyboard Shortcuts & Help"), Some("win.help"));
         app_sec.append(Some("About Unswiper"), Some("win.about"));
@@ -270,6 +382,56 @@ impl Component for App {
             });
         }
         root.add_action(&mode_action);
+        let blur_action =
+            gio::SimpleAction::new_stateful("blur", None, &state.blur_enabled().to_variant());
+        {
+            let s = sender.clone();
+            blur_action.connect_activate(move |a, _| {
+                let on = !a.state().and_then(|v| v.get::<bool>()).unwrap_or(true);
+                a.set_state(&on.to_variant());
+                s.input(Msg::BlurSetEnabled(on));
+            });
+        }
+        root.add_action(&blur_action);
+        let blur_sens_action = gio::SimpleAction::new_stateful(
+            "blur-sensitivity",
+            Some(glib::VariantTy::STRING),
+            &state.blur_sensitivity().as_str().to_variant(),
+        );
+        {
+            let s = sender.clone();
+            blur_sens_action.connect_activate(move |a, v| {
+                let Some(sens) = v
+                    .and_then(|v| v.get::<String>())
+                    .and_then(|n| Sensitivity::parse(&n))
+                else {
+                    return;
+                };
+                a.set_state(&sens.as_str().to_variant());
+                s.input(Msg::BlurSetSensitivity(sens));
+            });
+        }
+        root.add_action(&blur_sens_action);
+        action(&root, "blur-rescan", &sender, || Msg::BlurRescan);
+        action(&root, "blur-clear", &sender, || Msg::BlurClearVisit);
+        action(&root, "blur-confirm", &sender, || Msg::BlurConfirmVisit);
+        action(&root, "viewer", &sender, || Msg::ToggleViewer);
+        let live_action =
+            gio::SimpleAction::new_stateful("live-motion", None, &state.live_motion().to_variant());
+        {
+            let s = sender.clone();
+            live_action.connect_activate(move |a, _| {
+                let on = !a.state().and_then(|v| v.get::<bool>()).unwrap_or(false);
+                a.set_state(&on.to_variant());
+                s.input(Msg::SetLiveMotion(on));
+            });
+        }
+        root.add_action(&live_action);
+        let blur_status = gtk::Label::builder()
+            .css_classes(["dim-label", "caption"])
+            .visible(false)
+            .build();
+        header.pack_start(&blur_status);
 
         // Shortcuts. Bubble phase, so a focused spin button keeps its own keys.
         let ctl = gtk::ShortcutController::new();
@@ -285,7 +447,15 @@ impl Component for App {
         shortcut(&ctl, "F1", &sender, || Msg::Help);
         shortcut(&ctl, "<Control>w", &sender, || Msg::Quit);
         shortcut(&ctl, "<Control>q", &sender, || Msg::Quit);
+        shortcut(&ctl, "Escape", &sender, || Msg::CloseViewer);
         root.add_controller(ctl);
+        let vctl = gtk::ShortcutController::new();
+        vctl.set_scope(gtk::ShortcutScope::Managed);
+        vctl.set_propagation_phase(gtk::PropagationPhase::Capture);
+        viewer_key(&vctl, "space", &sender, || Msg::ToggleViewer);
+        viewer_key(&vctl, "Left", &sender, || Msg::ViewerStep(-1));
+        viewer_key(&vctl, "Right", &sender, || Msg::ViewerStep(1));
+        root.add_controller(vctl);
 
         // Setup page.
         let choose = gtk::Button::builder()
@@ -356,6 +526,7 @@ impl Component for App {
             (Filter::All, "All"),
             (Filter::Photos, "Photos"),
             (Filter::Videos, "Videos"),
+            (Filter::Blurry, "Blurry"),
         ] {
             let b = gtk::ToggleButton::with_label(label);
             if let Some(g) = &first {
@@ -408,9 +579,98 @@ impl Component for App {
             .description("Choose a visit on the left to review its photos and videos.")
             .vexpand(true)
             .build();
+        // Viewer page: back, title, position, decision badge, open externally; media in the middle
+        // with previous/next on the sides. Video uses GTK's built-in controls (play, scrub, volume).
+        let v_back = gtk::Button::builder()
+            .icon_name("go-previous-symbolic")
+            .label("Grid")
+            .tooltip_text("Back to the grid (Esc or Space)")
+            .build();
+        {
+            let s = sender.clone();
+            v_back.connect_clicked(move |_| s.input(Msg::CloseViewer));
+        }
+        let v_title = gtk::Label::builder()
+            .css_classes(["heading"])
+            .ellipsize(gtk::pango::EllipsizeMode::Middle)
+            .hexpand(true)
+            .xalign(0.0)
+            .build();
+        let v_pos = gtk::Label::builder().css_classes(["dim-label"]).build();
+        let v_badge = gtk::Label::builder()
+            .css_classes(["badge"])
+            .visible(false)
+            .build();
+        let v_ext = gtk::Button::builder()
+            .label("Open in Default App")
+            .tooltip_text("Open this file in your usual photo or video app")
+            .build();
+        {
+            let s = sender.clone();
+            v_ext.connect_clicked(move |_| s.input(Msg::ViewerOpenExternal));
+        }
+        let v_top = gtk::Box::builder()
+            .spacing(12)
+            .margin_start(12)
+            .margin_end(12)
+            .margin_top(8)
+            .margin_bottom(8)
+            .build();
+        v_top.append(&v_back);
+        v_top.append(&v_title);
+        v_top.append(&v_badge);
+        v_top.append(&v_pos);
+        v_top.append(&v_ext);
+        let v_picture = gtk::Picture::builder()
+            .content_fit(gtk::ContentFit::Contain)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        let v_video = gtk::Video::builder()
+            .autoplay(true)
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        let v_error = adw::StatusPage::builder()
+            .icon_name("video-x-generic-symbolic")
+            .title("This Video Can't Be Played Here")
+            .description("Unswiper doesn't have the codec for this file. Click Open in Default App to watch it in another app. Your decisions still work as usual.")
+            .build();
+        let v_media = gtk::Stack::builder()
+            .css_classes(["viewer-media"])
+            .hexpand(true)
+            .vexpand(true)
+            .build();
+        v_media.add_named(&v_picture, Some("picture"));
+        v_media.add_named(&v_video, Some("video"));
+        v_media.add_named(&v_error, Some("error"));
+        let nav_button = |icon: &str, tip: &str, step: i32| {
+            let b = gtk::Button::builder()
+                .icon_name(icon)
+                .tooltip_text(tip)
+                .valign(gtk::Align::Center)
+                .css_classes(["circular", "osd"])
+                .margin_start(8)
+                .margin_end(8)
+                .build();
+            let s = sender.clone();
+            b.connect_clicked(move |_| s.input(Msg::ViewerStep(step)));
+            b
+        };
+        let v_prev = nav_button("go-previous-symbolic", "Previous (Left arrow)", -1);
+        let v_next = nav_button("go-next-symbolic", "Next (Right arrow)", 1);
+        let v_mid = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        v_mid.append(&v_prev);
+        v_mid.append(&v_media);
+        v_mid.append(&v_next);
+        let v_page = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        v_page.append(&v_top);
+        v_page.append(&v_mid);
+
         let content = gtk::Stack::new();
         content.add_named(&empty, Some("empty"));
         content.add_named(&grid_scroll, Some("grid"));
+        content.add_named(&v_page, Some("viewer"));
 
         let bar = gtk::ActionBar::new();
         let mk = |label: &str, tip: &str, d: Decision| {
@@ -452,17 +712,6 @@ impl Component for App {
             .position(320)
             .shrink_start_child(false)
             .build();
-        {
-            // The "empty" placeholder flips to the grid once a visit opens.
-            let c = content.clone();
-            visit_title.connect_label_notify(move |l| {
-                c.set_visible_child_name(if l.label().is_empty() {
-                    "empty"
-                } else {
-                    "grid"
-                })
-            });
-        }
 
         let stack = gtk::Stack::builder()
             .transition_type(gtk::StackTransitionType::Crossfade)
@@ -492,6 +741,9 @@ impl Component for App {
             thumb_gen: 0,
             save_scheduled: false,
             indexing: false,
+            blur_cancel: None,
+            viewer_reported: Rc::new(Cell::new(false)),
+            viewer_presented: false,
         };
         let mut widgets = Widgets {
             toasts,
@@ -503,11 +755,29 @@ impl Component for App {
             keep_status,
             grid,
             cells: HashMap::new(),
+            durations: HashMap::new(),
+            content,
+            viewer: ViewerWidgets {
+                title: v_title,
+                position: v_pos,
+                badge: v_badge,
+                media: v_media,
+                picture: v_picture,
+                video: v_video,
+                error: v_error,
+                prev: v_prev,
+                next: v_next,
+                shown: None,
+            },
             selection_label,
             commit_button,
             filter_buttons,
             restore_action,
             mode_action,
+            blur_action,
+            blur_sens_action,
+            blur_status,
+            live_action,
             syncing,
         };
 
@@ -518,6 +788,7 @@ impl Component for App {
             sender.input(Msg::FolderChosen(dir));
         } else if model.state.has_library() {
             model.start_watcher(&sender);
+            model.start_blur(&sender);
         }
         model.refresh(&mut widgets);
         if !model.state.pending_commits().is_empty() {
@@ -602,6 +873,7 @@ impl Component for App {
                         let n = items.len();
                         self.state.apply_index(items, groups, chrono::Utc::now());
                         self.start_watcher(&sender);
+                        self.start_blur(&sender);
                         w.toasts.add_toast(adw::Toast::new(&format!(
                             "Indexed {n} items in {} visits.",
                             self.state.snap.groups.len()
@@ -623,6 +895,19 @@ impl Component for App {
                 if let Some(id) = id {
                     self.state.open_visit(&id);
                     self.rebuild_grid(w, &sender);
+                    if self.opts.present_viewer && !self.viewer_presented {
+                        self.viewer_presented = true;
+                        let first_video = self
+                            .state
+                            .visible_items()
+                            .iter()
+                            .find(|i| i.kind == unswiper_core::MediaKind::Video)
+                            .map(|i| i.path.clone());
+                        match first_video {
+                            Some(p) => sender.input(Msg::OpenViewer(p)),
+                            None => println!("viewer: error no video in the first visit"),
+                        }
+                    }
                 }
             }
             Msg::Click(p, ctrl, shift) => self.state.click(&p, ctrl, shift),
@@ -696,6 +981,9 @@ impl Component for App {
                     changed = !d.is_empty();
                     if changed {
                         self.rebuild_grid(w, &sender);
+                        if !d.added.is_empty() {
+                            self.start_blur(&sender);
+                        }
                     }
                 }
             }
@@ -734,8 +1022,146 @@ impl Component for App {
                 changed = false;
                 about_dialog().present(Some(root));
             }
+            Msg::BlurProgress(done, total) => {
+                changed = false;
+                w.blur_status
+                    .set_label(&format!("Checking sharpness {done}/{total}"));
+                w.blur_status.set_visible(done < total);
+            }
+            Msg::BlurResult(flagged, scored, last) => {
+                if last {
+                    w.blur_status.set_visible(false);
+                    self.blur_cancel = None;
+                }
+                let r = self.state.apply_blur(&flagged, &scored);
+                changed = r.suggested + r.withdrawn > 0;
+                if changed && self.state.filter == Filter::Blurry {
+                    self.rebuild_grid(w, &sender);
+                }
+                if last && r.suggested > 0 {
+                    w.toasts.add_toast(adw::Toast::new(&match r.suggested {
+                        1 => "1 photo looks blurry and was marked Reject. Nothing moves until you commit.".to_string(),
+                        n => format!("{n} photos look blurry and were marked Reject. Nothing moves until you commit."),
+                    }));
+                }
+            }
+            Msg::BlurSetEnabled(on) => {
+                let n = self.state.set_blur_enabled(on);
+                if on {
+                    self.start_blur(&sender);
+                } else {
+                    self.stop_blur(w);
+                    if n > 0 {
+                        w.toasts.add_toast(adw::Toast::new(&format!(
+                            "Blur detection is off. {n} blurry suggestion{} cleared.",
+                            if n == 1 { "" } else { "s" }
+                        )));
+                    }
+                }
+                self.rebuild_grid(w, &sender);
+            }
+            Msg::BlurSetSensitivity(sens) => {
+                self.state.set_blur_sensitivity(sens);
+                self.start_blur(&sender);
+            }
+            Msg::BlurRescan => {
+                changed = false;
+                if !self.state.blur_enabled() {
+                    w.toasts.add_toast(adw::Toast::new(
+                        "Turn on Detect Blurry Photos in the menu first.",
+                    ));
+                } else {
+                    self.start_blur(&sender);
+                }
+            }
+            Msg::BlurClearVisit => {
+                let n = self.state.dismiss_suggested_in_visit();
+                w.toasts.add_toast(adw::Toast::new(&format!(
+                    "Cleared {n} blurry suggestion{} in this visit.",
+                    if n == 1 { "" } else { "s" }
+                )));
+                self.rebuild_grid(w, &sender);
+            }
+            Msg::BlurConfirmVisit => {
+                let n = self.state.confirm_suggested_in_visit();
+                w.toasts.add_toast(adw::Toast::new(&format!(
+                    "{n} blurry photo{} now rejected by you. They move only when you commit.",
+                    if n == 1 { " is" } else { "s are" }
+                )));
+            }
+            Msg::OpenViewer(p) => {
+                if self.state.open_viewer(&p) {
+                    self.show_viewer(w, &sender);
+                }
+            }
+            Msg::ToggleViewer => {
+                if self.state.viewer.is_some() {
+                    self.state.close_viewer();
+                } else if self.state.open_viewer_on_selection() {
+                    self.show_viewer(w, &sender);
+                }
+            }
+            Msg::CloseViewer => {
+                changed = self.state.viewer.is_some();
+                self.state.close_viewer();
+            }
+            Msg::ViewerStep(d) => {
+                changed = self.state.viewer_step(d);
+                if changed {
+                    self.show_viewer(w, &sender);
+                }
+            }
+            Msg::ViewerImage(path, t) => {
+                changed = false;
+                if w.viewer.shown.as_deref() == Some(path.as_str()) {
+                    let t = t.0;
+                    let bytes = glib::Bytes::from_owned(t.rgba);
+                    let tex = gdk::MemoryTexture::new(
+                        t.width as i32,
+                        t.height as i32,
+                        gdk::MemoryFormat::R8g8b8a8,
+                        &bytes,
+                        t.width as usize * 4,
+                    );
+                    w.viewer.picture.set_paintable(Some(&tex));
+                }
+            }
+            Msg::ViewerMuted(m) => {
+                changed = false;
+                self.state.muted = m;
+            }
+            Msg::ViewerOpenExternal => {
+                changed = false;
+                if let Some(it) = self.state.viewer_item() {
+                    gtk::FileLauncher::new(Some(&gio::File::for_path(&it.path))).launch(
+                        Some(root),
+                        None::<&gio::Cancellable>,
+                        |_| {},
+                    );
+                }
+            }
+            Msg::SetLiveMotion(on) => {
+                self.state.set_live_motion(on);
+                if self.state.viewer.is_some() {
+                    self.show_viewer(w, &sender);
+                }
+            }
+            Msg::Duration(gen, path, ms) => {
+                changed = false;
+                if gen == self.thumb_gen {
+                    if let Some(l) = w.durations.get(&path) {
+                        l.set_label(&format!(
+                            "▶ {}",
+                            crate::player::format_duration(std::time::Duration::from_millis(ms))
+                        ));
+                    }
+                }
+            }
             Msg::Quit => {
                 changed = false;
+                if let Some(c) = &self.blur_cancel {
+                    c.store(true, Ordering::Relaxed);
+                }
                 if self.state.needs_save() {
                     let _ = self.state.save();
                 }
@@ -757,6 +1183,111 @@ impl Component for App {
 }
 
 impl App {
+    /// (Re)starts the background blur scan if the setting is on.
+    fn start_blur(&mut self, sender: &ComponentSender<Self>) {
+        if let Some(c) = self.blur_cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        if !self.state.blur_enabled() || !self.state.has_library() {
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.blur_cancel = Some(cancel.clone());
+        let first = self.state.suggested_scan_first();
+        let job = BlurJob {
+            items: self.state.blur_scan_order(),
+            first,
+            cache_path: unswiper_blur::cache::QualityCache::path_in(self.state.store.support_dir()),
+            thresholds: Thresholds::for_sensitivity(self.state.blur_sensitivity()),
+            cancel,
+        };
+        let tx = sender.input_sender().clone();
+        std::thread::spawn(move || {
+            let last = std::sync::Mutex::new(std::time::Instant::now());
+            crate::blur::run(job, &|e| match e {
+                BlurEvent::Progress(d, t) => {
+                    let mut l = last.lock().unwrap();
+                    if d == t || l.elapsed().as_millis() > 150 {
+                        *l = std::time::Instant::now();
+                        tx.emit(Msg::BlurProgress(d, t));
+                    }
+                }
+                BlurEvent::Result {
+                    flagged,
+                    scored,
+                    last,
+                } => tx.emit(Msg::BlurResult(flagged, scored, last)),
+            });
+        });
+    }
+
+    /// Loads the viewed item into the viewer page (still, video or Live Photo motion).
+    fn show_viewer(&mut self, w: &mut Widgets, sender: &ComponentSender<Self>) {
+        let Some(m) = self.state.viewer_media() else {
+            return;
+        };
+        let v = &mut w.viewer;
+        v.shown = Some(m.path.clone());
+        v.video.set_media_stream(None::<&gtk::MediaStream>);
+        v.picture.set_paintable(None::<&gdk::Paintable>);
+        match &m.play {
+            Some(file) => {
+                let stream = gtk::MediaFile::for_filename(file);
+                stream.set_muted(self.state.muted);
+                let is_motion = m.is_motion;
+                let report = self.opts.present_viewer;
+                let reported = self.viewer_reported.clone();
+                stream.connect_prepared_notify(move |st| {
+                    if !st.is_prepared() {
+                        return;
+                    }
+                    let d = (st.duration() > 0)
+                        .then(|| std::time::Duration::from_micros(st.duration() as u64));
+                    st.set_loop(crate::player::should_loop(d, is_motion));
+                    if report && !reported.replace(true) {
+                        println!(
+                            "viewer: prepared duration_ms={}",
+                            d.map(|d| d.as_millis()).unwrap_or(0)
+                        );
+                    }
+                });
+                let media = v.media.clone();
+                let reported = self.viewer_reported.clone();
+                stream.connect_error_notify(move |st| {
+                    if let Some(e) = st.error() {
+                        media.set_visible_child_name("error");
+                        if report && !reported.replace(true) {
+                            println!("viewer: error {e}");
+                        }
+                    }
+                });
+                let s = sender.clone();
+                stream.connect_muted_notify(move |st| s.input(Msg::ViewerMuted(st.is_muted())));
+                v.video.set_loop(is_motion);
+                v.video.set_media_stream(Some(&stream));
+                v.media.set_visible_child_name("video");
+            }
+            None => {
+                v.media.set_visible_child_name("picture");
+                let tx = sender.input_sender().clone();
+                let path = m.path.clone();
+                std::thread::spawn(move || {
+                    let p = std::path::Path::new(&path);
+                    if let Some(t) = thumbs::load(p, unswiper_core::MediaKind::Photo, 2048, None) {
+                        tx.emit(Msg::ViewerImage(path, ThumbMsg(t)));
+                    }
+                });
+            }
+        }
+    }
+
+    fn stop_blur(&mut self, w: &mut Widgets) {
+        if let Some(c) = self.blur_cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        w.blur_status.set_visible(false);
+    }
+
     fn start_index(&mut self, sender: &ComponentSender<Self>, w: &mut Widgets) {
         let Some(root) = self.state.root() else {
             return;
@@ -807,6 +1338,7 @@ impl App {
         self.thumb_gen += 1;
         w.grid.remove_all();
         w.cells.clear();
+        w.durations.clear();
         let items: Vec<MediaItem> = self.state.visible_items().into_iter().cloned().collect();
         for it in &items {
             let pic = gtk::Picture::builder()
@@ -823,15 +1355,15 @@ impl App {
             let overlay = gtk::Overlay::builder().child(&pic).build();
             overlay.add_overlay(&badge);
             if it.kind == unswiper_core::MediaKind::Video {
-                let icon = gtk::Image::builder()
-                    .icon_name("media-playback-start-symbolic")
+                // Play badge; the duration is filled in by the thumbnail thread.
+                let dur = gtk::Label::builder()
+                    .label("▶")
                     .halign(gtk::Align::Start)
                     .valign(gtk::Align::End)
-                    .margin_start(6)
-                    .margin_bottom(6)
-                    .pixel_size(20)
+                    .css_classes(["duration"])
                     .build();
-                overlay.add_overlay(&icon);
+                overlay.add_overlay(&dur);
+                w.durations.insert(it.path.clone(), dur);
             }
             let name = it.path.rsplit('/').next().unwrap_or(&it.path).to_string();
             let cell = gtk::Box::builder()
@@ -850,7 +1382,11 @@ impl App {
             let click = gtk::GestureClick::new();
             let s = sender.clone();
             let p = it.path.clone();
-            click.connect_pressed(move |g, _, _, _| {
+            click.connect_pressed(move |g, n, _, _| {
+                if n == 2 {
+                    s.input(Msg::OpenViewer(p.clone()));
+                    return;
+                }
                 let m = g.current_event_state();
                 s.input(Msg::Click(
                     p.clone(),
@@ -869,6 +1405,16 @@ impl App {
         std::thread::spawn(move || {
             let cache = thumbs::default_cache_dir();
             for (p, k) in jobs {
+                if k == unswiper_core::MediaKind::Video {
+                    if let Some(d) = crate::video::duration(std::path::Path::new(&p)) {
+                        if tx
+                            .send(Msg::Duration(gen, p.clone(), d.as_millis() as u64))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
                 if let Some(t) = thumbs::load(std::path::Path::new(&p), k, THUMB, Some(&cache)) {
                     if tx.send(Msg::Thumb(gen, p, ThumbMsg(t))).is_err() {
                         break;
@@ -889,6 +1435,9 @@ impl App {
         w.restore_action.set_enabled(st.can_restore());
         w.mode_action
             .set_state(&mode_name(st.snap.config.commit_mode).to_variant());
+        w.blur_action.set_state(&st.blur_enabled().to_variant());
+        w.blur_sens_action
+            .set_state(&st.blur_sensitivity().as_str().to_variant());
 
         // Visits list (rebuilt; it is small) with the open one selected.
         w.visits.remove_all();
@@ -917,6 +1466,42 @@ impl App {
             }
         }
 
+        w.live_action.set_state(&st.live_motion().to_variant());
+        w.content.set_visible_child_name(if st.viewer.is_some() {
+            "viewer"
+        } else if st.visit.is_some() {
+            "grid"
+        } else {
+            "empty"
+        });
+        if st.viewer.is_none() && w.viewer.shown.take().is_some() {
+            // Stop playback when leaving the viewer.
+            w.viewer.video.set_media_stream(None::<&gtk::MediaStream>);
+        }
+        if let (Some(it), Some((i, n))) = (st.viewer_item(), st.viewer_position()) {
+            let v = &w.viewer;
+            v.title.set_label(it.file_name());
+            v.position.set_label(&format!("{} of {n}", i + 1));
+            v.prev.set_sensitive(i > 0);
+            v.next.set_sensitive(i + 1 < n);
+            v.badge.remove_css_class("keep");
+            v.badge.remove_css_class("reject");
+            v.badge.remove_css_class("blurry");
+            let (label, class) = match it.decision {
+                Decision::Keep => ("Keep", "keep"),
+                Decision::Reject if unswiper_core::quality::is_suggested(it) => {
+                    ("Blurry?", "blurry")
+                }
+                Decision::Reject => ("Reject", "reject"),
+                Decision::Undecided => ("", ""),
+            };
+            v.badge.set_label(label);
+            v.badge.set_visible(!label.is_empty());
+            if !class.is_empty() {
+                v.badge.add_css_class(class);
+            }
+            let _ = &v.error;
+        }
         match st.current_group() {
             Some(g) => {
                 w.visit_title.set_label(&g.title);
@@ -942,11 +1527,20 @@ impl App {
             }
             badge.remove_css_class("keep");
             badge.remove_css_class("reject");
+            badge.remove_css_class("blurry");
+            badge.set_tooltip_text(None);
             cell.remove_css_class("rejected");
             match it.decision {
                 Decision::Keep => {
                     badge.set_label("Keep");
                     badge.add_css_class("keep");
+                    badge.set_visible(true);
+                }
+                Decision::Reject if unswiper_core::quality::is_suggested(it) => {
+                    badge.set_label("Blurry?");
+                    badge.add_css_class("blurry");
+                    badge.set_tooltip_text(Some("Unswiper thinks this photo is blurry and marked it Reject. Press K to keep it or U to clear. Nothing moves until you commit."));
+                    cell.add_css_class("rejected");
                     badge.set_visible(true);
                 }
                 Decision::Reject => {

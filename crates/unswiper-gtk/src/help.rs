@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rob Ranslam
 
-//! The 11 Help pages (Linux wording) and a small Markdown → Pango markup renderer.
+//! The 13 Help pages (Linux wording) and a small Markdown → Pango markup renderer.
 
 pub struct Topic {
     pub id: &'static str,
@@ -15,7 +15,7 @@ macro_rules! page {
     };
 }
 
-const PAGES: [(&str, &str); 11] = [
+const PAGES: [(&str, &str); 13] = [
     page!("01-getting-started"),
     page!("02-visits"),
     page!("03-reducing"),
@@ -27,6 +27,8 @@ const PAGES: [(&str, &str); 11] = [
     page!("09-privacy"),
     page!("10-troubleshooting"),
     page!("11-about"),
+    page!("12-blurry-photos"),
+    page!("13-videos"),
 ];
 
 /// All topics in order; the title is the page's first `# ` heading.
@@ -153,8 +155,8 @@ pub fn to_pango(md: &str) -> String {
 /// `--help-selftest`: every topic renders to markup that has a title and no raw Markdown.
 pub fn selftest() -> Result<usize, String> {
     let t = topics();
-    if t.len() != 11 {
-        return Err(format!("expected 11 help topics, found {}", t.len()));
+    if t.len() != 13 {
+        return Err(format!("expected 13 help topics, found {}", t.len()));
     }
     for topic in &t {
         let m = to_pango(topic.markdown);
@@ -172,10 +174,10 @@ mod tests {
     #[test]
     fn eleven_topics_with_titles() {
         let t = topics();
-        assert_eq!(t.len(), 11);
+        assert_eq!(t.len(), 13);
         assert_eq!(t[0].title, "Getting Started");
         assert_eq!(t[10].title, "About Unswiper");
-        assert_eq!(selftest(), Ok(11));
+        assert_eq!(selftest(), Ok(13));
     }
 
     #[test]

@@ -358,6 +358,19 @@ impl LiveIndex {
         }
     }
 
+    /// Copies an item's decision and extra fields (e.g. blur suggestion state) from the
+    /// app's copy. Returns false for unknown paths.
+    pub fn sync_item(&mut self, src: &MediaItem) -> bool {
+        match self.items.get_mut(&src.path) {
+            Some(i) => {
+                i.decision = src.decision;
+                i.extra = src.extra.clone();
+                true
+            }
+            None => false,
+        }
+    }
+
     /// Ignore events for these paths (e.g. files the app is about to move) for `ttl`.
     pub fn suppress<I: IntoIterator<Item = PathBuf>>(&mut self, paths: I, ttl: Duration) {
         let until = Instant::now() + ttl;

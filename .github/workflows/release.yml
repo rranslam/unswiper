@@ -21,6 +21,9 @@ jobs:
           sw_vers
           xcodebuild -version
           swift --version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
       - name: Build Unswiper.dmg
         run: apps/macos/scripts/build-dmg.sh "${GITHUB_REF_NAME#v}"
       - uses: actions/upload-artifact@v4

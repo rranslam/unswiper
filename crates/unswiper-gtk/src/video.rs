@@ -50,6 +50,60 @@ mod imp {
         r
     }
 
+    /// The clip's length, or `None` when it can't be opened or decoded.
+    pub fn duration(path: &Path) -> Option<Duration> {
+        if !available() {
+            return None;
+        }
+        let uri = gst::glib::filename_to_uri(path.canonicalize().ok()?, None).ok()?;
+        let p = gst::parse::launch(&format!("uridecodebin uri=\"{uri}\" ! fakesink sync=false"))
+            .ok()?
+            .downcast::<gst::Pipeline>()
+            .ok()?;
+        let r = wait_paused(&p).and_then(|_| p.query_duration::<gst::ClockTime>());
+        let _ = p.set_state(gst::State::Null);
+        r.map(|d| Duration::from_nanos(d.nseconds()))
+            .filter(|d| !d.is_zero())
+    }
+
+    /// Test helper: encodes a 2 s colour-bar clip (H.264/MP4 when an encoder is installed,
+    /// else WebM or Ogg). `None` when GStreamer has no usable encoder.
+    #[doc(hidden)]
+    pub fn make_test_clip(dir: &Path) -> Option<std::path::PathBuf> {
+        if !available() {
+            return None;
+        }
+        for (enc, mux, ext) in [
+            ("x264enc", "mp4mux", "mp4"),
+            ("openh264enc ! h264parse", "mp4mux", "mp4"),
+            ("vp8enc deadline=1", "webmmux", "webm"),
+            ("theoraenc", "oggmux", "ogv"),
+        ] {
+            let name = enc.split(' ').next().unwrap();
+            if gst::ElementFactory::find(name).is_none() || gst::ElementFactory::find(mux).is_none()
+            {
+                continue;
+            }
+            let out = dir.join(format!("clip.{ext}"));
+            let p = gst::parse::launch(&format!(
+                "videotestsrc num-buffers=40 pattern=smpte ! video/x-raw,width=320,height=240,framerate=20/1 ! videoconvert ! {enc} ! {mux} ! filesink location=\"{}\"",
+                out.display()
+            ))
+            .ok()?;
+            p.set_state(gst::State::Playing).ok()?;
+            let bus = p.bus()?;
+            let done = bus.timed_pop_filtered(
+                gst::ClockTime::from_seconds(30),
+                &[gst::MessageType::Eos, gst::MessageType::Error],
+            );
+            let _ = p.set_state(gst::State::Null);
+            if matches!(done.map(|m| m.type_()), Some(gst::MessageType::Eos)) {
+                return Some(out);
+            }
+        }
+        None
+    }
+
     fn wait_paused(p: &gst::Pipeline) -> Option<()> {
         p.set_state(gst::State::Paused).ok()?;
         match p.state(gst::ClockTime::from_mseconds(TIMEOUT.as_millis() as u64)) {
@@ -92,7 +146,7 @@ mod imp {
 }
 
 #[cfg(feature = "gstreamer")]
-pub use imp::{available, frame, seek_target};
+pub use imp::{available, duration, frame, make_test_clip, seek_target};
 
 #[cfg(not(feature = "gstreamer"))]
 pub fn available() -> bool {
@@ -104,51 +158,26 @@ pub fn frame(_path: &Path, _max: u32) -> Option<Thumb> {
     None
 }
 
+#[cfg(not(feature = "gstreamer"))]
+pub fn duration(_path: &Path) -> Option<std::time::Duration> {
+    None
+}
+
+#[cfg(not(feature = "gstreamer"))]
+#[doc(hidden)]
+pub fn make_test_clip(_dir: &Path) -> Option<std::path::PathBuf> {
+    None
+}
+
 #[cfg(all(test, feature = "gstreamer"))]
 mod tests {
     use super::*;
-    use gst::prelude::*;
     use std::time::Duration;
-
-    /// Encodes a 2 s test clip with whatever encoder/muxer pair is installed.
-    fn make_clip(dir: &Path) -> Option<std::path::PathBuf> {
-        if !available() {
-            return None;
-        }
-        for (enc, mux, ext) in [
-            ("vp8enc deadline=1", "webmmux", "webm"),
-            ("theoraenc", "oggmux", "ogv"),
-            ("x264enc", "mp4mux", "mp4"),
-        ] {
-            let name = enc.split(' ').next().unwrap();
-            if gst::ElementFactory::find(name).is_none() || gst::ElementFactory::find(mux).is_none()
-            {
-                continue;
-            }
-            let out = dir.join(format!("clip.{ext}"));
-            let p = gst::parse::launch(&format!(
-                "videotestsrc num-buffers=40 pattern=smpte ! video/x-raw,width=320,height=240,framerate=20/1 ! videoconvert ! {enc} ! {mux} ! filesink location=\"{}\"",
-                out.display()
-            ))
-            .ok()?;
-            p.set_state(gst::State::Playing).ok()?;
-            let bus = p.bus()?;
-            let done = bus.timed_pop_filtered(
-                gst::ClockTime::from_seconds(30),
-                &[gst::MessageType::Eos, gst::MessageType::Error],
-            );
-            let _ = p.set_state(gst::State::Null);
-            if matches!(done.map(|m| m.type_()), Some(gst::MessageType::Eos)) {
-                return Some(out);
-            }
-        }
-        None
-    }
 
     #[test]
     fn frame_from_generated_clip() {
         let d = tempfile::tempdir().unwrap();
-        let Some(clip) = make_clip(d.path()) else {
+        let Some(clip) = make_test_clip(d.path()) else {
             eprintln!("no GStreamer encoder/muxer available; skipping");
             return;
         };
@@ -160,6 +189,11 @@ mod tests {
             .rgba
             .chunks(4)
             .any(|p| p[0] > 100 || p[1] > 100 || p[2] > 100));
+        let len = duration(&clip).expect("duration");
+        assert!(
+            len > Duration::from_millis(1500) && len < Duration::from_millis(2500),
+            "{len:?}"
+        );
         // Through the public loader too (cached).
         let cache = d.path().join("cache");
         assert!(
@@ -174,6 +208,8 @@ mod tests {
         std::fs::write(&bad, b"not a video at all").unwrap();
         assert!(frame(&bad, 64).is_none());
         assert!(frame(&d.path().join("missing.mp4"), 64).is_none());
+        assert!(duration(&bad).is_none());
+        assert!(duration(&d.path().join("missing.mp4")).is_none());
     }
 
     #[test]

@@ -8,7 +8,7 @@ use unswiper_gtk::ui::{self, Options};
 
 const USAGE: &str =
     "Usage: unswiper [--library-dir DIR] [--open FOLDER] [--open-first-visit] [--quit-after SECS]
-       [--present-dialog about|commit]
+       [--present-dialog about|commit] [--present-viewer]
        unswiper --version | --help-selftest";
 
 fn main() {
@@ -35,6 +35,7 @@ fn main() {
             "--open-first-visit" => opts.open_first_visit = true,
             "--quit-after" => opts.quit_after = args.next().and_then(|s| s.parse().ok()),
             "--present-dialog" => opts.present_dialog = args.next(),
+            "--present-viewer" => opts.present_viewer = true,
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return;

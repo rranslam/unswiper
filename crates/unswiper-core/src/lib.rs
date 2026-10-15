@@ -16,6 +16,7 @@ pub mod index;
 pub mod meta;
 pub mod model;
 pub mod path_util;
+pub mod quality;
 pub mod store;
 pub mod time;
 pub mod trash;

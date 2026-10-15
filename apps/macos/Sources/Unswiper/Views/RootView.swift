@@ -24,6 +24,16 @@ struct RootView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
+            if let progress = state.blurProgress {
+                Divider()
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(progress).font(.caption).foregroundStyle(.secondary)
+                    Spacer()
+                }
+                .padding(.horizontal)
+                .padding(.vertical, 6)
+            }
             if let message = state.statusMessage {
                 Divider()
                 HStack {

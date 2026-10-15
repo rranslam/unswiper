@@ -2,6 +2,24 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
+## [0.3.0] - 2026-10-15
+
+### Changed
+- Blur thresholds calibrated on 85 real photos (`docs/blur-evaluation.md`). Sharp seascapes, horizons and panels are no longer marked as shaken, and false positives at Normal dropped from 14 % to 6 % of sharp photos.
+
+### Fixed
+- Linux Help: the Keyboard Shortcuts page now matches the app (F5 re-indexes, Ctrl+Shift+R restores).
+- Linux: test and screenshot runs (`--quit-after`) no longer merge into an already-running Unswiper.
+
+### Added
+- **Blurry photo detection (Linux).** Unswiper checks photos in the background (the open visit first) and marks likely out-of-focus or shaken photos **Reject** with an orange **Blurry?** badge. Nothing moves until you commit the visit; your own Keep/Reject choices always win, and pressing **U** on a marked photo clears it for good. On by default; turn it off, change the sensitivity (Low / Normal / High), or clear or confirm all suggestions in a visit from the main menu under **Blurry Photos**. A **Blurry** filter shows only the marked photos, and the commit confirmation says how many rejects were suggested as blurry. New Help page: **Blurry Photos**.
+- **Play videos while reviewing (Linux and Mac).** Double-click an item, or select it and press **Space**, to open a full-window viewer; **Space**/**Esc** close it, **←/→** step through the visit, and **K/R/U** decide on the item shown. Videos start muted (your mute choice is kept until you quit), clips under 10 s loop, and video tiles show a **▶ 0:07** badge. **Play Live Photo Motion** (off by default) plays a Live Photo's video part. Files that can't be played offer **Open in Default App**. New Help page: **Watching Videos and Large Previews**.
+- AppImage now bundles GTK's GStreamer media module and audio output (PipeWire/PulseAudio).
+- **Blurry photo detection on the Mac**, with the same rules, settings and library.json keys as Linux. The Mac app runs the same Rust detector (a small `unswiper-blur` helper inside Unswiper.app), the open visit first. You get the orange **Blurry?** badge, a **Blurry** filter, a **Blurry Photos** menu (on/off, sensitivity, check now, clear or reject all suggestions in a visit), **U** to clear a choice, and a note in Review & commit. Blur suggestions saved by the Linux app are kept when the Mac app saves. New Mac Help page: **Blurry Photos**.
+- `unswiper-blur scan --only FILE` scores just the listed photos.
+- **`unswiper-blur` command-line tool** (`unswiper-blur scan <folder|library.json>`), read-only, for checking big folders and tuning sensitivity.
+- New crate `unswiper-blur` (pure Rust, offline, MIT). Scores are cached in `quality-cache.json` next to `library.json`; `library.json` only gets two optional keys (`decisionSource: "auto-blur"`, `blurDismissed`), so files without blur data are unchanged.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

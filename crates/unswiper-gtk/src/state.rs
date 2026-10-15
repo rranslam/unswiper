@@ -6,10 +6,12 @@
 //! commits) and adds live folder watching through [`LiveIndex`].
 
 use crate::format;
+use std::collections::HashSet;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use unswiper_core::commit::{self, CommitResult};
 use unswiper_core::index::DateReader;
+use unswiper_core::quality::{self, ApplyReport, Sensitivity};
 use unswiper_core::store::{read_manifest, LibraryStore, StoreError};
 use unswiper_core::time::Timestamp;
 use unswiper_core::trash::Trasher;
@@ -22,6 +24,8 @@ pub enum Filter {
     All,
     Photos,
     Videos,
+    /// Only photos suggested as blurry (plan §15.2 "Show blurry suggestions").
+    Blurry,
 }
 
 /// One row of the visits list.
@@ -47,6 +51,8 @@ pub struct CommitPlan {
     pub files: usize,
     pub bytes: i64,
     pub mode: CommitMode,
+    /// How many of the rejects are blur suggestions the user hasn't confirmed.
+    pub suggested_blurry: usize,
 }
 
 impl CommitPlan {
@@ -76,8 +82,13 @@ impl CommitPlan {
             CommitMode::Quarantine => format!("{what} will be moved to the _Rejected/Unswiper folder inside your library. Nothing is deleted."),
             CommitMode::DryRun => format!("Nothing will move. This only reports what would be moved: {what}."),
         };
+        let blurry = match self.suggested_blurry {
+            0 => String::new(),
+            1 => "\n\n1 of them was suggested as blurry by Unswiper. Press Cancel to look at it first.".into(),
+            n => format!("\n\n{n} of them were suggested as blurry by Unswiper. Press Cancel to look at them first."),
+        };
         format!(
-            "Visit “{}”: {action}\n\n{} kept and {} undecided item{} stay where they are. Other visits are not touched.",
+            "Visit “{}”: {action}{blurry}\n\n{} kept and {} undecided item{} stay where they are. Other visits are not touched.",
             self.visit,
             self.keeps,
             self.undecided,
@@ -95,6 +106,9 @@ impl CommitPlan {
     }
 }
 
+/// Config key for the Live Photo motion option (absent = off).
+pub const KEY_LIVE_MOTION: &str = "livePhotoMotion";
+
 pub struct AppState {
     pub store: LibraryStore,
     pub snap: LibrarySnapshot,
@@ -106,6 +120,10 @@ pub struct AppState {
     /// Shown once after launch when library.json couldn't be read.
     pub load_problem: Option<String>,
     dirty: bool,
+    /// The item open in the media viewer (plan §16), if any.
+    pub viewer: Option<String>,
+    /// Viewer sound: starts muted, remembered for this session only.
+    pub muted: bool,
 }
 
 impl AppState {
@@ -122,6 +140,8 @@ impl AppState {
             filter: Filter::All,
             load_problem: r.problem,
             dirty: false,
+            viewer: None,
+            muted: true,
         };
         if let Some(root) = s.root() {
             if root.is_dir() {
@@ -166,7 +186,13 @@ impl AppState {
     }
 
     /// Takes the result of an index run.
-    pub fn apply_index(&mut self, items: Vec<MediaItem>, groups: Vec<VisitGroup>, now: Timestamp) {
+    pub fn apply_index(
+        &mut self,
+        mut items: Vec<MediaItem>,
+        groups: Vec<VisitGroup>,
+        now: Timestamp,
+    ) {
+        quality::carry_over(&self.snap.items, &mut items);
         if let Some(root) = self.root() {
             self.live = Some(LiveIndex::from_items(
                 &root,
@@ -187,8 +213,11 @@ impl AppState {
         };
         let d = live.apply(batch, dates);
         if !d.is_empty() {
-            self.snap.items = live.items();
+            let mut items = live.items();
+            quality::carry_over(&self.snap.items, &mut items);
+            self.snap.items = items;
             self.snap.groups = live.groups().to_vec();
+            self.sync_live_decisions();
             self.after_items_changed();
         }
         d
@@ -202,6 +231,7 @@ impl AppState {
         }
         let paths: BTreeSet<&str> = self.snap.items.iter().map(|i| i.path.as_str()).collect();
         self.selection.retain(|p| paths.contains(p.as_str()));
+        self.check_viewer();
         self.dirty = true;
     }
 
@@ -237,6 +267,7 @@ impl AppState {
         self.visit = None;
         self.selection.clear();
         self.anchor = None;
+        self.viewer = None;
     }
 
     pub fn current_group(&self) -> Option<&VisitGroup> {
@@ -266,6 +297,7 @@ impl AppState {
                 Filter::All => true,
                 Filter::Photos => i.kind == MediaKind::Photo,
                 Filter::Videos => i.kind == MediaKind::Video,
+                Filter::Blurry => quality::is_suggested(i),
             })
             .collect()
     }
@@ -278,6 +310,7 @@ impl AppState {
             .map(|i| i.path.clone())
             .collect();
         self.selection.retain(|p| visible.contains(p));
+        self.check_viewer();
     }
 
     /// Click on a thumbnail: plain = select only this, Ctrl = toggle, Shift = range from anchor.
@@ -339,12 +372,11 @@ impl AppState {
             .iter_mut()
             .filter(|i| set.contains(i.path.as_str()))
         {
-            if i.decision != d {
-                i.decision = d;
+            if quality::set_manual_decision(i, d) {
                 n += 1;
             }
             if let Some(live) = self.live.as_mut() {
-                live.set_decision(&i.path, d);
+                live.sync_item(i);
             }
         }
         if n > 0 {
@@ -416,6 +448,7 @@ impl AppState {
             files: rejects.iter().map(|i| i.file_count()).sum(),
             bytes: rejects.iter().map(|i| i.total_bytes()).sum(),
             mode: self.snap.config.commit_mode,
+            suggested_blurry: rejects.iter().filter(|i| quality::is_suggested(i)).count(),
         }
     }
 
@@ -465,7 +498,9 @@ impl AppState {
             if !gone.is_empty() {
                 if let Some(live) = self.live.as_mut() {
                     live.remove_paths(&gone);
-                    self.snap.items = live.items();
+                    let mut items = live.items();
+                    quality::carry_over(&self.snap.items, &mut items);
+                    self.snap.items = items;
                     self.snap.groups = live.groups().to_vec();
                 } else {
                     self.snap.items.retain(|i| !gone.contains(&i.path));
@@ -538,6 +573,188 @@ impl AppState {
             reindex |= r;
         }
         Some((msgs.join(" "), reindex))
+    }
+
+    // ---- Blur suggestions (plan §15) ----
+
+    pub fn blur_enabled(&self) -> bool {
+        quality::enabled(&self.snap.config)
+    }
+
+    pub fn blur_sensitivity(&self) -> Sensitivity {
+        quality::sensitivity(&self.snap.config)
+    }
+
+    /// Turning detection off withdraws every suggestion (scores stay cached).
+    pub fn set_blur_enabled(&mut self, on: bool) -> usize {
+        quality::set_enabled(&mut self.snap.config, on);
+        self.dirty = true;
+        if on {
+            return 0;
+        }
+        let n = quality::withdraw_all(&mut self.snap.items);
+        self.sync_live_decisions();
+        n
+    }
+
+    pub fn set_blur_sensitivity(&mut self, s: Sensitivity) {
+        quality::set_sensitivity(&mut self.snap.config, s);
+        self.dirty = true;
+    }
+
+    /// Applies a scan's verdict (see `unswiper_blur::scan::suggestions`).
+    pub fn apply_blur(
+        &mut self,
+        flagged: &HashSet<String>,
+        scored: &HashSet<String>,
+    ) -> ApplyReport {
+        let on = self.blur_enabled();
+        let r = quality::apply_suggestions(&mut self.snap.items, flagged, scored, on);
+        if r != ApplyReport::default() {
+            self.dirty = true;
+            self.sync_live_decisions();
+        }
+        r
+    }
+
+    pub fn is_blur_suggested(&self, path: &str) -> bool {
+        self.item(path).is_some_and(quality::is_suggested)
+    }
+
+    /// Blur suggestions in the open visit.
+    pub fn suggested_in_visit(&self) -> Vec<String> {
+        self.visit_members()
+            .iter()
+            .filter(|i| quality::is_suggested(i))
+            .map(|i| i.path.clone())
+            .collect()
+    }
+
+    /// "Keep all suggested": clears every suggestion in the open visit (they become
+    /// Undecided and are never suggested again). Returns how many.
+    pub fn dismiss_suggested_in_visit(&mut self) -> usize {
+        let paths = self.suggested_in_visit();
+        self.decide(&paths, Decision::Undecided)
+    }
+
+    /// "Reject all suggested": confirms them as the user's own rejects.
+    pub fn confirm_suggested_in_visit(&mut self) -> usize {
+        let paths = self.suggested_in_visit();
+        let n = paths.len();
+        self.decide(&paths, Decision::Reject);
+        n
+    }
+
+    /// Photos the blur scanner should look at: the open visit first, then the rest.
+    pub fn blur_scan_order(&self) -> Vec<MediaItem> {
+        let first: HashSet<String> = self.visit_members().into_iter().map(|i| i.path).collect();
+        let mut v: Vec<MediaItem> = self.snap.items.clone();
+        v.sort_by_key(|i| !first.contains(&i.path));
+        v
+    }
+
+    /// How many leading items of [`Self::blur_scan_order`] belong to the open visit.
+    pub fn suggested_scan_first(&self) -> usize {
+        self.visit_members().len()
+    }
+
+    fn sync_live_decisions(&mut self) {
+        if let Some(live) = self.live.as_mut() {
+            for i in &self.snap.items {
+                live.sync_item(i);
+            }
+        }
+    }
+
+    // ---- Media viewer (plan §16) ----
+
+    /// Opens the viewer on `path` (must be visible in the open visit) and selects it alone,
+    /// so K / R / U act on the shown item.
+    pub fn open_viewer(&mut self, path: &str) -> bool {
+        if !self.visible_items().iter().any(|i| i.path == path) {
+            return false;
+        }
+        self.viewer = Some(path.to_string());
+        self.selection = BTreeSet::from([path.to_string()]);
+        self.anchor = Some(path.to_string());
+        true
+    }
+
+    /// Space: opens the first selected item (in grid order), or the first item.
+    pub fn open_viewer_on_selection(&mut self) -> bool {
+        let pick = {
+            let vis = self.visible_items();
+            vis.iter()
+                .find(|i| self.selection.contains(&i.path))
+                .or(vis.first())
+                .map(|i| i.path.clone())
+        };
+        pick.is_some_and(|p| self.open_viewer(&p))
+    }
+
+    pub fn close_viewer(&mut self) {
+        self.viewer = None;
+    }
+
+    /// Left/Right: the previous/next item in grid order (no wrap). Returns whether it moved.
+    pub fn viewer_step(&mut self, delta: i32) -> bool {
+        let Some((idx, total)) = self.viewer_position() else {
+            return false;
+        };
+        let next = idx as i64 + delta as i64;
+        if next < 0 || next >= total as i64 {
+            return false;
+        }
+        let p = self.visible_items()[next as usize].path.clone();
+        self.open_viewer(&p)
+    }
+
+    /// (0-based index, count) of the viewed item among the visible items.
+    pub fn viewer_position(&self) -> Option<(usize, usize)> {
+        let v = self.viewer.as_ref()?;
+        let vis = self.visible_items();
+        vis.iter()
+            .position(|i| &i.path == v)
+            .map(|i| (i, vis.len()))
+    }
+
+    pub fn viewer_item(&self) -> Option<&MediaItem> {
+        self.item(self.viewer.as_ref()?)
+    }
+
+    /// What the viewer should show and play.
+    pub fn viewer_media(&self) -> Option<crate::player::ViewerMedia> {
+        let it = self.viewer_item()?;
+        Some(crate::player::media_for(it, self.live_motion()))
+    }
+
+    /// "Play Live Photo motion" option (default off, stored in library.json config).
+    pub fn live_motion(&self) -> bool {
+        self.snap
+            .config
+            .extra
+            .get(KEY_LIVE_MOTION)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+    }
+
+    pub fn set_live_motion(&mut self, on: bool) {
+        if on {
+            self.snap
+                .config
+                .extra
+                .insert(KEY_LIVE_MOTION.into(), serde_json::Value::Bool(true));
+        } else {
+            self.snap.config.extra.remove(KEY_LIVE_MOTION);
+        }
+        self.dirty = true;
+    }
+
+    /// Closes the viewer when its item is gone or filtered out.
+    fn check_viewer(&mut self) {
+        if self.viewer.is_some() && self.viewer_position().is_none() {
+            self.viewer = None;
+        }
     }
 
     pub fn needs_save(&self) -> bool {
@@ -887,5 +1104,185 @@ mod tests {
         assert!(s.snap.items.is_empty());
         assert!(s.visit.is_none());
         assert!(!s.open_visit("x"));
+    }
+
+    fn paths(s: &AppState) -> Vec<String> {
+        s.snap.items.iter().map(|i| i.path.clone()).collect()
+    }
+
+    fn hs(v: &[String]) -> HashSet<String> {
+        v.iter().cloned().collect()
+    }
+
+    #[test]
+    fn blur_suggestions_flow() {
+        let (t, mut s) = setup(&["a.jpg", "b.jpg", "c.jpg"]);
+        open_first(&mut s);
+        let all = paths(&s);
+        assert!(s.blur_enabled());
+        // Manual keep on c wins over the detector.
+        s.decide(std::slice::from_ref(&all[2]), Decision::Keep);
+        let r = s.apply_blur(&hs(&all), &hs(&all));
+        assert_eq!(r.suggested, 2);
+        assert!(s.is_blur_suggested(&all[0]) && !s.is_blur_suggested(&all[2]));
+        assert_eq!(s.suggested_in_visit().len(), 2);
+        s.set_filter(Filter::Blurry);
+        assert_eq!(s.visible_items().len(), 2);
+        let p = s.commit_plan();
+        assert_eq!((p.items, p.suggested_blurry), (2, 2));
+        assert!(
+            p.body().contains("2 of them were suggested as blurry"),
+            "{}",
+            p.body()
+        );
+        // U on one: dismissed, never re-flagged.
+        s.decide(std::slice::from_ref(&all[0]), Decision::Undecided);
+        s.apply_blur(&hs(&all), &hs(&all));
+        assert!(!s.is_blur_suggested(&all[0]));
+        assert!(s.commit_plan().body().contains("1 of them was suggested"));
+        // Survives save + reload and a re-index.
+        s.save().unwrap();
+        let mut s2 = AppState::new(LibraryStore::new(t.base.join("support")));
+        assert!(s2.is_blur_suggested(&all[1]));
+        let (items, groups) =
+            index(&t.root, 36.0, &s2.decisions(), &MetadataDates, |_| {}).unwrap();
+        s2.apply_index(items, groups, chrono::Utc::now());
+        assert!(s2.is_blur_suggested(&all[1]));
+        assert!(unswiper_core::quality::is_dismissed(
+            s2.item(&all[0]).unwrap()
+        ));
+        // Commit counts it like any reject; only the open visit, only on commit.
+        open_first(&mut s2);
+        s2.set_commit_mode(CommitMode::Quarantine);
+        assert!(Path::new(&all[1]).exists(), "nothing moves before commit");
+        s2.commit(&FreedesktopTrash {
+            trash_dir: t.base.join("Trash"),
+        })
+        .unwrap();
+        assert!(!Path::new(&all[1]).exists());
+    }
+
+    #[test]
+    fn blur_bulk_actions_and_setting() {
+        let (_t, mut s) = setup(&["a.jpg", "b.jpg", "c.jpg"]);
+        open_first(&mut s);
+        let all = paths(&s);
+        s.apply_blur(&hs(&all), &hs(&all));
+        assert_eq!(s.dismiss_suggested_in_visit(), 3);
+        assert!(s.suggested_in_visit().is_empty());
+        let (_t, mut s) = setup(&["a.jpg", "b.jpg"]);
+        open_first(&mut s);
+        let all = paths(&s);
+        s.apply_blur(&hs(&all), &hs(&all));
+        assert_eq!(s.confirm_suggested_in_visit(), 2);
+        assert!(s.suggested_in_visit().is_empty());
+        assert_eq!(s.commit_plan().suggested_blurry, 0);
+        assert_eq!(s.commit_plan().items, 2);
+        // Setting off withdraws suggestions and blocks new ones; sensitivity round-trips.
+        let (_t, mut s) = setup(&["a.jpg", "b.jpg"]);
+        open_first(&mut s);
+        let all = paths(&s);
+        assert_eq!(s.blur_scan_order().len(), 2);
+        assert_eq!(s.suggested_scan_first(), 2);
+        s.apply_blur(&hs(&all), &hs(&all));
+        assert_eq!(s.set_blur_enabled(false), 2);
+        assert!(!s.blur_enabled());
+        assert_eq!(s.apply_blur(&hs(&all), &hs(&all)), ApplyReport::default());
+        assert_eq!(s.set_blur_enabled(true), 0);
+        s.set_blur_sensitivity(Sensitivity::High);
+        assert_eq!(s.blur_sensitivity(), Sensitivity::High);
+    }
+
+    #[test]
+    fn blur_state_survives_watch() {
+        let (t, mut s) = setup(&["a.jpg"]);
+        let all = paths(&s);
+        s.apply_blur(&hs(&all), &hs(&all));
+        let b = t.root.join("b.jpg");
+        std::fs::write(&b, b"x").unwrap();
+        s.apply_watch(
+            &WatchBatch::Paths([b].into_iter().collect()),
+            &MetadataDates,
+        );
+        assert!(s.is_blur_suggested(&all[0]));
+    }
+
+    #[test]
+    fn viewer_navigation_and_decisions() {
+        let (_t, mut s) = setup(&["a.jpg", "b.jpg", "c.mp4"]);
+        assert!(!s.open_viewer_on_selection(), "no visit open");
+        open_first(&mut s);
+        let order: Vec<String> = s.visible_items().iter().map(|i| i.path.clone()).collect();
+        // Space with nothing selected opens the first item.
+        assert!(s.open_viewer_on_selection());
+        assert_eq!(s.viewer_position(), Some((0, 3)));
+        assert!(!s.viewer_step(-1), "no wrap at the start");
+        assert!(s.viewer_step(1));
+        assert_eq!(s.viewer.as_deref(), Some(order[1].as_str()));
+        assert_eq!(s.selection, BTreeSet::from([order[1].clone()]));
+        // K / R / U act on the viewed item.
+        assert_eq!(s.decide_selected(Decision::Reject), 1);
+        assert_eq!(s.viewer_item().unwrap().decision, Decision::Reject);
+        assert!(s.viewer_step(1));
+        assert!(!s.viewer_step(1), "no wrap at the end");
+        let m = s.viewer_media().unwrap();
+        assert_eq!(m.play.as_deref(), Some(order[2].as_str()));
+        // Selection decides where Space opens.
+        s.close_viewer();
+        s.click(&order[1], false, false);
+        assert!(s.open_viewer_on_selection());
+        assert_eq!(s.viewer_position(), Some((1, 3)));
+        assert!(!s.open_viewer("/not/here"));
+        assert!(s.muted, "starts muted");
+    }
+
+    #[test]
+    fn viewer_follows_filter_and_removals() {
+        let (t, mut s) = setup(&["a.jpg", "c.mp4"]);
+        open_first(&mut s);
+        let video = s
+            .visible_items()
+            .iter()
+            .find(|i| i.kind == MediaKind::Video)
+            .unwrap()
+            .path
+            .clone();
+        assert!(s.open_viewer(&video));
+        s.set_filter(Filter::Videos);
+        assert_eq!(s.viewer_position(), Some((0, 1)), "still visible");
+        s.set_filter(Filter::Photos);
+        assert!(s.viewer.is_none(), "filtered out: viewer closes");
+        s.set_filter(Filter::All);
+        assert!(s.open_viewer(&video));
+        std::fs::remove_file(&video).unwrap();
+        s.apply_watch(
+            &WatchBatch::Paths([PathBuf::from(&video)].into_iter().collect()),
+            &MetadataDates,
+        );
+        assert!(s.viewer.is_none(), "removed: viewer closes");
+        let a = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&a));
+        s.close_visit();
+        assert!(s.viewer.is_none());
+        let _ = t;
+    }
+
+    #[test]
+    fn live_motion_setting() {
+        let (t, mut s) = setup(&["IMG_1.HEIC", "IMG_1.MOV"]);
+        open_first(&mut s);
+        assert!(!s.live_motion());
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        assert_eq!(s.viewer_media().unwrap().play, None);
+        s.set_live_motion(true);
+        let m = s.viewer_media().unwrap();
+        assert!(m.is_motion);
+        assert!(m.play.unwrap().ends_with("IMG_1.MOV"));
+        s.save().unwrap();
+        let s2 = AppState::new(LibraryStore::new(t.base.join("support")));
+        assert!(s2.live_motion());
+        s.set_live_motion(false);
+        assert!(!s.live_motion());
     }
 }

@@ -33,7 +33,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            libgtk-4-dev libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
+            libgtk-4-dev libgtk-4-media-gstreamer libadwaita-1-dev libheif-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev \
             gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad gstreamer1.0-libav \
             librsvg2-common dpkg-dev wget file patchelf xvfb xauth ffmpeg
       - uses: dtolnay/rust-toolchain@stable

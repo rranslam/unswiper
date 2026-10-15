@@ -6,6 +6,7 @@ import SwiftUI
 @main
 struct UnswiperApp: App {
     @StateObject private var state = AppState()
+    @AppStorage(ViewerRules.liveMotionKey) private var liveMotion = false
 
     init() {
         // Diagnostic used by the release checks: prints the loaded help topics and exits.
@@ -35,6 +36,35 @@ struct UnswiperApp: App {
                     Task { await state.reindex() }
                 }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+            }
+            CommandGroup(after: .toolbar) {
+                Toggle("Play Live Photo Motion", isOn: $liveMotion)
+            }
+            CommandMenu("Blurry Photos") {
+                Toggle("Detect Blurry Photos", isOn: Binding(
+                    get: { state.blurEnabled },
+                    set: { state.setBlurEnabled($0) }
+                ))
+                Picker("Blur Sensitivity", selection: Binding(
+                    get: { state.blurSensitivity },
+                    set: { state.setBlurSensitivity($0) }
+                )) {
+                    ForEach(BlurRules.Sensitivity.allCases) { s in Text(s.label).tag(s) }
+                }
+                .disabled(!state.blurEnabled)
+                Button("Check for Blurry Photos Now") {
+                    state.checkBlur(visitFirst: state.selectedGroupID, userAsked: true)
+                }
+                .disabled(!state.blurEnabled)
+                Divider()
+                Button("Not Blurry: Clear Suggestions in This Visit") {
+                    if let id = state.selectedGroupID { state.dismissSuggestions(in: id) }
+                }
+                .disabled(state.selectedGroupID == nil)
+                Button("Reject All Blurry Suggestions in This Visit") {
+                    if let id = state.selectedGroupID { state.confirmSuggestions(in: id) }
+                }
+                .disabled(state.selectedGroupID == nil)
             }
             CommandGroup(replacing: .help) {
                 HelpMenuItems()

@@ -3,7 +3,7 @@
 ## Install
 
 1. Go to **https://github.com/rranslam/unswiper/releases/latest** in Safari.
-2. Under **Assets**, click the file ending in **.dmg** (for example `Unswiper-0.1.1.dmg`). Don't click "Source code".
+2. Under **Assets**, click the file ending in **.dmg** (for example `Unswiper-0.3.0.dmg`). Don't click "Source code".
 3. Open **Finder**, click **Downloads** in the sidebar, and double-click the `.dmg` file.
 4. Drag the **Unswiper** icon onto the **Applications** folder icon.
 5. In the Finder sidebar, click the eject button (⏏) next to **Unswiper**.
