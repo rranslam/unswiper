@@ -342,3 +342,43 @@ Optional v2: a permissively licensed ONNX model through `tract` for better bokeh
 - **Approved:** the plan above and the order in §15.7: Flatpak → AppImage in CI → **Linux v0.2.0** → **blur detection (v0.3)** → geo grouping → Google Photos.
 - **Decided:** blurry photos are **pre-marked Reject and moved only on commit**. They are never moved or deleted automatically, manual decisions always win, and the existing commit-the-open-visit rule applies.
 - **Deferred** until v0.3 work starts: the score storage (sidecar cache vs library.json fields, §15.3), the Mac bridge (UniFFI vs CLI helper, §15.4), the sensitivity defaults and accuracy-gate numbers (§15.6), and the optional ONNX model.
+
+## 16. Video playback during review (new feature, Rob 14 Oct 2026; plan only)
+
+Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a clip means opening it in another app. Users need to play videos inside Unswiper while reviewing a visit, on both Linux and Mac. Nothing here is implemented yet.
+
+### 16.1 Linux (GTK 4)
+- Use **`gtk::Video`** with a **`gtk::MediaFile`** (`MediaFile::for_file`). GTK 4's media backend is GStreamer (`libmedia-gstreamer`), which the Flatpak (GNOME 50 runtime) and the AppImage already ship for thumbnails. No new dependency.
+- AppImage: also bundle GTK's media module (`gtk-4.0/<ver>/media/libmedia-gstreamer.so`) and the audio side of playback: add the `autodetect`, `pulseaudio`, `pipewire`, `volume`, `audioconvert` and `audioresample` plugins to the list in `build-appimage.sh` (video goes through GTK's own sink). Check `GTK_MEDIA` isn't overridden.
+- The viewer is an `adw::Dialog` (or a full-window overlay page) holding the `gtk::Video` with GTK's built-in controls (play/pause, scrub bar, volume).
+
+### 16.2 Mac
+- **AVKit `AVPlayerView`** (wrapped in `NSViewRepresentable`) with an `AVPlayer` per open clip, `controlsStyle = .inline`. HEVC/H.264 decode in hardware; no extra code for codecs.
+
+### 16.3 UX (same on both)
+- Video tiles get a **play badge** (▶ plus duration) so they're recognisable at a glance.
+- **Space** or **double-click** opens the viewer on the selected item; Space again (or Esc) closes it. Left/Right arrows go to the previous/next item, so photos open in the same viewer as a large preview.
+- Playback starts **muted** (a mute toggle remembers the last choice per session); it autoplays and loops short clips (< 10 s).
+- Scrubbing via the built-in controls; **J/K/L-free**: the existing **K / R / U keys keep working inside the viewer** (Keep / Reject / Undecided apply to the shown item and show the badge), so a whole visit can be reviewed without leaving the viewer.
+- **Live Photos (option, off by default):** play the paired `.mov` motion part when the still is opened, or on hover/press-and-hold. Uses the existing Live Photo pairing in the core.
+- Playing never changes files; decisions are still applied only by Commit on the open visit.
+
+### 16.4 Codecs
+- Linux: H.264 and HEVC need `gst-libav` (or VA-API). The **Flatpak** gets them from the auto-installed `org.freedesktop.Platform.codecs-extra` extension; the **AppImage** bundles `libav` (already done for thumbnails). On a distro build without codecs, the viewer shows "This video format can't be played here" with an **Open in default app** button (`gtk::FileLauncher`), never a blank window.
+- Mac: AVFoundation covers H.264/HEVC/ProRes; unsupported files get the same fallback via `NSWorkspace.open`.
+
+### 16.5 Tests
+- Core/state (Rust): the viewer navigation model (next/prev within the visit, filters honoured) and "decision keys act on the viewed item", unit-tested in `state.rs` without GTK.
+- GTK: an Xvfb test that opens the viewer on the generated H.264 test clip and checks that the `MediaFile` reaches *prepared* with a duration > 0 and no error (both AppImage CI arches and the Flatpak build run it via `--present-viewer` like `--present-dialog`).
+- Mac: XCTest for the navigation model; a UI test that the player item becomes `.readyToPlay` on a bundled short HEVC clip.
+- Manual checkout step: play an iPhone HEVC clip in each package; Live Photo option.
+
+### 16.6 Open questions
+1. Viewer as a dialog over the grid, or a full-window page with a back button (better for large screens)?
+2. Autoplay and loop defaults, and whether the mute state should persist across launches.
+3. Live Photo motion: on open, on hover, or only on press-and-hold?
+4. Trim/"keep only part of a clip": out of scope (Unswiper never edits media)? Recommend yes, out of scope.
+5. Should photos also open in the viewer (large preview with zoom)? Cheap to add with the same navigation.
+
+### 16.7 Release slot
+Recommended **v0.2.x (v0.2.1)** for basic playback (viewer, Space/double-click, mute, keys in viewer) on both platforms: it is small, uses components already shipped, and is the most requested gap after v0.2.0. Live Photo motion and photo preview/zoom go into **v0.3** alongside blur detection. Order otherwise unchanged (§15.8).
