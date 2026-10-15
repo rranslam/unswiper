@@ -2,7 +2,7 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
-## [Unreleased] — 0.3.0 in progress
+## [0.3.0] - 2026-10-15
 
 ### Changed
 - Blur thresholds calibrated on 85 real photos (`docs/blur-evaluation.md`). Sharp seascapes, horizons and panels are no longer marked as shaken, and false positives at Normal dropped from 14 % to 6 % of sharp photos.
