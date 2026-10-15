@@ -72,12 +72,26 @@ Uninstalling never touches your photos. Files you rejected are in the macOS Tras
 
 ## Download & Install (Linux)
 
-Works on 64-bit PCs (x86_64) with a recent Linux, for example **Ubuntu 24.04 or newer** (GNOME) and **Arch / Omarchy** (Hyprland). Pick **one** of the two downloads below. If you're unsure, use the **AppImage**.
+Works on a recent 64-bit Linux, for example **Ubuntu 24.04 or newer** (GNOME) and **Arch / Omarchy** (Hyprland), on normal PCs **and** on Arm computers. Pick **one** of the two downloads below. If you're unsure, use the **AppImage**.
+
+### Step 0 — Which file do I need? (x86_64 or aarch64)
+
+Every download comes in two versions. The name ends in the type of processor it runs on:
+
+| Your computer | Pick the file with |
+|---|---|
+| Normal PC or laptop (Intel or AMD), including Linux in a VM on an **Intel** Mac | **`x86_64`** |
+| **Apple Silicon Mac** (M1–M5) running Linux: Asahi Linux, or a Linux VM (UTM, Parallels, VMware Fusion, try_omarchy-style) | **`aarch64`** |
+| Other Arm boards (Raspberry Pi 4/5 with 64-bit OS, Arm laptops) | **`aarch64`** |
+
+Not sure? Open a Terminal and type `uname -m`, then press Enter. It prints **`x86_64`** or **`aarch64`**; pick the file with that word in its name. If you picked the wrong one, starting it fails with **`Exec format error`**: just download the other one.
+
+The commands below use the x86_64 names. **On Arm, type `aarch64` instead of `x86_64`** everywhere (for example `Unswiper-aarch64.AppImage`).
 
 ### Option A — AppImage (one file, nothing to install)
 
 1. Open **https://github.com/rranslam/unswiper/releases/latest** in your browser.
-2. Under **Assets**, click **`Unswiper-x86_64.AppImage`**. It is saved to your **Downloads** folder.
+2. Under **Assets**, click **`Unswiper-x86_64.AppImage`** (Arm: **`Unswiper-aarch64.AppImage`**). It is saved to your **Downloads** folder.
 3. Open a **Terminal** (Ubuntu: press the **Super/Windows key**, type `Terminal`, press Enter. Omarchy: **Super + Enter**).
 4. Type these lines, pressing **Enter** after each one:
    ```bash
@@ -94,6 +108,13 @@ sudo apt install libfuse2t64
 ```
 (On Ubuntu 22.04 the package is called `libfuse2`. On Arch/Omarchy: `sudo pacman -S fuse2`.) Without FUSE you can still run it with `./Unswiper-x86_64.AppImage --appimage-extract-and-run`.
 
+**Arch Linux ARM / Omarchy on Arm (Asahi or a Mac VM):** FUSE 2 is often missing or not installable there. If the AppImage prints a FUSE error, skip FUSE and start it like this instead (it unpacks itself to a temporary folder each time, which takes a few seconds):
+```bash
+cd ~/Downloads
+chmod +x Unswiper-aarch64.AppImage
+./Unswiper-aarch64.AppImage --appimage-extract-and-run
+```
+
 **Tip:** Move the file somewhere permanent, e.g. `mkdir -p ~/Applications && mv ~/Downloads/Unswiper-x86_64.AppImage ~/Applications/`. To update, download the new AppImage and replace the old file (repeat the `chmod +x`).
 
 ### Option B — Flatpak (sandboxed, adds Unswiper to your app menu)
@@ -102,12 +123,13 @@ sudo apt install libfuse2t64
    - **Ubuntu 24.04:** `sudo apt install flatpak`, then log out and back in.
    - **Arch / Omarchy:** `sudo pacman -S flatpak`.
    - Then, on both: `flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo`
-2. From the [latest release](https://github.com/rranslam/unswiper/releases/latest), download **`Unswiper-x86_64.flatpak`** to **Downloads**.
+2. From the [latest release](https://github.com/rranslam/unswiper/releases/latest), download **`Unswiper-x86_64.flatpak`** (Arm: **`Unswiper-aarch64.flatpak`**) to **Downloads**.
 3. In a Terminal:
    ```bash
    cd ~/Downloads
    flatpak install --user Unswiper-x86_64.flatpak
    ```
+   (Arm: `flatpak install --user Unswiper-aarch64.flatpak`.)
    Answer **y** when asked. The first install also downloads the GNOME runtime and video codecs from Flathub (several hundred MB, one time only).
 4. Start it from your app menu (**Unswiper**), or with `flatpak run io.github.rranslam.Unswiper`.
 
@@ -116,7 +138,7 @@ To update, download the new `.flatpak` and run the same `flatpak install --user`
 ### Notes for Arch / Omarchy (Hyprland)
 
 - Both downloads run natively on **Wayland**/Hyprland; no X11 needed.
-- For the AppImage, install FUSE 2 once: `sudo pacman -S fuse2`.
+- For the AppImage, install FUSE 2 once: `sudo pacman -S fuse2`. On **Arm** (Apple Silicon Mac with Asahi or a VM) use the **aarch64** files; if `fuse2` isn't available, run the AppImage with `--appimage-extract-and-run` (see above) or use the Flatpak.
 - The Flatpak adds Unswiper to the Omarchy app launcher (Super + Space) automatically; the AppImage doesn't, so start it from a terminal.
 - Choosing a library folder uses the desktop's file dialog portal. Omarchy ships `xdg-desktop-portal-gtk`/`-hyprland`; if the folder dialog doesn't open, install `xdg-desktop-portal-gtk`.
 

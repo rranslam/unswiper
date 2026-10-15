@@ -6,7 +6,7 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ### Added
 - **Unswiper for Linux.** A native GNOME app (GTK 4 + libadwaita) with the same visits, Keep/Reject, Review & Commit and Restore as the Mac app. Works on GNOME, Hyprland/Omarchy and other Wayland or X11 desktops.
-- **Two Linux downloads** on the release page: `Unswiper-x86_64.AppImage` (one file, make it executable and run it) and `Unswiper-x86_64.flatpak` (sandboxed; install with `flatpak install --user`). See the README for step-by-step instructions.
+- **Two Linux downloads, each for x86_64 and Arm (aarch64, e.g. Apple Silicon Macs running Asahi or a Linux VM)** on the release page: `Unswiper-x86_64.AppImage` (one file, make it executable and run it) and `Unswiper-x86_64.flatpak` (sandboxed; install with `flatpak install --user`). See the README for step-by-step instructions.
 - **Shared Rust core** (`unswiper-core`) for grouping, indexing, commit and restore, with a command-line tool (`unswiper`). It reads and writes the same `library.json` and commit manifests as the Mac app.
 - **Video thumbnails on Linux via GStreamer** (H.264 and HEVC/iPhone clips). The Flatpak gets the codecs from the Freedesktop codecs extension; the AppImage bundles them. **HEIC photos** are supported through libheif.
 

@@ -4,7 +4,7 @@
 
 A manual pass before announcing 0.2.0. Use a **copy** of a small folder (about 20 files), with a few
 JPEGs, at least one **HEIC** photo, and one iPhone **.mov** (H.264 or HEVC) from two different days.
-Download the files from the release page. Tick each step; note anything odd in an issue.
+Download the files from the release page: `x86_64` files for Intel/AMD PCs, `aarch64` files for Arm (Apple Silicon Mac running Asahi or a Linux VM). `uname -m` tells you which. Tick each step; note anything odd in an issue.
 
 ## macOS (Unswiper-0.2.0.dmg)
 
@@ -30,7 +30,10 @@ Download the files from the release page. Tick each step; note anything odd in a
 
 ## Omarchy (Arch, Hyprland)
 
-1. Install: `sudo pacman -S fuse2`, then `chmod +x Unswiper-x86_64.AppImage && ./Unswiper-x86_64.AppImage`. Check it runs as a **Wayland** window (`hyprctl clients` shows `xwayland: 0`). Optionally also the Flatpak (`sudo pacman -S flatpak`, add Flathub, `flatpak install --user Unswiper-x86_64.flatpak`) and launch it from Super + Space.
+Do this on x86_64 and, if available, on an **Arm** setup (Apple Silicon Mac: Asahi or a Linux VM) with the `aarch64` files.
+
+
+1. Install: `sudo pacman -S fuse2`, then `chmod +x Unswiper-x86_64.AppImage && ./Unswiper-x86_64.AppImage` (Arm: `Unswiper-aarch64.AppImage`; if FUSE is missing, add `--appimage-extract-and-run`). Check that the wrong-arch file fails with `Exec format error` and the right one starts. Check it runs as a **Wayland** window (`hyprctl clients` shows `xwayland: 0`). Optionally also the Flatpak (`sudo pacman -S flatpak`, add Flathub, `flatpak install --user Unswiper-<arch>.flatpak`) and launch it from Super + Space.
 2. Index: Ctrl+O opens the portal folder dialog; pick the test folder. (If no dialog appears: `sudo pacman -S xdg-desktop-portal-gtk`.)
 3. HEIC + video: HEIC and both .mov thumbnails show.
 4. Keep/Reject: R / K on a selection; tiling resize keeps the grid usable.
