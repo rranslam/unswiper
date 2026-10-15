@@ -117,7 +117,7 @@ fn accuracy_gate() {
         .iter()
         .map(|(n, t, _, img)| Candidate {
             path: n.clone(),
-            taken_at: *t,
+            taken_at: Some(*t),
             score: score_image(img),
         })
         .collect();

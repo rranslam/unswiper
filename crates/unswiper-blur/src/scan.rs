@@ -98,7 +98,8 @@ pub fn suggestions(items: &[MediaItem], cache: &QualityCache, t: Thresholds) -> 
             let score: Score = cache.get(&i.path, st)?;
             Some(Candidate {
                 path: i.path.clone(),
-                taken_at: i.taken_at.timestamp(),
+                taken_at: (!i.is_undated && i.taken_at > unswiper_core::time::distant_past())
+                    .then(|| i.taken_at.timestamp()),
                 score,
             })
         })

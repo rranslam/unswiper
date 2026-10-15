@@ -54,8 +54,8 @@ impl Thresholds {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Candidate {
     pub path: String,
-    /// Capture time, Unix seconds.
-    pub taken_at: i64,
+    /// Capture time, Unix seconds. `None` for undated photos, which never form bursts.
+    pub taken_at: Option<i64>,
     pub score: Score,
 }
 
@@ -77,17 +77,18 @@ pub const MOTION_ANISOTROPY: f32 = 0.5;
 pub const MOTION_FLOOR_FACTOR: f32 = 4.0;
 
 /// Returns, for each candidate (same order), `Some(reason)` when it should be suggested.
-pub fn suggest(cands: &[Candidate], t: Thresholds) -> Vec<Option<Reason>> {
+pub fn suggest(cands: &[Candidate], th: Thresholds) -> Vec<Option<Reason>> {
     // Bursts: runs of photos ≤ BURST_GAP_SECS apart, in time order.
-    let mut order: Vec<usize> = (0..cands.len()).collect();
+    let mut order: Vec<usize> = (0..cands.len())
+        .filter(|&i| cands[i].taken_at.is_some())
+        .collect();
     order.sort_by_key(|&i| (cands[i].taken_at, i));
+    let t = |i: usize| cands[i].taken_at.unwrap_or_default();
     let mut burst_max = vec![None; cands.len()];
     let mut start = 0;
     while start < order.len() {
         let mut end = start + 1;
-        while end < order.len()
-            && cands[order[end]].taken_at - cands[order[end - 1]].taken_at <= BURST_GAP_SECS
-        {
+        while end < order.len() && t(order[end]) - t(order[end - 1]) <= BURST_GAP_SECS {
             end += 1;
         }
         if end - start >= BURST_MIN {
@@ -110,11 +111,11 @@ pub fn suggest(cands: &[Candidate], t: Thresholds) -> Vec<Option<Reason>> {
             let s = c.score;
             if s.confidence < MIN_CONFIDENCE {
                 None
-            } else if s.sharpness < t.abs {
+            } else if s.sharpness < th.abs {
                 Some(Reason::Soft)
-            } else if s.motion >= MOTION_ANISOTROPY && s.sharpness < t.abs * MOTION_FLOOR_FACTOR {
+            } else if s.motion >= MOTION_ANISOTROPY && s.sharpness < th.abs * MOTION_FLOOR_FACTOR {
                 Some(Reason::Shake)
-            } else if max.is_some_and(|m| s.sharpness < t.rel * m) {
+            } else if max.is_some_and(|m| s.sharpness < th.rel * m) {
                 Some(Reason::Burst)
             } else {
                 None
@@ -143,7 +144,7 @@ mod tests {
     fn c(path: &str, t: i64, sharp: f32, conf: f32) -> Candidate {
         Candidate {
             path: path.into(),
-            taken_at: t,
+            taken_at: Some(t),
             score: Score {
                 sharpness: sharp,
                 global: sharp,
@@ -198,6 +199,14 @@ mod tests {
             t,
         );
         assert_eq!(r, vec![None, None, None]);
+        // Undated photos never form a burst.
+        let mut und = vec![
+            c("a", 0, 100.0, 1.0),
+            c("b", 0, 100.0, 1.0),
+            c("d", 0, 900.0, 1.0),
+        ];
+        und.iter_mut().for_each(|c| c.taken_at = None);
+        assert_eq!(suggest(&und, t), vec![None, None, None]);
     }
 
     #[test]
