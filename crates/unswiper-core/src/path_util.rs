@@ -65,12 +65,20 @@ mod tests {
             canonical_path(&d.path().join("x/y/../z.jpg")),
             real.join("x").join("z.jpg")
         );
+        let rel = canonical_path(Path::new("relative-nonexistent-xyz"));
+        assert!(rel.is_absolute());
+        #[cfg(unix)]
+        assert_eq!(canonical_path(Path::new("/")), PathBuf::from("/"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn canonical_follows_symlink() {
+        let d = tempfile::tempdir().unwrap();
+        let real = std::fs::canonicalize(d.path()).unwrap();
         std::fs::create_dir(real.join("target")).unwrap();
         std::os::unix::fs::symlink(real.join("target"), real.join("link")).unwrap();
         assert_eq!(canonical_path(&real.join("link/f")), real.join("target/f"));
-        let rel = canonical_path(Path::new("relative-nonexistent-xyz"));
-        assert!(rel.is_absolute());
-        assert_eq!(canonical_path(Path::new("/")), PathBuf::from("/"));
     }
 
     #[test]

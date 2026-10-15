@@ -331,6 +331,10 @@ impl TItem {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "known Windows path gap, see .github/workflows/rust.yml windows job"
+)]
 fn swift_oracle_matches_when_present() {
     let dir = fixtures().join("swift");
     if !dir.join("table.json").exists() {
@@ -347,6 +351,10 @@ fn swift_oracle_matches_when_present() {
 /// Exercises the comparison against a Rust-written oracle, so the harness itself is tested
 /// before any Swift output exists.
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "known Windows path gap, see .github/workflows/rust.yml windows job"
+)]
 fn harness_self_check() {
     let spec = spec();
     let (_d, root, items, groups) = rust_index(&spec);

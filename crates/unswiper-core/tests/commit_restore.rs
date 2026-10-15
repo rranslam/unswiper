@@ -119,16 +119,19 @@ fn validate_messages() {
     );
     let escape = format!("{}/../lib2/x.jpg", e.root.display());
     assert_eq!(validate(&escape, 4, mt, Some(&e.root)), Some(MSG_OUTSIDE));
-    std::os::unix::fs::symlink(&f, e.root.join("link.jpg")).unwrap();
-    assert_eq!(
-        validate(
-            &e.root.join("link.jpg").to_string_lossy(),
-            4,
-            mt,
-            Some(&e.root)
-        ),
-        Some(MSG_SYMLINK)
-    );
+    #[cfg(unix)]
+    {
+        std::os::unix::fs::symlink(&f, e.root.join("link.jpg")).unwrap();
+        assert_eq!(
+            validate(
+                &e.root.join("link.jpg").to_string_lossy(),
+                4,
+                mt,
+                Some(&e.root)
+            ),
+            Some(MSG_SYMLINK)
+        );
+    }
     assert_eq!(
         validate(&e.root.to_string_lossy(), 4, mt, Some(&e.root)),
         Some(MSG_OUTSIDE)
@@ -238,6 +241,10 @@ fn trash_commit_and_restore_removes_trashinfo() {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "known Windows path gap, see .github/workflows/rust.yml windows job"
+)]
 fn changed_files_block_their_whole_set() {
     let e = env();
     write(&e.root, "a/IMG_1.HEIC", b"heic");

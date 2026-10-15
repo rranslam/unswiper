@@ -56,12 +56,19 @@ pub fn home_trash_dir(get: impl Fn(&str) -> Option<PathBuf>, in_flatpak: bool) -
 }
 
 /// Whether two paths live on the same file system (same `st_dev`), even through different mounts.
+#[cfg(unix)]
 pub fn same_device(a: &Path, b: &Path) -> bool {
     use std::os::unix::fs::MetadataExt;
     match (std::fs::metadata(a), std::fs::metadata(b)) {
         (Ok(x), Ok(y)) => x.dev() == y.dev(),
         _ => false,
     }
+}
+
+/// Non-Unix builds (Windows CI compile/test only): no `st_dev`, so report "unknown" as `false`.
+#[cfg(not(unix))]
+pub fn same_device(_a: &Path, _b: &Path) -> bool {
+    false
 }
 
 /// Percent-encodes a path for `Path=` in `.trashinfo` (RFC 2396 unreserved + `/` kept).
@@ -157,6 +164,7 @@ impl Trasher for FreedesktopTrash {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     #[test]
     fn same_device_detects_one_file_system() {
         let d = tempfile::tempdir().unwrap();
@@ -205,6 +213,8 @@ mod tests {
         assert_eq!(split_name("noext"), ("noext", ""));
     }
 
+    // Freedesktop .trashinfo layout (Path=/...) is Unix-only.
+    #[cfg(unix)]
     #[test]
     fn trash_layout_and_collisions() {
         let d = tempfile::tempdir().unwrap();

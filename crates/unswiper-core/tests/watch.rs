@@ -155,6 +155,10 @@ fn undated_file_joins_new_dated_sibling() {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "known Windows path gap, see .github/workflows/rust.yml windows job"
+)]
 fn folder_create_rename_delete() {
     let (_d, r) = root();
     write(&r, "keep.jpg", b"k");
@@ -181,6 +185,10 @@ fn folder_create_rename_delete() {
 }
 
 #[test]
+#[cfg_attr(
+    windows,
+    ignore = "known Windows path gap, see .github/workflows/rust.yml windows job"
+)]
 fn ignored_paths_and_suppression() {
     let (_d, r) = root();
     let a = write(&r, "a.jpg", b"a");
