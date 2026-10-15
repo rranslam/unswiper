@@ -4,16 +4,21 @@
 //! The relm4 layer: builds the GNOME window and turns signals into [`AppState`] calls.
 //! Everything worth testing lives in [`crate::state`]; this module only wires widgets.
 
+use crate::blur::{BlurEvent, BlurJob};
 use crate::state::{AppState, Filter};
 use crate::{help, thumbs, APP_ID, ISSUES, VERSION, WEBSITE};
 use relm4::adw::prelude::*;
 use relm4::gtk::{gdk, gio, glib};
 use relm4::{adw, gtk, Component, ComponentParts, ComponentSender};
 use std::cell::Cell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use unswiper_blur::decide::Thresholds;
 use unswiper_core::index::{index, MetadataDates};
+use unswiper_core::quality::Sensitivity;
 use unswiper_core::store::{default_support_dir, LibraryStore};
 use unswiper_core::trash::FreedesktopTrash;
 use unswiper_core::watch::{FolderWatcher, WatchBatch, DEFAULT_MAX_WAIT, DEFAULT_QUIET};
@@ -57,6 +62,7 @@ const CSS: &str = "
 .badge { border-radius: 99px; padding: 2px 8px; margin: 6px; font-weight: bold; }
 .badge.keep { background: @success_bg_color; color: @success_fg_color; }
 .badge.reject { background: @error_bg_color; color: @error_fg_color; }
+.badge.blurry { background: #b5560b; color: white; }
 .thumb.rejected picture { opacity: 0.45; }
 /* Dialogs (AdwAlertDialog, AdwAboutDialog) float over a busy photo grid: give them a visible edge
    and a stronger shadow, and dim the window behind them. currentColor-based, so it works in light
@@ -120,6 +126,13 @@ pub enum Msg {
     Help,
     About,
     Quit,
+    BlurProgress(usize, usize),
+    BlurResult(HashSet<String>, HashSet<String>, bool),
+    BlurSetEnabled(bool),
+    BlurSetSensitivity(Sensitivity),
+    BlurRescan,
+    BlurClearVisit,
+    BlurConfirmVisit,
 }
 
 pub struct App {
@@ -129,6 +142,7 @@ pub struct App {
     thumb_gen: u64,
     save_scheduled: bool,
     indexing: bool,
+    blur_cancel: Option<Arc<AtomicBool>>,
 }
 
 pub struct Widgets {
@@ -146,6 +160,9 @@ pub struct Widgets {
     filter_buttons: Vec<(Filter, gtk::ToggleButton)>,
     restore_action: gio::SimpleAction,
     mode_action: gio::SimpleAction,
+    blur_action: gio::SimpleAction,
+    blur_sens_action: gio::SimpleAction,
+    blur_status: gtk::Label,
     syncing: Rc<Cell<bool>>,
 }
 
@@ -230,6 +247,26 @@ impl Component for App {
         );
         modes.append(Some("Dry Run"), Some("win.mode::dry-run"));
         menu.append_section(Some("Commit Mode"), &modes);
+        let blur = gio::Menu::new();
+        blur.append(Some("Detect Blurry Photos"), Some("win.blur"));
+        let sens = gio::Menu::new();
+        for s in Sensitivity::ALL {
+            sens.append(
+                Some(s.label()),
+                Some(&format!("win.blur-sensitivity::{}", s.as_str())),
+            );
+        }
+        blur.append_submenu(Some("Blur Sensitivity"), &sens);
+        blur.append(Some("Check for Blurry Photos Now"), Some("win.blur-rescan"));
+        blur.append(
+            Some("Not Blurry: Clear Suggestions in This Visit"),
+            Some("win.blur-clear"),
+        );
+        blur.append(
+            Some("Reject All Blurry Suggestions in This Visit"),
+            Some("win.blur-confirm"),
+        );
+        menu.append_section(Some("Blurry Photos"), &blur);
         let app_sec = gio::Menu::new();
         app_sec.append(Some("Keyboard Shortcuts & Help"), Some("win.help"));
         app_sec.append(Some("About Unswiper"), Some("win.about"));
@@ -270,6 +307,44 @@ impl Component for App {
             });
         }
         root.add_action(&mode_action);
+        let blur_action =
+            gio::SimpleAction::new_stateful("blur", None, &state.blur_enabled().to_variant());
+        {
+            let s = sender.clone();
+            blur_action.connect_activate(move |a, _| {
+                let on = !a.state().and_then(|v| v.get::<bool>()).unwrap_or(true);
+                a.set_state(&on.to_variant());
+                s.input(Msg::BlurSetEnabled(on));
+            });
+        }
+        root.add_action(&blur_action);
+        let blur_sens_action = gio::SimpleAction::new_stateful(
+            "blur-sensitivity",
+            Some(glib::VariantTy::STRING),
+            &state.blur_sensitivity().as_str().to_variant(),
+        );
+        {
+            let s = sender.clone();
+            blur_sens_action.connect_activate(move |a, v| {
+                let Some(sens) = v
+                    .and_then(|v| v.get::<String>())
+                    .and_then(|n| Sensitivity::parse(&n))
+                else {
+                    return;
+                };
+                a.set_state(&sens.as_str().to_variant());
+                s.input(Msg::BlurSetSensitivity(sens));
+            });
+        }
+        root.add_action(&blur_sens_action);
+        action(&root, "blur-rescan", &sender, || Msg::BlurRescan);
+        action(&root, "blur-clear", &sender, || Msg::BlurClearVisit);
+        action(&root, "blur-confirm", &sender, || Msg::BlurConfirmVisit);
+        let blur_status = gtk::Label::builder()
+            .css_classes(["dim-label", "caption"])
+            .visible(false)
+            .build();
+        header.pack_start(&blur_status);
 
         // Shortcuts. Bubble phase, so a focused spin button keeps its own keys.
         let ctl = gtk::ShortcutController::new();
@@ -356,6 +431,7 @@ impl Component for App {
             (Filter::All, "All"),
             (Filter::Photos, "Photos"),
             (Filter::Videos, "Videos"),
+            (Filter::Blurry, "Blurry"),
         ] {
             let b = gtk::ToggleButton::with_label(label);
             if let Some(g) = &first {
@@ -492,6 +568,7 @@ impl Component for App {
             thumb_gen: 0,
             save_scheduled: false,
             indexing: false,
+            blur_cancel: None,
         };
         let mut widgets = Widgets {
             toasts,
@@ -508,6 +585,9 @@ impl Component for App {
             filter_buttons,
             restore_action,
             mode_action,
+            blur_action,
+            blur_sens_action,
+            blur_status,
             syncing,
         };
 
@@ -518,6 +598,7 @@ impl Component for App {
             sender.input(Msg::FolderChosen(dir));
         } else if model.state.has_library() {
             model.start_watcher(&sender);
+            model.start_blur(&sender);
         }
         model.refresh(&mut widgets);
         if !model.state.pending_commits().is_empty() {
@@ -602,6 +683,7 @@ impl Component for App {
                         let n = items.len();
                         self.state.apply_index(items, groups, chrono::Utc::now());
                         self.start_watcher(&sender);
+                        self.start_blur(&sender);
                         w.toasts.add_toast(adw::Toast::new(&format!(
                             "Indexed {n} items in {} visits.",
                             self.state.snap.groups.len()
@@ -696,6 +778,9 @@ impl Component for App {
                     changed = !d.is_empty();
                     if changed {
                         self.rebuild_grid(w, &sender);
+                        if !d.added.is_empty() {
+                            self.start_blur(&sender);
+                        }
                     }
                 }
             }
@@ -734,8 +819,78 @@ impl Component for App {
                 changed = false;
                 about_dialog().present(Some(root));
             }
+            Msg::BlurProgress(done, total) => {
+                changed = false;
+                w.blur_status
+                    .set_label(&format!("Checking sharpness {done}/{total}"));
+                w.blur_status.set_visible(done < total);
+            }
+            Msg::BlurResult(flagged, scored, last) => {
+                if last {
+                    w.blur_status.set_visible(false);
+                    self.blur_cancel = None;
+                }
+                let r = self.state.apply_blur(&flagged, &scored);
+                changed = r.suggested + r.withdrawn > 0;
+                if changed && self.state.filter == Filter::Blurry {
+                    self.rebuild_grid(w, &sender);
+                }
+                if last && r.suggested > 0 {
+                    w.toasts.add_toast(adw::Toast::new(&match r.suggested {
+                        1 => "1 photo looks blurry and was marked Reject. Nothing moves until you commit.".to_string(),
+                        n => format!("{n} photos look blurry and were marked Reject. Nothing moves until you commit."),
+                    }));
+                }
+            }
+            Msg::BlurSetEnabled(on) => {
+                let n = self.state.set_blur_enabled(on);
+                if on {
+                    self.start_blur(&sender);
+                } else {
+                    self.stop_blur(w);
+                    if n > 0 {
+                        w.toasts.add_toast(adw::Toast::new(&format!(
+                            "Blur detection is off. {n} blurry suggestion{} cleared.",
+                            if n == 1 { "" } else { "s" }
+                        )));
+                    }
+                }
+                self.rebuild_grid(w, &sender);
+            }
+            Msg::BlurSetSensitivity(sens) => {
+                self.state.set_blur_sensitivity(sens);
+                self.start_blur(&sender);
+            }
+            Msg::BlurRescan => {
+                changed = false;
+                if !self.state.blur_enabled() {
+                    w.toasts.add_toast(adw::Toast::new(
+                        "Turn on Detect Blurry Photos in the menu first.",
+                    ));
+                } else {
+                    self.start_blur(&sender);
+                }
+            }
+            Msg::BlurClearVisit => {
+                let n = self.state.dismiss_suggested_in_visit();
+                w.toasts.add_toast(adw::Toast::new(&format!(
+                    "Cleared {n} blurry suggestion{} in this visit.",
+                    if n == 1 { "" } else { "s" }
+                )));
+                self.rebuild_grid(w, &sender);
+            }
+            Msg::BlurConfirmVisit => {
+                let n = self.state.confirm_suggested_in_visit();
+                w.toasts.add_toast(adw::Toast::new(&format!(
+                    "{n} blurry photo{} now rejected by you. They move only when you commit.",
+                    if n == 1 { " is" } else { "s are" }
+                )));
+            }
             Msg::Quit => {
                 changed = false;
+                if let Some(c) = &self.blur_cancel {
+                    c.store(true, Ordering::Relaxed);
+                }
                 if self.state.needs_save() {
                     let _ = self.state.save();
                 }
@@ -757,6 +912,51 @@ impl Component for App {
 }
 
 impl App {
+    /// (Re)starts the background blur scan if the setting is on.
+    fn start_blur(&mut self, sender: &ComponentSender<Self>) {
+        if let Some(c) = self.blur_cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        if !self.state.blur_enabled() || !self.state.has_library() {
+            return;
+        }
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.blur_cancel = Some(cancel.clone());
+        let first = self.state.suggested_scan_first();
+        let job = BlurJob {
+            items: self.state.blur_scan_order(),
+            first,
+            cache_path: unswiper_blur::cache::QualityCache::path_in(self.state.store.support_dir()),
+            thresholds: Thresholds::for_sensitivity(self.state.blur_sensitivity()),
+            cancel,
+        };
+        let tx = sender.input_sender().clone();
+        std::thread::spawn(move || {
+            let last = std::sync::Mutex::new(std::time::Instant::now());
+            crate::blur::run(job, &|e| match e {
+                BlurEvent::Progress(d, t) => {
+                    let mut l = last.lock().unwrap();
+                    if d == t || l.elapsed().as_millis() > 150 {
+                        *l = std::time::Instant::now();
+                        tx.emit(Msg::BlurProgress(d, t));
+                    }
+                }
+                BlurEvent::Result {
+                    flagged,
+                    scored,
+                    last,
+                } => tx.emit(Msg::BlurResult(flagged, scored, last)),
+            });
+        });
+    }
+
+    fn stop_blur(&mut self, w: &mut Widgets) {
+        if let Some(c) = self.blur_cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        w.blur_status.set_visible(false);
+    }
+
     fn start_index(&mut self, sender: &ComponentSender<Self>, w: &mut Widgets) {
         let Some(root) = self.state.root() else {
             return;
@@ -889,6 +1089,9 @@ impl App {
         w.restore_action.set_enabled(st.can_restore());
         w.mode_action
             .set_state(&mode_name(st.snap.config.commit_mode).to_variant());
+        w.blur_action.set_state(&st.blur_enabled().to_variant());
+        w.blur_sens_action
+            .set_state(&st.blur_sensitivity().as_str().to_variant());
 
         // Visits list (rebuilt; it is small) with the open one selected.
         w.visits.remove_all();
@@ -942,11 +1145,20 @@ impl App {
             }
             badge.remove_css_class("keep");
             badge.remove_css_class("reject");
+            badge.remove_css_class("blurry");
+            badge.set_tooltip_text(None);
             cell.remove_css_class("rejected");
             match it.decision {
                 Decision::Keep => {
                     badge.set_label("Keep");
                     badge.add_css_class("keep");
+                    badge.set_visible(true);
+                }
+                Decision::Reject if unswiper_core::quality::is_suggested(it) => {
+                    badge.set_label("Blurry?");
+                    badge.add_css_class("blurry");
+                    badge.set_tooltip_text(Some("Unswiper thinks this photo is blurry and marked it Reject. Press K to keep it or U to clear. Nothing moves until you commit."));
+                    cell.add_css_class("rejected");
                     badge.set_visible(true);
                 }
                 Decision::Reject => {

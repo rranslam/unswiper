@@ -4,6 +4,7 @@
 //! Unswiper for Linux. The GUI logic lives in display-free modules ([`state`], [`help`],
 //! [`thumbs`], [`format`]) so it can be unit-tested headless; [`ui`] is the thin relm4 layer.
 
+pub mod blur;
 pub mod format;
 pub mod help;
 pub mod icons;

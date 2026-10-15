@@ -172,6 +172,26 @@ pub fn withdraw_all(items: &mut [MediaItem]) -> usize {
     apply_suggestions(items, &HashSet::new(), &HashSet::new(), false).withdrawn
 }
 
+/// Re-attaches suggestion state after a re-index or folder-watch rebuild, which only
+/// carries plain decisions: by path, the dismissal always, and the auto-blur source only
+/// while the item is still rejected.
+pub fn carry_over(old: &[MediaItem], new: &mut [MediaItem]) {
+    let by_path: std::collections::HashMap<&str, &MediaItem> =
+        old.iter().map(|i| (i.path.as_str(), i)).collect();
+    for n in new.iter_mut() {
+        let Some(o) = by_path.get(n.path.as_str()) else {
+            continue;
+        };
+        if is_dismissed(o) {
+            n.extra.insert(KEY_DISMISSED.into(), Value::Bool(true));
+        }
+        if is_suggested(o) && n.decision == Decision::Reject {
+            n.extra
+                .insert(KEY_SOURCE.into(), Value::String(SOURCE_AUTO_BLUR.into()));
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,6 +319,30 @@ mod tests {
         assert!(!set_manual_decision(&mut k, Decision::Keep));
         assert!(set_manual_decision(&mut k, Decision::Reject));
         assert!(!is_dismissed(&k));
+    }
+
+    #[test]
+    fn carry_over_keeps_state_by_path() {
+        let mut old = vec![
+            item("/a", Decision::Undecided),
+            item("/b", Decision::Undecided),
+            item("/c", Decision::Undecided),
+        ];
+        let all = set(&["/a", "/b", "/c"]);
+        apply_suggestions(&mut old, &all, &all, true);
+        set_manual_decision(&mut old[1], Decision::Undecided); // dismissed
+                                                               // A rebuild carries only decisions.
+        let mut new = vec![
+            item("/a", Decision::Reject),
+            item("/b", Decision::Undecided),
+            item("/c", Decision::Keep), // changed elsewhere: no longer a suggestion
+            item("/new", Decision::Undecided),
+        ];
+        carry_over(&old, &mut new);
+        assert!(is_suggested(&new[0]));
+        assert!(is_dismissed(&new[1]));
+        assert!(!is_suggested(&new[2]) && !new[2].extra.contains_key(KEY_SOURCE));
+        assert!(new[3].extra.is_empty());
     }
 
     #[test]

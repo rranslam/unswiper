@@ -1989,6 +1989,7 @@ dependencies = [
  "libheif-rs",
  "relm4",
  "tempfile",
+ "unswiper-blur",
  "unswiper-core",
 ]
 
