@@ -22,6 +22,8 @@ pub const USAGE: &str = "usage:
       --threshold N          custom absolute sharpness floor (overrides the sensitivity floor)
       --write-cache [FILE]   save scores (default: the app's quality-cache.json next to
                              library.json, or ~/.local/share/unswiper for a folder)
+      --only FILE            score only the photos listed in FILE (one path per line, e.g.
+                             the open visit); results still cover every photo with a score
   unswiper-blur --version
 Nothing is moved or deleted.";
 
@@ -31,6 +33,8 @@ pub struct Options {
     pub json: bool,
     pub thresholds: Thresholds,
     pub write_cache: Option<Option<PathBuf>>,
+    /// `--only`: a file listing the paths to score (others are only read from the cache).
+    pub only: Option<PathBuf>,
 }
 
 pub fn parse(args: &[String]) -> Result<Options, String> {
@@ -42,6 +46,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     let mut sens = Sensitivity::Normal;
     let mut abs = None;
     let mut write_cache = None;
+    let mut only = None;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
@@ -72,6 +77,15 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
                 }
                 write_cache = Some(file);
             }
+            "--only" => {
+                only = Some(
+                    args.get(i + 1)
+                        .filter(|a| !a.starts_with("--"))
+                        .map(PathBuf::from)
+                        .ok_or("--only needs a file listing paths")?,
+                );
+                i += 1;
+            }
             a if a.starts_with("--") => return Err(format!("unknown option {a}\n{USAGE}")),
             a if target.is_none() => target = Some(PathBuf::from(a)),
             a => return Err(format!("unexpected argument {a}\n{USAGE}")),
@@ -87,6 +101,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
         json,
         thresholds,
         write_cache,
+        only,
     })
 }
 
@@ -121,8 +136,20 @@ pub fn run(o: &Options, now: i64) -> Result<String, String> {
     };
     let mut cache = QualityCache::load(&cache_path);
     let paths = scan::scorable(&items);
+    let todo: Vec<String> = match &o.only {
+        Some(f) => {
+            let list = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
+            let wanted: std::collections::HashSet<&str> = list.lines().map(str::trim).collect();
+            paths
+                .iter()
+                .filter(|p| wanted.contains(p.as_str()))
+                .cloned()
+                .collect()
+        }
+        None => paths.clone(),
+    };
     scan::update_cache(
-        &paths,
+        &todo,
         &mut cache,
         scan::default_threads(),
         &AtomicBool::new(false),
@@ -225,6 +252,9 @@ mod tests {
         assert_eq!(o.write_cache, Some(None));
         let o = parse(&a(&["scan", "--write-cache", "/c.json", "/x"])).unwrap();
         assert_eq!(o.write_cache, Some(Some(PathBuf::from("/c.json"))));
+        assert_eq!(o.only, None);
+        let o = parse(&a(&["scan", "/x", "--only", "/list.txt"])).unwrap();
+        assert_eq!(o.only, Some(PathBuf::from("/list.txt")));
         assert_eq!(o.target, PathBuf::from("/x"));
         for bad in [
             &["nope"][..],
@@ -233,6 +263,8 @@ mod tests {
             &["scan", "/x", "--threshold", "-1"],
             &["scan", "/x", "--bogus"],
             &["scan", "/x", "/y"],
+            &["scan", "/x", "--only"],
+            &["scan", "/x", "--only", "--json"],
         ] {
             assert!(parse(&a(bad)).is_err(), "{bad:?}");
         }
@@ -286,6 +318,42 @@ mod tests {
         assert_eq!(v[0]["blurry"], true);
         assert_eq!(v[0]["reason"], "soft");
         assert!(d.path().join("quality-cache.json").exists());
+        // --only scores just the listed photos (fresh cache); unlisted ones get no row.
+        let only = d.path().join("only.txt");
+        let first = v
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["blurry"] == false)
+            .unwrap()["path"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        std::fs::write(&only, format!("{first}\n")).unwrap();
+        let fresh = d.path().join("fresh.json");
+        let (code, out, err) = main_with(
+            &a(&[
+                "scan",
+                lib.to_str().unwrap(),
+                "--json",
+                "--only",
+                only.to_str().unwrap(),
+                "--write-cache",
+                fresh.to_str().unwrap(),
+            ]),
+            3,
+        );
+        assert_eq!(code, 0, "{err}");
+        let v: serde_json::Value = serde_json::from_str(&out).unwrap();
+        assert_eq!(v.as_array().unwrap().len(), 1);
+        assert_eq!(v[0]["path"], first.as_str());
+        assert_eq!(QualityCache::load(&fresh).entries.len(), 1);
+        let (code, _, err) = main_with(
+            &a(&["scan", lib.to_str().unwrap(), "--only", "/no/such/list"]),
+            3,
+        );
+        assert_eq!(code, 2);
+        assert!(err.contains("/no/such/list"));
         // Library unchanged.
         assert_eq!(std::fs::read_to_string(&lib).unwrap(), snap.to_json());
         // Errors.

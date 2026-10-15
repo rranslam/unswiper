@@ -10,8 +10,8 @@
 use std::collections::HashMap;
 use std::path::Path;
 use unswiper_blur::decide::{suggest, Candidate, Thresholds};
-use unswiper_core::quality::Sensitivity;
 use unswiper_blur::{decode::decode, score::score_image, synth};
+use unswiper_core::quality::Sensitivity;
 
 fn flagged(scores: &[(String, unswiper_blur::score::Score)], s: Sensitivity) -> Vec<bool> {
     let cands: Vec<Candidate> = scores
@@ -30,7 +30,10 @@ fn flagged(scores: &[(String, unswiper_blur::score::Score)], s: Sensitivity) -> 
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let dir = Path::new(args.get(1).expect("usage: calibrate <folder> [blurry-list.txt]"));
+    let dir = Path::new(
+        args.get(1)
+            .expect("usage: calibrate <folder> [blurry-list.txt]"),
+    );
     let mut label: HashMap<String, char> = HashMap::new();
     if let Some(list) = args.get(2) {
         for l in std::fs::read_to_string(list).unwrap().lines() {
@@ -45,7 +48,10 @@ fn main() {
     let mut files: Vec<_> = std::fs::read_dir(dir)
         .unwrap()
         .filter_map(|e| e.ok().map(|e| e.path()))
-        .filter(|p| p.extension().is_some_and(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg")))
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("jpg") || e.eq_ignore_ascii_case("jpeg"))
+        })
         .collect();
     files.sort();
     let (mut real, mut synth_sets): (Vec<_>, Vec<Vec<_>>) = (vec![], vec![vec![]; 4]);
@@ -62,8 +68,16 @@ fn main() {
             let blurred = [
                 synth::defocus(&small, 2.0),
                 synth::defocus(&small, 4.0),
-                if name.len() % 2 == 0 { synth::motion(&small, 15) } else { vertical(15) },
-                if name.len() % 2 == 0 { vertical(31) } else { synth::motion(&small, 31) },
+                if name.len() % 2 == 0 {
+                    synth::motion(&small, 15)
+                } else {
+                    vertical(15)
+                },
+                if name.len() % 2 == 0 {
+                    vertical(31)
+                } else {
+                    synth::motion(&small, 31)
+                },
             ];
             for (k, b) in blurred.iter().enumerate() {
                 synth_sets[k].push((name.clone(), score_image(b)));
@@ -72,12 +86,25 @@ fn main() {
     }
     let sharp = real.iter().filter(|r| r.2 == 'S').count();
     let blurry = real.iter().filter(|r| r.2 == 'B').count();
-    println!("{} photos: {sharp} sharp, {blurry} blurry, {} left out", real.len(), real.len() - sharp - blurry);
+    println!(
+        "{} photos: {sharp} sharp, {blurry} blurry, {} left out",
+        real.len(),
+        real.len() - sharp - blurry
+    );
     for s in [Sensitivity::Low, Sensitivity::Normal, Sensitivity::High] {
         let scores: Vec<_> = real.iter().map(|r| (r.0.clone(), r.1)).collect();
         let fl = flagged(&scores, s);
-        let fp: Vec<_> = real.iter().zip(&fl).filter(|(r, f)| **f && r.2 == 'S').map(|(r, _)| r.0.as_str()).collect();
-        let tp = real.iter().zip(&fl).filter(|(r, f)| **f && r.2 == 'B').count();
+        let fp: Vec<_> = real
+            .iter()
+            .zip(&fl)
+            .filter(|(r, f)| **f && r.2 == 'S')
+            .map(|(r, _)| r.0.as_str())
+            .collect();
+        let tp = real
+            .iter()
+            .zip(&fl)
+            .filter(|(r, f)| **f && r.2 == 'B')
+            .count();
         print!(
             "{s:?}: FP {}/{sharp} ({:.1}%), real recall {tp}/{blurry}",
             fp.len(),
@@ -91,11 +118,17 @@ fn main() {
     }
     if std::env::var_os("CALIB_DUMP").is_some() {
         for r in &real {
-            println!("dump real {} {} {:.2} {:.2} {:.3}", r.2, r.0, r.1.sharpness, r.1.motion, r.1.confidence);
+            println!(
+                "dump real {} {} {:.2} {:.2} {:.3}",
+                r.2, r.0, r.1.sharpness, r.1.motion, r.1.confidence
+            );
         }
         for (k, set) in synth_sets.iter().enumerate() {
             for (n, sc) in set {
-                println!("dump synth{k} {n} {:.2} {:.2} {:.3}", sc.sharpness, sc.motion, sc.confidence);
+                println!(
+                    "dump synth{k} {n} {:.2} {:.2} {:.3}",
+                    sc.sharpness, sc.motion, sc.confidence
+                );
             }
         }
     }
@@ -104,7 +137,10 @@ fn main() {
             let fl = flagged(set, Sensitivity::Normal);
             for ((n, sc), f) in set.iter().zip(fl) {
                 if !f {
-                    println!("miss {} {n} sharp={:.1} motion={:.2} conf={:.2}", names[k], sc.sharpness, sc.motion, sc.confidence);
+                    println!(
+                        "miss {} {n} sharp={:.1} motion={:.2} conf={:.2}",
+                        names[k], sc.sharpness, sc.motion, sc.confidence
+                    );
                 }
             }
         }
