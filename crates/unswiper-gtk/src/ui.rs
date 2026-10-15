@@ -66,6 +66,16 @@ floating-sheet > sheet, bottom-sheet > sheet {
               0 10px 36px 6px alpha(black, 0.45), 0 3px 8px alpha(black, 0.30);
 }
 floating-sheet > dimming, bottom-sheet > dimming { background-color: alpha(black, 0.38); }
+/* Toasts float over the bottom bar: always an opaque dark pill with light text, so they stay
+   readable even if the libadwaita stylesheet is overridden (e.g. by a forced GTK_THEME). */
+toast {
+  background-color: #303030; color: #f6f6f6; border-radius: 99px;
+  border: 1px solid alpha(white, 0.10);
+  box-shadow: 0 2px 6px alpha(black, 0.35), 0 6px 18px alpha(black, 0.30);
+  padding: 4px 6px 4px 14px; margin: 12px; font-weight: normal;
+}
+toast label { color: #f6f6f6; }
+toast button { color: #f6f6f6; }
 ";
 
 pub struct ThumbMsg(pub thumbs::Thumb);
