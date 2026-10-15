@@ -147,7 +147,19 @@ To update, download the new `.flatpak` and run the same `flatpak install --user`
 
 ### Where Linux keeps its data
 
-Decisions and commit history: `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
+Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
+
+## Blurry photo detection (v0.3, Linux; Mac coming)
+
+Unswiper can find photos that are probably out of focus or shaken and mark them **Reject** for you, with an orange **Blurry?** badge. **Nothing is moved or deleted automatically:** marked photos move only when you open their visit and click **Review & Commit…**, like any other rejected photo. Your own Keep/Reject choices always win. It is **on** by default, runs entirely on your computer, and you can turn it off in the main menu (**☰**) under **Blurry Photos**. Inside the app, press **F1** and open the **Blurry Photos** page for the full steps.
+
+**Command-line checker (optional, for big folders or trying it out).** If you build Unswiper from source, the `unswiper-blur` tool lists photos that look blurry. It only reads your photos; it never moves, deletes or changes anything, and never edits your decisions.
+
+1. Open a Terminal in the Unswiper source folder.
+2. Type this and press Enter (replace the folder with yours):
+   `cargo run --release -p unswiper-blur -- scan ~/Pictures/Trip`
+3. It prints one line per photo: the sharpness score, then **BLURRY** or **ok**, then the file name. Lower numbers are blurrier.
+4. Optional: add `--sensitivity low` (fewer photos marked) or `--sensitivity high` (more), or `--json` for machine-readable output. Add `--write-cache` to save the scores so the app doesn't have to check those photos again.
 
 ## Build from source (macOS)
 

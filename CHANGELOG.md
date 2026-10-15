@@ -2,6 +2,13 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
+## [Unreleased] — 0.3.0 in progress
+
+### Added
+- **Blurry photo detection (Linux).** Unswiper checks photos in the background (the open visit first) and marks likely out-of-focus or shaken photos **Reject** with an orange **Blurry?** badge. Nothing moves until you commit the visit; your own Keep/Reject choices always win, and pressing **U** on a marked photo clears it for good. On by default; turn it off, change the sensitivity (Low / Normal / High), or clear or confirm all suggestions in a visit from the main menu under **Blurry Photos**. A **Blurry** filter shows only the marked photos, and the commit confirmation says how many rejects were suggested as blurry. New Help page: **Blurry Photos**.
+- **`unswiper-blur` command-line tool** (`unswiper-blur scan <folder|library.json>`), read-only, for checking big folders and tuning sensitivity.
+- New crate `unswiper-blur` (pure Rust, offline, MIT). Scores are cached in `quality-cache.json` next to `library.json`; `library.json` only gets two optional keys (`decisionSource: "auto-blur"`, `blurDismissed`), so files without blur data are unchanged.
+
 ## [0.2.0] - 2026-10-13
 
 ### Added

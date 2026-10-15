@@ -343,6 +343,17 @@ Optional v2: a permissively licensed ONNX model through `tract` for better bokeh
 - **Decided:** blurry photos are **pre-marked Reject and moved only on commit**. They are never moved or deleted automatically, manual decisions always win, and the existing commit-the-open-visit rule applies.
 - **Deferred** until v0.3 work starts: the score storage (sidecar cache vs library.json fields, §15.3), the Mac bridge (UniFFI vs CLI helper, §15.4), the sensitivity defaults and accuracy-gate numbers (§15.6), and the optional ONNX model.
 
+### 15.9 v0.3 milestone 1 — what was built (15 Oct 2026)
+Blur detection end to end on Linux plus the core. Decisions taken while building (open to change):
+- **Storage (the deferred §15.3 question):** recommendation (b) as written. Scores live in the sidecar `quality-cache.json` (support folder, next to library.json; keyed by size + mtime + algorithm version; rebuildable). library.json gets only the optional item keys `decisionSource: "auto-blur"` and `blurDismissed: true`, and config keys `blurDetection` (absent = on) and `blurSensitivity` (absent = normal), all omitted when unused, so v1 files are byte-identical. Code: `unswiper-core::quality`.
+- **Crate layout:** `crates/unswiper-blur` holds the score, decision rules, cache, parallel scan and the `unswiper-blur` binary. It depends on `unswiper-core` (not the other way round), so the core stays free of image decoding. The app's background job lives in `unswiper-gtk::blur` instead of `unswiper-core::quality` for the same reason.
+- **Score:** as §15.1, with two changes found in testing: (1) tiles with low contrast (std < 30) are scaled up to that contrast, so faint but sharp scenes (fog, pale text) aren't flagged; (2) the flat-tile cutoff is std 4. Tenengrad and AF-point tiles are not used yet. The embedded EXIF preview is not used yet (full decode, then resize).
+- **Rules:** absolute floor (Low 8 / Normal 15 / High 30), burst-relative (≥3 photos ≤3 s apart; 0.25 / 0.35 / 0.45 × burst max), plus a shake rule (gradient anisotropy ≥ 0.5 and sharpness < 4 × floor). Never flagged: confidence < 0.5 (mean luma < 40, or fewer than 2 textured tiles), videos, PNG/GIF/BMP, undated photos in bursts. Portrait/depth and high-ISO detection need EXIF and are not done yet.
+- **Settings UI:** a **Blurry Photos** section in the main menu (toggle, sensitivity radio submenu, "Check now", clear / confirm all in visit) rather than an `AdwPreferencesWindow`, to match the existing Commit Mode menu. Easy to move into a Preferences window later.
+- **Background work:** all cores but one (rayon), cancellable, open visit scored first; not yet `nice`d.
+- **Accuracy gate:** synthetic only for now (`crates/unswiper-blur/tests/accuracy.rs`, generated scenes: sharp, defocus, motion, bokeh-sharp, night, low-texture, faint, bursts). Currently precision 1.00 and recall 0.98 against the ≥ 0.95 / ≥ 0.70 gate. **Calibration on real photos is still needed** before release: a labeled set of ~60–100 of Rob's photos.
+- **Not in M1:** Mac app parity (bridge choice UniFFI vs CLI helper still open), the cross-check test Rust vs Mac, `criterion` benchmark, AppImage/Flatpak shipping of the `unswiper-blur` CLI.
+
 ## 16. Video playback during review (new feature, Rob 14 Oct 2026; plan only)
 
 Today a video tile only shows a frame thumbnail, so deciding Keep/Reject on a clip means opening it in another app. Users need to play videos inside Unswiper while reviewing a visit, on both Linux and Mac. Nothing here is implemented yet.
