@@ -140,6 +140,7 @@ To update, download the new `.flatpak` and run the same `flatpak install --user`
 ### Notes for Arch / Omarchy (Hyprland)
 
 - Both downloads run natively on **Wayland**/Hyprland; no X11 needed.
+- **Make the window fullscreen:** Omarchy (Hyprland) is mostly keyboard-driven and opens new windows *tiled* (sharing the screen with other windows), so Unswiper may start small. After it opens, press **Super + F** to make it fullscreen: hold the **Super** key (the Windows key on a PC keyboard, the **Command ⌘** key on a Mac) and press **F**. Press **Super + F** again to go back to the tiled size.
 - For the AppImage, install FUSE 2 once: `sudo pacman -S fuse2`. On **Arm** (Apple Silicon Mac with Asahi or a VM) use the **aarch64** files; if `fuse2` isn't available, run the AppImage with `--appimage-extract-and-run` (see above) or use the Flatpak.
 - The Flatpak adds Unswiper to the Omarchy app launcher (Super + Space) automatically; the AppImage doesn't, so start it from a terminal.
 - Choosing a library folder uses the desktop's file dialog portal. Omarchy ships `xdg-desktop-portal-gtk`/`-hyprland`; if the folder dialog doesn't open, install `xdg-desktop-portal-gtk`.
