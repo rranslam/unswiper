@@ -75,6 +75,15 @@ toast {
   padding: 4px 6px 4px 14px; margin: 12px; font-weight: normal;
 }
 toast label { color: #f6f6f6; }
+/* Visits sidebar: roomy rows with a hairline between them, title and subtitle clearly apart
+   (does not rely on libadwaita row styling, which a forced GTK_THEME drops). */
+.visits { padding: 6px; }
+.visits > row { padding: 8px 6px; margin: 0 0 3px 0; border-radius: 8px;
+  border-bottom: 1px solid alpha(currentColor, 0.08); }
+.visits > row:selected { border-bottom-color: transparent; }
+.visits > row .title { font-weight: 600; }
+.visits > row .subtitle { margin-top: 3px; font-size: 0.85em; opacity: 0.65; }
+.visits > row .title, .visits > row .subtitle { padding: 0; }
 toast button { color: #f6f6f6; }
 ";
 
@@ -309,7 +318,7 @@ impl Component for App {
 
         // Main page: visits on the left, grid on the right.
         let visits = gtk::ListBox::builder()
-            .css_classes(["navigation-sidebar"])
+            .css_classes(["navigation-sidebar", "visits"])
             .build();
         {
             let s = sender.clone();
