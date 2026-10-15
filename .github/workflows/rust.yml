@@ -16,6 +16,10 @@ env:
   # Folder dates and titles are local-time; pin a zone with DST so tests are deterministic.
   TZ: America/Los_Angeles
 
+# Read-only token: these jobs only build, test and upload artifacts (safe for fork PRs).
+permissions:
+  contents: read
+
 jobs:
   lint:
     runs-on: ubuntu-24.04

@@ -13,6 +13,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# Read-only token: these jobs only build, test and upload artifacts (safe for fork PRs).
+permissions:
+  contents: read
+
 jobs:
   appimage:
     strategy:

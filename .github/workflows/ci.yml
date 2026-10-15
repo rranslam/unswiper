@@ -9,6 +9,10 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Read-only token: these jobs only build, test and upload artifacts (safe for fork PRs).
+permissions:
+  contents: read
+
 jobs:
   test-macos:
     runs-on: macos-latest
