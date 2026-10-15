@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Rob Ranslam
-# On a v* tag: build the Mac dmg (ad-hoc signed), the AppImage and the Flatpak bundle, then attach
-# all three to the GitHub release for that tag.
+# On a v* tag: build the Mac dmg (ad-hoc signed), the AppImages and the Flatpak bundles (x86_64 and
+# aarch64), then attach all five to the GitHub release for that tag.
 name: Release
 
 on:
@@ -46,8 +46,10 @@ jobs:
         run: |
           mkdir out
           cp dist/Unswiper-dmg/*.dmg out/
-          cp dist/Unswiper-x86_64.AppImage/Unswiper-x86_64.AppImage out/
-          cp dist/Unswiper-x86_64.flatpak/Unswiper.flatpak out/Unswiper-x86_64.flatpak
+          for a in x86_64 aarch64; do
+            cp "dist/Unswiper-$a.AppImage/Unswiper-$a.AppImage" out/
+            cp "dist/Unswiper-$a.flatpak/Unswiper-$a.flatpak" out/
+          done
           ls -l out
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
