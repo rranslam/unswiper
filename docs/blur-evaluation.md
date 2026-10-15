@@ -32,3 +32,40 @@ Runs offline, no cloud API. Must be compatible with distributing Unswiper under 
 
 ## Conclusion
 Implement **#1 (pure-Rust tiled Laplacian variance)**, optionally combined with a cheap **gradient-energy (Tenengrad)** score from imageproc's Sobel, both MIT. Take design ideas from digiKam (#5), BlurDetection2 (#4), darktable (#6) and Excire (#7). Use AF/portrait metadata (#11) as a hint. Avoid OpenCV (heavy native dep, no gain for this), BRISQUE (wrong target), and pyiqa (licence). Keep an ONNX model through `tract` (#10) as a possible v2, but only with a permissively licensed or self-trained model.
+
+## Real-photo calibration (15 Oct 2026)
+
+**Set:** 85 of Rob's own phone JPEGs (2019, 3120×4160 and a few small ones), already culled by him. They are personal, so they are **not** in the repo. Only these aggregate numbers are. Nothing in the file or folder names marked a photo as blurry, so each photo was judged by eye (full view plus a 100 % centre crop):
+- **4 blurry**: 2 fully defocused bokeh shots, 1 defocused wide shot, 1 soft indoor shot.
+- **78 sharp**, including the tricky cases (counted as sharp, so any flag is a false positive): a plain overcast sky, rose close-ups with smooth petals, a breaker panel, seascapes with strong horizon lines, dusk, glare and through-the-windscreen shots.
+- **3 left out**: two almost black frames (low confidence by design, never flagged) and a 500 px scan of an old soft print.
+
+**Tool:** `cargo run --release -p unswiper-blur --example calibrate -- <folder> [blurry-list.txt]`. Each photo is scored on its own, without bursts. Synthetic recall comes from adding blur to the 78 sharp photos at the 1024 px working size: Gaussian σ 2 and σ 4, and a 15 px and a 31 px box shake, alternating horizontal and vertical. A full `unswiper-blur scan` with burst grouping gave the same flags.
+
+**Before** (floor 8 / 15 / 30, shake anisotropy ≥ 0.5):
+
+| Sensitivity | False positives on sharp | Real blurry found | Synthetic σ2 / σ4 / shake 15 / shake 31 |
+|---|---|---|---|
+| Low | 5 / 78 (6.4 %) | 2 / 4 | 59 / 71 / 46 / 69 of 78 |
+| Normal | 11 / 78 (14.1 %) | 2 / 4 | 69 / 71 / 61 / 71 |
+| High | 18 / 78 (23.1 %) | 2 / 4 | 70 / 71 / 69 / 71 |
+
+Most false positives came from the **shake rule**. Sharp seascapes and panels with long straight edges have gradient anisotropy 0.45 to 0.66 (one at 0.80), while synthetic shake that the floor doesn't already catch is mostly at 0.7 or above.
+
+**Change:** shake anisotropy 0.5 → **0.7**. Floors 8/15/30 → **7/13/25**. The burst factors are unchanged. These were picked on a small grid (floors × anisotropy 0.5–0.75 × floor factor 2–4) as the setting with the fewest false positives at Normal that still kept synthetic recall.
+
+**After:**
+
+| Sensitivity | False positives on sharp | Real blurry found | Synthetic σ2 / σ4 / shake 15 / shake 31 |
+|---|---|---|---|
+| Low | 1 / 78 (1.3 %) | 2 / 4 | 52 / 71 / 33 / 66 of 78 |
+| Normal | 5 / 78 (6.4 %) | 2 / 4 | 67 / 71 / 49 / 70 |
+| High | 10 / 78 (12.8 %) | 2 / 4 | 69 / 71 / 64 / 71 |
+
+The synthetic accuracy gate (`tests/accuracy.rs`) still passes. The 7 sharp photos never flagged even at σ 4 are low-confidence (dark or almost no texture), as intended.
+
+**What's left:**
+- At Normal, the remaining false positives are low-texture subjects that a Laplacian floor can't tell from defocus: the plain sky, three rose close-ups and a breaker panel.
+- The two missed blurry photos are full-frame bokeh of point lights. The bright discs keep the sharpness score at about 31 to 37.
+- Both need content cues, for example a "too little structure to judge" confidence based on edge density, or EXIF/portrait hints, and they're left for later.
+- 85 photos with 4 real blurry ones is too small a set to fit thresholds tightly. Re-run the tool on a larger set (ideally including Rob's rejects) before 1.0.

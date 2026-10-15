@@ -27,15 +27,15 @@ impl Thresholds {
     pub fn for_sensitivity(s: Sensitivity) -> Thresholds {
         match s {
             Sensitivity::Low => Thresholds {
-                abs: 8.0,
+                abs: 7.0,
                 rel: 0.25,
             },
             Sensitivity::Normal => Thresholds {
-                abs: 15.0,
+                abs: 13.0,
                 rel: 0.35,
             },
             Sensitivity::High => Thresholds {
-                abs: 30.0,
+                abs: 25.0,
                 rel: 0.45,
             },
         }
@@ -71,8 +71,10 @@ pub enum Reason {
     Shake,
 }
 
-/// Gradient anisotropy at or above this counts as directional streaking.
-pub const MOTION_ANISOTROPY: f32 = 0.5;
+/// Gradient anisotropy at or above this counts as directional streaking. Real sharp scenes with
+/// strong straight lines (horizons, sea, breaker panels) reach about 0.66 (calibration, 15 Oct 2026),
+/// so 0.5 flagged them as shaken.
+pub const MOTION_ANISOTROPY: f32 = 0.7;
 /// Shaky photos are flagged below this multiple of the absolute floor.
 pub const MOTION_FLOOR_FACTOR: f32 = 4.0;
 
