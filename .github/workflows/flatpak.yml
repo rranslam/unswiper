@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: MIT
 # Copyright (c) 2026 Rob Ranslam
-# Builds the Flatpak bundle and uploads Unswiper.flatpak as an artifact (also called by release.yml). Nothing is published.
+# Builds the Flatpak bundle for x86_64 and aarch64 and uploads Unswiper-<arch>.flatpak artifacts (also called by release.yml). Nothing is published.
 name: Flatpak
 
 on:
@@ -26,7 +26,14 @@ jobs:
     # free disk ran out when exporting the build (run 38607788232), and a container job can't
     # remove the host's preinstalled toolchains. Here we free ~25 GB first, delete each module's
     # build dir as soon as it is done, and remove the build tree before bundling.
-    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: x86_64, runner: ubuntu-24.04 }
+          - { arch: aarch64, runner: ubuntu-24.04-arm }
+    name: flatpak (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
     steps:
       - name: Free disk space (unused preinstalled toolchains)
         run: |
@@ -55,9 +62,9 @@ jobs:
           rm -rf build-dir .flatpak-builder/build
           df -h /
       - name: Bundle
-        run: flatpak build-bundle repo Unswiper.flatpak io.github.rranslam.Unswiper --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
+        run: flatpak build-bundle repo Unswiper-${{ matrix.arch }}.flatpak io.github.rranslam.Unswiper --runtime-repo=https://dl.flathub.org/repo/flathub.flatpakrepo
       - uses: actions/upload-artifact@v4
         with:
-          name: Unswiper-x86_64.flatpak
-          path: Unswiper.flatpak
+          name: Unswiper-${{ matrix.arch }}.flatpak
+          path: Unswiper-${{ matrix.arch }}.flatpak
           if-no-files-found: error
