@@ -54,10 +54,11 @@ rm -f "$out/gst-plugins"/*
 # the libav (FFmpeg) decoders, and audio output (autodetect picks PipeWire or PulseAudio).
 # Containers: MP4/MOV/3GP (isomp4), MKV/WebM (matroska), AVI (avi = avidemux), MTS/M2TS (mpegtsdemux),
 # Ogg. Decoders: libav (H.264, HEVC, MPEG-4 Part 2/DivX/Xvid/MS-MPEG4, DV, VP8/VP9, MP3, AAC, AC-3 ...),
-# jpeg (jpegdec for MJPEG AVIs), dv (dvdec), mpg123, vorbis, opus. check-appimage-gst.sh asserts the key ones.
+# jpeg (jpegdec for MJPEG AVIs), dv (dvdec), mpg123, vorbis, opus; audiofx (scaletempo: GTK's player
+# wants it for playback-speed changes and warns "scaletempo element not available" without it). check-appimage-gst.sh asserts the key ones.
 for p in coreelements typefindfunctions playback app videoconvertscale videoconvert videoscale \
          isomp4 matroska avi mpegtsdemux ogg audioparsers videoparsersbad libav jpeg dv mpg123 \
-         vorbis opus wavparse autodetect audioconvert audioresample volume pulseaudio pipewire; do
+         vorbis opus wavparse audiofx autodetect audioconvert audioresample volume pulseaudio pipewire; do
   for f in "$gst_dir/libgst$p.so"; do [ -e "$f" ] && ln -sf "$f" "$out/gst-plugins/"; done
 done
 export GSTREAMER_PLUGINS_DIR="$out/gst-plugins"

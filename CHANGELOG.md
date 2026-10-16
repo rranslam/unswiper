@@ -7,6 +7,7 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 ### Fixed
 - Linux AppImage: videos didn't play on newer distributions such as Ubuntu 26.04 ("Media extension gstreamer … not found"). GTK's video module loaded the system's GStreamer libraries next to the bundled ones; it now uses only the bundled GStreamer, its own plugins and a private plugin registry. Also affected the 0.3.0 AppImages; Flatpak and Mac were not affected. ([#1](https://github.com/rranslam/unswiper/issues/1))
 - Linux AppImage: **AVI** videos (DivX/Xvid, MS-MPEG4, Motion JPEG, DV) didn't play or get thumbnails ("missing codec"): the AVI demuxer wasn't bundled. The AppImage now also bundles the JPEG, DV, MPEG-TS (MTS/M2TS), Ogg, Vorbis, Opus and MP3 plugins, and every build checks that `avidemux`, `jpegdec` and `avdec_mpeg4` are present and that test AVIs decode. The Flatpak already played AVI. On the Mac, AVI still opens in your default player (Help explains why).
+- Linux AppImage: bundles GStreamer's `scaletempo` (audiofx plugin), so the player no longer warns "scaletempo element not available".
 - Linux AppImage: now includes a list of the bundled third-party libraries with their licenses (`usr/share/doc/unswiper/third-party`).
 
 ### Added

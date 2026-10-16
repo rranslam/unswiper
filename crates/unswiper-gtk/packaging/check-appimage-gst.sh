@@ -41,7 +41,7 @@ hooks="$(cat "$appdir"/apprun-hooks/*.sh)"
 for v in GST_PLUGIN_SYSTEM_PATH_1_0 GST_PLUGIN_PATH_1_0 GST_PLUGIN_SCANNER_1_0 GST_REGISTRY_1_0 GTK_MEDIA; do
   grep -q "$v=" <<<"$hooks" || { echo "FAIL: AppRun hooks don't set $v" >&2; fail=1; }
 done
-for p in avi jpeg libav isomp4 matroska; do
+for p in avi jpeg libav isomp4 matroska audiofx playback; do
   [ -e "$appdir/usr/lib/gstreamer-1.0/libgst$p.so" ] || { echo "FAIL: GStreamer plugin libgst$p.so is not bundled" >&2; fail=1; }
 done
 if [ "${SKIP_GST_INSPECT:-0}" != 1 ]; then
@@ -58,7 +58,7 @@ if [ "${SKIP_GST_INSPECT:-0}" != 1 ]; then
     # Element lookup by name is unreliable when the host's gst tools are newer than the bundle, so
     # list everything once and grep (lines look like "libav:  avdec_mpeg4: libav MPEG-4 part 2 decoder").
     elements="$(bundled gst-inspect-1.0 2>/dev/null || true)"
-    for e in avidemux jpegdec avdec_mpeg4 avdec_msmpeg4 avdec_h264 qtdemux matroskademux; do
+    for e in avidemux jpegdec avdec_mpeg4 avdec_msmpeg4 avdec_h264 qtdemux matroskademux scaletempo playbin; do
       grep -q "  $e: " <<<"$elements" || { echo "FAIL: element $e missing from the bundled plugins" >&2; fail=1; }
     done
     if command -v ffmpeg >/dev/null && command -v gst-launch-1.0 >/dev/null; then
