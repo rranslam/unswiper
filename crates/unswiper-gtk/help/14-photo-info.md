@@ -41,3 +41,11 @@ Many phones save **where** a photo was taken. If they did, the panel shows the *
 - The map button next to the coordinates opens the place on **OpenStreetMap** in your web browser. That is the only time the location leaves your computer, and only when you click it.
 - To hide locations, open the main menu **☰** and turn off **Show Location in Photo Info**. Unswiper remembers this.
 - Unswiper never changes or removes the location stored in your photos.
+
+## About this information
+
+- Photo Info comes from **EXIF** (Exchangeable image file format), a camera-industry standard from CIPA and JEITA. Camera and phone makers follow it loosely, so some fields can be missing or inconsistent, even between two cameras or phones of the same model with different firmware.
+- Many DSLRs and other cameras record no GPS location at all.
+- The date and time are only as good as the camera's clock: it may have been set to the wrong time zone, or never set.
+- Unswiper shows what's in the file and doesn't correct it.
+- More about EXIF: https://en.wikipedia.org/wiki/Exif

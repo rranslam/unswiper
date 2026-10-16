@@ -43,6 +43,14 @@ Many iPhones and cameras save **where** a photo was taken. If they did, the insp
 - To hide locations, choose **View ▸ Show Location in Photo Info** in the menu bar so the check mark goes away. Unswiper remembers this.
 - Unswiper never changes or removes the location stored in your photos.
 
+## About this information
+
+- Photo Info comes from **EXIF** (Exchangeable image file format), a camera-industry standard from CIPA and JEITA. Camera and phone makers follow it loosely, so some fields can be missing or inconsistent, even between two cameras or phones of the same model with different firmware.
+- Many DSLRs and other cameras record no GPS location at all.
+- The date and time are only as good as the camera's clock: it may have been set to the wrong time zone, or never set.
+- Unswiper shows what's in the file and doesn't correct it.
+- More about EXIF: https://en.wikipedia.org/wiki/Exif
+
 ## If the info doesn't appear
 
 Photo Info is read by a small helper program inside Unswiper.app (the same one that checks for blurry photos). If you see *"Photo Info needs the helper"*, download Unswiper again from the Releases page and replace the app in your Applications folder.
