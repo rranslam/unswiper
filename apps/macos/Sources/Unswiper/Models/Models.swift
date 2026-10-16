@@ -166,6 +166,8 @@ struct AppConfig: Codable, Equatable {
     var blurDetection: Bool? = nil
     /// "low" | "normal" | "high"; nil = normal.
     var blurSensitivity: String? = nil
+    /// "Show Location in Photo Info", shared with Linux: nil = on (the default), false = hidden.
+    var infoShowLocation: Bool? = nil
 
     static let `default` = AppConfig(
         rootPath: nil,
