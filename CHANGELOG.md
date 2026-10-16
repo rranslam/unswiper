@@ -2,7 +2,7 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
-## [Unreleased]
+## [0.4.0] - 2026-10-15
 
 ### Fixed
 - Linux AppImage: videos didn't play on newer distributions such as Ubuntu 26.04 ("Media extension gstreamer … not found"). GTK's video module loaded the system's GStreamer libraries next to the bundled ones; it now uses only the bundled GStreamer, its own plugins and a private plugin registry. Also affected the 0.3.0 AppImages; Flatpak and Mac were not affected. ([#1](https://github.com/rranslam/unswiper/issues/1))
