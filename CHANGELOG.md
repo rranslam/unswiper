@@ -5,7 +5,7 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 ## [Unreleased]
 
 ### Fixed
-- Linux AppImage: videos didn't play on newer distributions such as Ubuntu 26.04 ("Media extension gstreamer … not found"). GTK's video module loaded the system's GStreamer libraries next to the bundled ones; it now uses only the bundled GStreamer, its own plugins and a private plugin registry. Also affected the 0.3.0 AppImages; Flatpak and Mac were not affected.
+- Linux AppImage: videos didn't play on newer distributions such as Ubuntu 26.04 ("Media extension gstreamer … not found"). GTK's video module loaded the system's GStreamer libraries next to the bundled ones; it now uses only the bundled GStreamer, its own plugins and a private plugin registry. Also affected the 0.3.0 AppImages; Flatpak and Mac were not affected. ([#1](https://github.com/rranslam/unswiper/issues/1))
 
 ### Added
 - **Photo Info (Linux and Mac).** See how a photo was taken to choose between similar shots: camera and lens, shutter, aperture, ISO, focal length (with the 35 mm equivalent), flash, exposure compensation, date with time zone, dimensions, file size (Live Photo motion included), format and folder, and the blur check in words (**Sharp**, **Soft** or **Blurry**). **Right-click** a tile (Mac: right-click ▸ **Show Info**) for a quick look, or press **I** (Linux **Ctrl+I**, Mac **⌘I**) for the full inspector, which follows the selection and the viewer. A one-line settings summary shows the selected item only (under the grid; on the Mac also under the clicked picture in Compare).

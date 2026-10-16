@@ -151,6 +151,7 @@ Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/shar
 
 ## Known issues
 
+- **Unswiper 0.3.0 AppImage: videos don't play on newer distros (GStreamer clash).** Use the Flatpak, or 0.4.0 where it's fixed. See https://github.com/rranslam/unswiper/issues/1.
 - **Linux, older Intel graphics (for example Haswell, 4th-generation Core):** when started from a terminal, the Flatpak or AppImage may print warnings such as `MESA-INTEL: warning: Haswell Vulkan support is incomplete` or lines containing `FINISHME`. They are harmless: Unswiper works normally. To silence them, make GTK draw with OpenGL instead of Vulkan:
   - Flatpak: `GSK_RENDERER=ngl flatpak run io.github.rranslam.Unswiper`
   - AppImage: `GSK_RENDERER=ngl ./Unswiper-x86_64.AppImage`
