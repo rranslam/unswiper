@@ -2,6 +2,21 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
+## [0.4.0] - 2026-10-15
+
+### Fixed
+- Linux AppImage: videos didn't play on newer distributions such as Ubuntu 26.04 ("Media extension gstreamer … not found"). GTK's video module loaded the system's GStreamer libraries next to the bundled ones; it now uses only the bundled GStreamer, its own plugins and a private plugin registry. Also affected the 0.3.0 AppImages; Flatpak and Mac were not affected. ([#1](https://github.com/rranslam/unswiper/issues/1))
+- Linux AppImage: **AVI** videos (DivX/Xvid, MS-MPEG4, Motion JPEG, DV) didn't play or get thumbnails ("missing codec"): the AVI demuxer wasn't bundled. The AppImage now also bundles the JPEG, DV, MPEG-TS (MTS/M2TS), Ogg, Vorbis, Opus and MP3 plugins, and every build checks that `avidemux`, `jpegdec` and `avdec_mpeg4` are present and that test AVIs decode. The Flatpak already played AVI. On the Mac, AVI still opens in your default player (Help explains why).
+- Linux AppImage: bundles GStreamer's `scaletempo` (audiofx plugin), so the player no longer warns "scaletempo element not available".
+- Linux AppImage: now includes a list of the bundled third-party libraries with their licenses (`usr/share/doc/unswiper/third-party`).
+
+### Added
+- **Photo Info (Linux and Mac).** See how a photo was taken to choose between similar shots: camera and lens, shutter, aperture, ISO, focal length (with the 35 mm equivalent), flash, exposure compensation, date with time zone, dimensions, file size (Live Photo motion included), format and folder, and the blur check in words (**Sharp**, **Soft** or **Blurry**). **Right-click** a tile (Mac: right-click ▸ **Show Info**) for a quick look, or press **I** (Linux **Ctrl+I**, Mac **⌘I**) for the full inspector, which follows the selection and the viewer. A one-line settings summary shows the selected item only (under the grid; on the Mac also under the clicked picture in Compare).
+- **Location in Photo Info**, shown only on your computer and never stored or sent; **Open in Maps** opens OpenStreetMap only when you click it. On by default; hide it with **Show Location in Photo Info** (Linux main menu, Mac **View** menu). The setting is saved in library.json as `infoShowLocation: false` and shared by both apps.
+- Videos: length, size, codec, camera and location are read from MOV/MP4 files (portrait iPhone clips show the right way round).
+- `unswiper-blur info [--library library.json] FILE...` prints the same rows as JSON (read-only); the Mac app uses it through the bundled helper.
+- New Help pages: **Photo Info** (Linux and Mac); Keyboard Shortcuts and Privacy updated.
+
 ## [0.3.0] - 2026-10-15
 
 ### Changed

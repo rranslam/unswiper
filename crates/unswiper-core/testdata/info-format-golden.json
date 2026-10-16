@@ -1,0 +1,522 @@
+[
+ {
+  "file": {
+   "folder": "/Users/rob/Pictures/2026/03 Big Sur",
+   "name": "IMG_1234.HEIC",
+   "sidecars": [
+    [
+     "IMG_1234.MOV",
+     3400000
+    ]
+   ],
+   "size": 2140000
+  },
+  "info": {
+   "exposure_bias_ev": -0.3333333333333333,
+   "exposure_s": 0.008333333333333333,
+   "f_number": 1.78,
+   "flash": false,
+   "focal_35mm": 24,
+   "focal_mm": 6.765,
+   "gps": {
+    "alt_m": 12.4,
+    "lat": 37.774929,
+    "lon": -122.419416
+   },
+   "height": 4032,
+   "iso": 64,
+   "lens": "iPhone 15 Pro back triple camera 6.765mm f/1.78",
+   "make": "Apple",
+   "model": "iPhone 15 Pro",
+   "orientation": 6,
+   "taken": {
+    "local": "2026-03-14T10:11:12",
+    "offset_min": -420
+   },
+   "width": 3024
+  },
+  "name": "iphone_heic_full",
+  "options": {
+   "sharpness": "sharp",
+   "show_location": true
+  },
+  "rows": [
+   {
+    "group": "camera",
+    "label": "Camera",
+    "short": true,
+    "value": "Apple iPhone 15 Pro"
+   },
+   {
+    "group": "camera",
+    "label": "Lens",
+    "short": true,
+    "value": "iPhone 15 Pro back triple camera 6.765mm f/1.78"
+   },
+   {
+    "group": "exposure",
+    "label": "Shutter",
+    "short": true,
+    "value": "1/120 s"
+   },
+   {
+    "group": "exposure",
+    "label": "Aperture",
+    "short": true,
+    "value": "f/1.8"
+   },
+   {
+    "group": "exposure",
+    "label": "ISO",
+    "short": true,
+    "value": "ISO 64"
+   },
+   {
+    "group": "exposure",
+    "label": "Focal length",
+    "short": true,
+    "value": "6.8 mm (24 mm equiv.)"
+   },
+   {
+    "group": "exposure",
+    "label": "Flash",
+    "short": false,
+    "value": "Off"
+   },
+   {
+    "group": "exposure",
+    "label": "Exposure compensation",
+    "short": false,
+    "value": "-0.3 EV"
+   },
+   {
+    "group": "date",
+    "label": "Taken",
+    "short": true,
+    "value": "Sat 14 Mar 2026, 10:11:12 (UTC-07:00)"
+   },
+   {
+    "group": "image",
+    "label": "Dimensions",
+    "short": true,
+    "value": "12.2 MP · 3024 × 4032"
+   },
+   {
+    "group": "file",
+    "label": "Name",
+    "short": false,
+    "value": "IMG_1234.HEIC"
+   },
+   {
+    "group": "file",
+    "label": "Size",
+    "short": true,
+    "value": "2.1 MB + IMG_1234.MOV, 3.4 MB"
+   },
+   {
+    "group": "file",
+    "label": "Format",
+    "short": true,
+    "value": "HEIC"
+   },
+   {
+    "group": "file",
+    "label": "Folder",
+    "short": false,
+    "value": "/Users/rob/Pictures/2026/03 Big Sur"
+   },
+   {
+    "group": "location",
+    "label": "Coordinates",
+    "short": false,
+    "value": "37.77493, -122.41942"
+   },
+   {
+    "group": "location",
+    "label": "Altitude",
+    "short": false,
+    "value": "12 m"
+   },
+   {
+    "group": "unswiper",
+    "label": "Sharpness",
+    "short": true,
+    "value": "Sharp"
+   }
+  ]
+ },
+ {
+  "file": {
+   "name": "_MG_0001.JPG",
+   "size": 840400
+  },
+  "info": {
+   "exposure_bias_ev": 0.7,
+   "exposure_s": 2.5,
+   "f_number": 8.0,
+   "flash": true,
+   "focal_mm": 35.0,
+   "gps": {
+    "lat": -33.8688,
+    "lon": 151.2093
+   },
+   "height": 4000,
+   "iso": 100,
+   "lens": "Sigma 35mm F1.4 DG DN | A",
+   "make": "Canon",
+   "model": "Canon EOS R6",
+   "taken": {
+    "local": "2025-12-31T23:59:00"
+   },
+   "width": 6000
+  },
+  "name": "dslr_jpeg_location_hidden",
+  "options": {
+   "sharpness": "blurry",
+   "show_location": false
+  },
+  "rows": [
+   {
+    "group": "camera",
+    "label": "Camera",
+    "short": true,
+    "value": "Canon EOS R6"
+   },
+   {
+    "group": "camera",
+    "label": "Lens",
+    "short": true,
+    "value": "Sigma 35mm F1.4 DG DN | A"
+   },
+   {
+    "group": "exposure",
+    "label": "Shutter",
+    "short": true,
+    "value": "2.5 s"
+   },
+   {
+    "group": "exposure",
+    "label": "Aperture",
+    "short": true,
+    "value": "f/8"
+   },
+   {
+    "group": "exposure",
+    "label": "ISO",
+    "short": true,
+    "value": "ISO 100"
+   },
+   {
+    "group": "exposure",
+    "label": "Focal length",
+    "short": true,
+    "value": "35 mm"
+   },
+   {
+    "group": "exposure",
+    "label": "Flash",
+    "short": false,
+    "value": "Fired"
+   },
+   {
+    "group": "exposure",
+    "label": "Exposure compensation",
+    "short": false,
+    "value": "+0.7 EV"
+   },
+   {
+    "group": "date",
+    "label": "Taken",
+    "short": true,
+    "value": "Wed 31 Dec 2025, 23:59:00 (time zone unknown)"
+   },
+   {
+    "group": "image",
+    "label": "Dimensions",
+    "short": true,
+    "value": "24 MP · 6000 × 4000"
+   },
+   {
+    "group": "file",
+    "label": "Name",
+    "short": false,
+    "value": "_MG_0001.JPG"
+   },
+   {
+    "group": "file",
+    "label": "Size",
+    "short": true,
+    "value": "840 KB"
+   },
+   {
+    "group": "file",
+    "label": "Format",
+    "short": true,
+    "value": "JPEG"
+   },
+   {
+    "group": "unswiper",
+    "label": "Sharpness",
+    "short": true,
+    "value": "Blurry"
+   }
+  ]
+ },
+ {
+  "file": {
+   "name": "Screenshot 2026-10-15.png",
+   "size": 512
+  },
+  "info": {
+   "height": 2796,
+   "width": 1290
+  },
+  "name": "screenshot_no_exif",
+  "options": {
+   "sharpness": "notchecked",
+   "show_location": true
+  },
+  "rows": [
+   {
+    "group": "image",
+    "label": "Dimensions",
+    "short": true,
+    "value": "3.6 MP · 1290 × 2796"
+   },
+   {
+    "group": "file",
+    "label": "Name",
+    "short": false,
+    "value": "Screenshot 2026-10-15.png"
+   },
+   {
+    "group": "file",
+    "label": "Size",
+    "short": true,
+    "value": "512 bytes"
+   },
+   {
+    "group": "file",
+    "label": "Format",
+    "short": true,
+    "value": "PNG"
+   },
+   {
+    "group": "unswiper",
+    "label": "Sharpness",
+    "short": true,
+    "value": "Not checked"
+   }
+  ]
+ },
+ {
+  "file": {
+   "folder": "/media/rob/photos",
+   "name": "IMG_0002.MOV",
+   "size": 1234000000
+  },
+  "info": {
+   "codec": "hvc1",
+   "duration_s": 7.5,
+   "gps": {
+    "alt_m": 20.0,
+    "lat": 51.5007,
+    "lon": -0.1246
+   },
+   "height": 1920,
+   "is_video": true,
+   "make": "Apple",
+   "model": "iPhone 15 Pro",
+   "taken": {
+    "local": "2026-03-04T10:00:00",
+    "offset_min": 60
+   },
+   "width": 1080
+  },
+  "name": "iphone_video",
+  "options": {
+   "show_location": true
+  },
+  "rows": [
+   {
+    "group": "camera",
+    "label": "Camera",
+    "short": true,
+    "value": "Apple iPhone 15 Pro"
+   },
+   {
+    "group": "date",
+    "label": "Taken",
+    "short": true,
+    "value": "Wed 4 Mar 2026, 10:00:00 (UTC+01:00)"
+   },
+   {
+    "group": "image",
+    "label": "Dimensions",
+    "short": true,
+    "value": "2.1 MP · 1080 × 1920"
+   },
+   {
+    "group": "image",
+    "label": "Duration",
+    "short": true,
+    "value": "0:08"
+   },
+   {
+    "group": "image",
+    "label": "Codec",
+    "short": false,
+    "value": "HEVC (hvc1)"
+   },
+   {
+    "group": "file",
+    "label": "Name",
+    "short": false,
+    "value": "IMG_0002.MOV"
+   },
+   {
+    "group": "file",
+    "label": "Size",
+    "short": true,
+    "value": "1.23 GB"
+   },
+   {
+    "group": "file",
+    "label": "Format",
+    "short": true,
+    "value": "MOV"
+   },
+   {
+    "group": "file",
+    "label": "Folder",
+    "short": false,
+    "value": "/media/rob/photos"
+   },
+   {
+    "group": "location",
+    "label": "Coordinates",
+    "short": false,
+    "value": "51.50070, -0.12460"
+   },
+   {
+    "group": "location",
+    "label": "Altitude",
+    "short": false,
+    "value": "20 m"
+   },
+   {
+    "group": "unswiper",
+    "label": "Sharpness",
+    "short": true,
+    "value": "Not checked"
+   }
+  ]
+ },
+ {
+  "file": {
+   "name": "PXL_20260701_213005123.jpg",
+   "size": 3000000
+  },
+  "info": {
+   "exposure_bias_ev": 0.0,
+   "exposure_s": 0.6,
+   "f_number": 1.68,
+   "focal_35mm": 25,
+   "focal_mm": 6.9,
+   "height": 3072,
+   "iso": 1250,
+   "make": "Google",
+   "model": "Pixel 8",
+   "taken": {
+    "local": "2026-07-01T21:30:05",
+    "offset_min": 0
+   },
+   "width": 4080
+  },
+  "name": "android_soft_utc",
+  "options": {
+   "sharpness": "soft",
+   "show_location": true
+  },
+  "rows": [
+   {
+    "group": "camera",
+    "label": "Camera",
+    "short": true,
+    "value": "Google Pixel 8"
+   },
+   {
+    "group": "exposure",
+    "label": "Shutter",
+    "short": true,
+    "value": "0.6 s"
+   },
+   {
+    "group": "exposure",
+    "label": "Aperture",
+    "short": true,
+    "value": "f/1.7"
+   },
+   {
+    "group": "exposure",
+    "label": "ISO",
+    "short": true,
+    "value": "ISO 1250"
+   },
+   {
+    "group": "exposure",
+    "label": "Focal length",
+    "short": true,
+    "value": "6.9 mm (25 mm equiv.)"
+   },
+   {
+    "group": "exposure",
+    "label": "Flash",
+    "short": false,
+    "value": "—"
+   },
+   {
+    "group": "exposure",
+    "label": "Exposure compensation",
+    "short": false,
+    "value": "0 EV"
+   },
+   {
+    "group": "date",
+    "label": "Taken",
+    "short": true,
+    "value": "Wed 1 Jul 2026, 21:30:05 (UTC)"
+   },
+   {
+    "group": "image",
+    "label": "Dimensions",
+    "short": true,
+    "value": "12.5 MP · 4080 × 3072"
+   },
+   {
+    "group": "file",
+    "label": "Name",
+    "short": false,
+    "value": "PXL_20260701_213005123.jpg"
+   },
+   {
+    "group": "file",
+    "label": "Size",
+    "short": true,
+    "value": "3 MB"
+   },
+   {
+    "group": "file",
+    "label": "Format",
+    "short": true,
+    "value": "JPEG"
+   },
+   {
+    "group": "unswiper",
+    "label": "Sharpness",
+    "short": true,
+    "value": "Soft"
+   }
+  ]
+ }
+]

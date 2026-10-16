@@ -39,6 +39,13 @@ struct UnswiperApp: App {
             }
             CommandGroup(after: .toolbar) {
                 Toggle("Play Live Photo Motion", isOn: $liveMotion)
+                Divider()
+                Toggle("Show Inspector", isOn: $state.infoOpen)
+                    .keyboardShortcut("i", modifiers: .command)
+                Toggle("Show Location in Photo Info", isOn: Binding(
+                    get: { state.showLocation },
+                    set: { state.setShowLocation($0) }
+                ))
             }
             CommandMenu("Blurry Photos") {
                 Toggle("Detect Blurry Photos", isOn: Binding(

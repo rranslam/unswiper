@@ -63,6 +63,7 @@ struct MediaViewer: View {
                 Button("") { decide(.keep) }.keyboardShortcut("k", modifiers: [])
                 Button("") { decide(.reject) }.keyboardShortcut("r", modifiers: [])
                 Button("") { decide(.undecided) }.keyboardShortcut("u", modifiers: [])
+                Button("") { state.infoOpen.toggle() }.keyboardShortcut("i", modifiers: [])
             }
             .opacity(0)
             .accessibilityHidden(true)

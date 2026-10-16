@@ -182,6 +182,7 @@ checksum = "1aa79e62e7697b8e29b513a68abacf485adcd1fe8284a4316c5ae868e6633327"
 dependencies = [
  "iana-time-zone",
  "num-traits",
+ "serde",
  "windows-link",
 ]
 
@@ -1938,7 +1939,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-blur"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "image",
  "libheif-rs",
@@ -1952,7 +1953,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-cli"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -1961,7 +1962,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-core"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "base64",
  "chrono",
@@ -1979,13 +1980,14 @@ dependencies = [
 
 [[package]]
 name = "unswiper-gtk"
-version = "0.3.0"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "gstreamer",
  "gstreamer-app",
  "gstreamer-video",
  "image",
+ "kamadak-exif",
  "libheif-rs",
  "relm4",
  "serde_json",

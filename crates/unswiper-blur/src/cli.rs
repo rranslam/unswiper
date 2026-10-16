@@ -24,6 +24,7 @@ pub const USAGE: &str = "usage:
                              library.json, or ~/.local/share/unswiper for a folder)
       --only FILE            score only the photos listed in FILE (one path per line, e.g.
                              the open visit); results still cover every photo with a score
+  unswiper-blur info [options] FILE...      photo info rows as JSON (see `info` below)
   unswiper-blur --version
 Nothing is moved or deleted.";
 
@@ -214,6 +215,12 @@ pub fn main_with(args: &[String], now: i64) -> (u8, String, String) {
             format!("unswiper-blur {}\n", env!("CARGO_PKG_VERSION")),
             String::new(),
         );
+    }
+    if args.first().map(String::as_str) == Some("info") {
+        return match crate::info::parse(args).and_then(|o| crate::info::run(&o)) {
+            Ok(s) => (0, s, String::new()),
+            Err(e) => (2, String::new(), format!("{e}\n{}\n", crate::info::USAGE)),
+        };
     }
     match parse(args).and_then(|o| run(&o, now)) {
         Ok(s) => (0, s, String::new()),

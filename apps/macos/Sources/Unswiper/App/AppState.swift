@@ -32,6 +32,18 @@ final class AppState: ObservableObject {
     var blurRunner: ((_ library: URL, _ sensitivity: BlurRules.Sensitivity, _ only: [String]?) async throws -> BlurHelper.Verdict)?
     private var blurTask: Task<Void, Never>?
 
+    // Photo info (plan §17). Read on demand through the helper, kept in memory only.
+    /// Inspector shown (I / ⌘I). Per session: starts closed.
+    @Published var infoOpen = false
+    @Published private(set) var infoAnswers: [String: InfoHelper.Answer] = [:]
+    /// Bumped whenever cached info is dropped, so views ask again.
+    @Published private(set) var infoGeneration = 0
+    @Published var infoProblem: String?
+    private var infoSettingsUsed: InfoHelper.Settings?
+    private var infoPending: Set<String> = []
+    /// Tests swap in a fake; nil means "use the bundled helper".
+    var infoRunner: ((_ files: [String], _ settings: InfoHelper.Settings) async throws -> [InfoHelper.Answer])?
+
     enum AppPath: Hashable {
         case home
         case setup
@@ -195,6 +207,7 @@ final class AppState: ObservableObject {
             return
         }
         isIndexing = true
+        resetInfo()
         indexProgress = .init(filesSeen: 0, mediaFound: 0)
         statusMessage = "Indexing…"
         let gap = config.visitGapHours
@@ -333,6 +346,7 @@ final class AppState: ObservableObject {
                 }
             }
             self.blurProgress = nil
+            self.resetInfo() // new scores change the Sharpness row
             if suggested > 0, !Task.isCancelled {
                 self.statusMessage = suggested == 1
                     ? "1 photo looks blurry and was marked Reject. Nothing moves until you commit."
@@ -346,6 +360,75 @@ final class AppState: ObservableObject {
         return { library, sensitivity, only in
             try await Task.detached(priority: .utility) {
                 try BlurHelper.run(helper: helper, library: library, sensitivity: sensitivity, only: only)
+            }.value
+        }
+    }
+
+    // MARK: Photo info
+
+    var showLocation: Bool { config.infoShowLocation ?? true }
+
+    func setShowLocation(_ on: Bool) {
+        config.infoShowLocation = on ? nil : false
+        persist()
+        resetInfo()
+    }
+
+    var infoSettings: InfoHelper.Settings {
+        InfoHelper.Settings(showLocation: showLocation, blurEnabled: blurEnabled, sensitivity: blurSensitivity)
+    }
+
+    /// Cached rows for `path`, if read with the current settings.
+    func infoAnswer(_ path: String) -> InfoHelper.Answer? {
+        guard infoSettingsUsed == infoSettings else { return nil }
+        return infoAnswers[path]
+    }
+
+    /// Reads info for `paths` that aren't cached yet (in the background).
+    func loadInfo(_ paths: [String]) {
+        let settings = infoSettings
+        if infoSettingsUsed != settings {
+            infoAnswers = [:]
+            infoPending = []
+            infoSettingsUsed = settings
+        }
+        let todo = paths.filter { infoAnswers[$0] == nil && !infoPending.contains($0) }
+        guard !todo.isEmpty else { return }
+        guard let runner = infoRunner ?? Self.infoHelperRunner() else {
+            infoProblem = "Photo Info needs the helper (unswiper-blur) inside Unswiper.app."
+            return
+        }
+        infoProblem = nil
+        infoPending.formUnion(todo)
+        Task { [weak self] in
+            do {
+                let answers = try await runner(todo, settings)
+                guard let self else { return }
+                self.infoPending.subtract(todo)
+                guard self.infoSettingsUsed == settings else { return }
+                for a in answers { self.infoAnswers[a.path] = a }
+            } catch {
+                self?.infoPending.subtract(todo)
+                self?.infoProblem = error.localizedDescription
+            }
+        }
+    }
+
+    /// Drops cached info (settings changed, re-index, new blur scores).
+    func resetInfo() {
+        infoAnswers = [:]
+        infoPending = []
+        infoSettingsUsed = nil
+        infoGeneration += 1
+    }
+
+    private static func infoHelperRunner() -> (([String], InfoHelper.Settings) async throws -> [InfoHelper.Answer])? {
+        guard let helper = BlurHelper.locate() else { return nil }
+        let library = LibraryStore.snapshotURL
+        return { files, settings in
+            try await Task.detached(priority: .userInitiated) {
+                let lib = FileManager.default.fileExists(atPath: library.path) ? library : nil
+                return try InfoHelper.run(helper: helper, files: files, library: lib, settings: settings)
             }.value
         }
     }

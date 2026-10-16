@@ -3,7 +3,7 @@
 ## Install (AppImage)
 
 1. Go to **https://github.com/rranslam/unswiper/releases/latest** in your web browser.
-2. Under **Assets**, click the file ending in **.AppImage** (for example `Unswiper-0.3.0-x86_64.AppImage`). Don't click "Source code".
+2. Under **Assets**, click the file ending in **.AppImage** (for example `Unswiper-x86_64.AppImage`). Don't click "Source code".
 3. Open **Files**, go to **Downloads**, right-click the file, choose **Properties**, and turn on **Executable as Program** (or run `chmod +x Unswiper-*.AppImage` in a terminal).
 4. Double-click the file to start Unswiper.
 

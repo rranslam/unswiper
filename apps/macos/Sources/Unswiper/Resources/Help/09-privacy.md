@@ -4,3 +4,4 @@
 - It only reads the folder you choose.
 - Its own records (your decisions and commit history) are stored in `~/Library/Application Support/Unswiper`.
 - Files are only moved when you confirm a commit, and only to the Trash or a quarantine folder — Unswiper never permanently deletes anything.
+- **Photo Info** shows the location saved in a photo only on this Mac. It is never sent anywhere or saved in Unswiper's records; **Open in Maps** opens OpenStreetMap in your browser only when you click it. You can hide locations with **View ▸ Show Location in Photo Info**.

@@ -108,6 +108,8 @@ impl CommitPlan {
 
 /// Config key for the Live Photo motion option (absent = off).
 pub const KEY_LIVE_MOTION: &str = "livePhotoMotion";
+/// Config key for "Show Location in Photo Info" (absent = on; stored only when turned off).
+pub const KEY_INFO_LOCATION: &str = "infoShowLocation";
 
 pub struct AppState {
     pub store: LibraryStore,
@@ -124,6 +126,8 @@ pub struct AppState {
     pub viewer: Option<String>,
     /// Viewer sound: starts muted, remembered for this session only.
     pub muted: bool,
+    /// Photo info inspector open (plan §17.2): remembered for this session only, starts closed.
+    pub info_open: bool,
 }
 
 impl AppState {
@@ -142,6 +146,7 @@ impl AppState {
             dirty: false,
             viewer: None,
             muted: true,
+            info_open: false,
         };
         if let Some(root) = s.root() {
             if root.is_dir() {
@@ -750,6 +755,43 @@ impl AppState {
         self.dirty = true;
     }
 
+    /// "Show Location in Photo Info" (default on). Location is only ever shown on this computer.
+    pub fn show_location(&self) -> bool {
+        self.snap
+            .config
+            .extra
+            .get(KEY_INFO_LOCATION)
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(true)
+    }
+
+    pub fn set_show_location(&mut self, on: bool) {
+        if on {
+            self.snap.config.extra.remove(KEY_INFO_LOCATION);
+        } else {
+            self.snap
+                .config
+                .extra
+                .insert(KEY_INFO_LOCATION.into(), serde_json::Value::Bool(false));
+        }
+        self.dirty = true;
+    }
+
+    /// The item the photo info shows: the one in the viewer, else the first selected one in
+    /// grid order, plus how many others are selected (plan §17.2).
+    pub fn info_target(&self) -> Option<(&MediaItem, usize)> {
+        if let Some(it) = self.viewer_item() {
+            return Some((it, 0));
+        }
+        let vis = self.visible_items();
+        let selected: Vec<&MediaItem> = vis
+            .into_iter()
+            .filter(|i| self.selection.contains(&i.path))
+            .collect();
+        let first = *selected.first()?;
+        Some((first, selected.len() - 1))
+    }
+
     /// Closes the viewer when its item is gone or filtered out.
     fn check_viewer(&mut self) {
         if self.viewer.is_some() && self.viewer_position().is_none() {
@@ -1265,6 +1307,44 @@ mod tests {
         s.close_visit();
         assert!(s.viewer.is_none());
         let _ = t;
+    }
+
+    #[test]
+    fn info_target_follows_viewer_and_selection() {
+        let (_t, mut s) = setup(&["a.jpg", "b.jpg", "c.jpg"]);
+        assert!(s.info_target().is_none(), "no visit");
+        open_first(&mut s);
+        let p = paths(&s);
+        assert!(s.info_target().is_none(), "nothing selected");
+        s.click(&p[2], false, false);
+        s.click(&p[1], true, false);
+        let (it, others) = s.info_target().unwrap();
+        assert_eq!(
+            (it.path.as_str(), others),
+            (p[1].as_str(), 1),
+            "first in grid order"
+        );
+        assert!(s.open_viewer(&p[0]));
+        assert_eq!(s.info_target().unwrap(), (s.item(&p[0]).unwrap(), 0));
+        assert!(s.viewer_step(1));
+        assert_eq!(s.info_target().unwrap().0.path, p[1]);
+        s.close_viewer();
+        s.set_filter(Filter::Videos);
+        assert!(s.info_target().is_none(), "selection filtered out");
+    }
+
+    #[test]
+    fn show_location_setting_round_trips_and_defaults_on() {
+        let (t, mut s) = setup(&["a.jpg"]);
+        assert!(s.show_location());
+        s.set_show_location(false);
+        assert!(!s.show_location());
+        s.save().unwrap();
+        let s2 = AppState::new(LibraryStore::new(t.base.join("support")));
+        assert!(!s2.show_location());
+        s.set_show_location(true);
+        assert!(s.show_location());
+        assert!(!s.snap.config.extra.contains_key(KEY_INFO_LOCATION));
     }
 
     #[test]
