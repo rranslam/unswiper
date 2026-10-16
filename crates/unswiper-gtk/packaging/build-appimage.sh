@@ -59,7 +59,23 @@ done
 export GSTREAMER_PLUGINS_DIR="$out/gst-plugins"
 export GSTREAMER_HELPERS_DIR="$(pkg-config --variable=pluginscannerdir gstreamer-1.0)"
 
+# The in-app player (gtk::Video) needs GTK's GStreamer media backend, a module the GTK plugin
+# does not copy. Copy it in BEFORE linuxdeploy runs and let linuxdeploy deploy its dependencies
+# (--deploy-deps-only). Its own RUNPATH is just $ORIGIN (the media folder), where none of its
+# libgst* live, so without a fixed RUNPATH the loader takes libgstvideo/pbutils/gl/tag/allocators,
+# and through them libgstaudio, from the HOST while libgstreamer/libgstbase come from the bundle.
+# On newer hosts that fails: "libgstaudio-1.0.so.0: undefined symbol: gst_cpuid_supports_x86_sse2"
+# and GTK reports the "gstreamer" media extension as not found (bug on Ubuntu 26.04, Oct 2026).
+media_src="$(ls -d "$(pkg-config --variable=libdir gtk4)"/gtk-4.0/*/media 2>/dev/null | head -n1)"
+if [ -z "$media_src" ] || [ ! -e "$media_src/libmedia-gstreamer.so" ]; then
+  echo "GTK media module libmedia-gstreamer.so not found (install libgtk-4-media-gstreamer)" >&2; exit 1
+fi
+media_dst="$appdir/usr/lib/gtk-4.0/$(basename "$(dirname "$media_src")")/media" # e.g. 4.0.0/media
+mkdir -p "$media_dst"
+cp -L "$media_src/libmedia-gstreamer.so" "$media_dst/"
+
 linuxdeploy-$ARCH.AppImage --appdir "$appdir" --plugin gtk --plugin gstreamer \
+  --deploy-deps-only "$media_dst/libmedia-gstreamer.so" \
   --desktop-file "$appdir/usr/share/applications/$id.desktop" \
   --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/$id.png"
 
@@ -89,21 +105,28 @@ export GIO_USE_VFS=local
 export GST_PLUGIN_SYSTEM_PATH="$APPDIR/usr/lib/gstreamer-1.0"
 HOOK
 fi
-
-# The in-app player (gtk::Video) needs GTK's GStreamer media backend, a module the GTK plugin
-# does not copy. Bundle it and point GTK at it.
-media_src="$(ls -d "$(pkg-config --variable=libdir gtk4)"/gtk-4.0/*/media 2>/dev/null | head -n1)"
-if [ -z "$media_src" ] || [ ! -e "$media_src/libmedia-gstreamer.so" ]; then
-  echo "GTK media module libmedia-gstreamer.so not found (install libgtk-4-media-gstreamer)" >&2; exit 1
+# GStreamer: only the bundled plugins and scanner, and a private registry. The gstreamer plugin's hook
+# sets GST_PLUGIN_SYSTEM_PATH_1_0/GST_PLUGIN_PATH_1_0 and the scanner; also clear the unversioned
+# GST_PLUGIN_PATH, and keep the registry out of ~/.cache/gstreamer-1.0 (shared with the host
+# GStreamer, whose newer plugins would otherwise be listed in the same file).
+if ! grep -q 'GST_REGISTRY_1_0' "$hook"; then
+  cat >> "$hook" <<'HOOK'
+export GST_PLUGIN_PATH="$APPDIR/usr/lib/gstreamer-1.0"
+export GST_PLUGIN_SYSTEM_PATH_1_0="$APPDIR/usr/lib/gstreamer-1.0" GST_PLUGIN_PATH_1_0="$APPDIR/usr/lib/gstreamer-1.0"
+export GST_REGISTRY_1_0="${XDG_CACHE_HOME:-$HOME/.cache}/unswiper/gstreamer-1.0/registry-$(uname -m).bin"
+export GST_REGISTRY="$GST_REGISTRY_1_0"
+HOOK
 fi
-media_dst="$appdir/usr/lib/gtk-4.0/$(basename "$(dirname "$media_src")")/media" # e.g. 4.0.0/media
-mkdir -p "$media_dst"
-cp -L "$media_src/libmedia-gstreamer.so" "$media_dst/"
 if ! grep -q 'GTK_MEDIA' "$hook"; then
   echo 'export GTK_PATH="$APPDIR/usr/lib/gtk-4.0" GTK_MEDIA=gstreamer' >> "$hook"
 fi
+# Find the bundled libgst* from the media module (usr/lib/gtk-4.0/4.0.0/media -> usr/lib).
+patchelf --set-rpath '$ORIGIN/../../..' "$media_dst/libmedia-gstreamer.so"
 
 rm -f "$out"/Unswiper*.AppImage
 VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \
   linuxdeploy-$ARCH.AppImage --appdir "$appdir" --output appimage
+# Every libgst* the media module, plugins, scanner and bundled GStreamer libraries load must come
+# from the AppDir (no host GStreamer mixed with the bundled one).
+"$here/packaging/check-appimage-gst.sh" "$appdir"
 ls -l "$out/Unswiper-$ARCH.AppImage"
