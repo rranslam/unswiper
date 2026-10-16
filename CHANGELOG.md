@@ -2,6 +2,15 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
+## [Unreleased]
+
+### Added
+- **Photo Info (Linux and Mac).** See how a photo was taken to choose between similar shots: camera and lens, shutter, aperture, ISO, focal length (with the 35 mm equivalent), flash, exposure compensation, date with time zone, dimensions, file size (Live Photo motion included), format and folder, and the blur check in words (**Sharp**, **Soft** or **Blurry**). **Right-click** a tile (Mac: right-click ▸ **Show Info**) for a quick look, or press **I** (Linux **Ctrl+I**, Mac **⌘I**) for the full inspector, which follows the selection and the viewer. A one-line settings summary shows the selected item only (under the grid; on the Mac also under the clicked picture in Compare).
+- **Location in Photo Info**, shown only on your computer and never stored or sent; **Open in Maps** opens OpenStreetMap only when you click it. On by default; hide it with **Show Location in Photo Info** (Linux main menu, Mac **View** menu). The setting is saved in library.json as `infoShowLocation: false` and shared by both apps.
+- Videos: length, size, codec, camera and location are read from MOV/MP4 files (portrait iPhone clips show the right way round).
+- `unswiper-blur info [--library library.json] FILE...` prints the same rows as JSON (read-only); the Mac app uses it through the bundled helper.
+- New Help pages: **Photo Info** (Linux and Mac); Keyboard Shortcuts and Privacy updated.
+
 ## [0.3.0] - 2026-10-15
 
 ### Changed

@@ -191,7 +191,7 @@ final class PersistenceTests: StoreIsolatedTestCase {
 
 final class HelpLibraryTests: XCTestCase {
     func testAllHelpTopicsLoad() {
-        XCTAssertEqual(HelpLibrary.topics.count, 13)
+        XCTAssertEqual(HelpLibrary.topics.count, 14)
         XCTAssertNotNil(HelpLibrary.topicID(containing: "blurry"))
         XCTAssertNotNil(HelpLibrary.topicID(containing: "keyboard"))
     }
