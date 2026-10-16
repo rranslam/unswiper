@@ -12,7 +12,8 @@
 # Needs (Ubuntu 24.04): cargo, libgtk-4-dev, libadwaita-1-dev, libheif-dev, libgstreamer1.0-dev,
 #   libgstreamer-plugins-base1.0-dev, gstreamer1.0-plugins-base, gstreamer1.0-plugins-good,
 #   gstreamer1.0-plugins-bad (parsers), gstreamer1.0-libav, librsvg2-common (SVG icon loader),
-#   libgtk-4-media-gstreamer (in-app player), dpkg-dev (used by the GTK plugin), wget, file, patchelf.
+#   libgtk-4-media-gstreamer (in-app player), dpkg-dev (used by the GTK plugin), wget, file, patchelf,
+#   gstreamer1.0-tools (gst-inspect-1.0 for the element check), ffmpeg (test AVIs for the decode check).
 # Output: $OUT_DIR (default target/appimage)/Unswiper-<arch>.AppImage
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
@@ -51,9 +52,12 @@ mkdir -p "$out/gst-plugins"
 rm -f "$out/gst-plugins"/*
 # Video thumbnails and playback: uridecodebin/playbin, typefind, demuxers, convert/scale, appsink,
 # the libav (FFmpeg) decoders, and audio output (autodetect picks PipeWire or PulseAudio).
+# Containers: MP4/MOV/3GP (isomp4), MKV/WebM (matroska), AVI (avi = avidemux), MTS/M2TS (mpegtsdemux),
+# Ogg. Decoders: libav (H.264, HEVC, MPEG-4 Part 2/DivX/Xvid/MS-MPEG4, DV, VP8/VP9, MP3, AAC, AC-3 ...),
+# jpeg (jpegdec for MJPEG AVIs), dv (dvdec), mpg123, vorbis, opus. check-appimage-gst.sh asserts the key ones.
 for p in coreelements typefindfunctions playback app videoconvertscale videoconvert videoscale \
-         isomp4 matroska audioparsers videoparsersbad libav autodetect audioconvert \
-         audioresample volume pulseaudio pipewire; do
+         isomp4 matroska avi mpegtsdemux ogg audioparsers videoparsersbad libav jpeg dv mpg123 \
+         vorbis opus wavparse autodetect audioconvert audioresample volume pulseaudio pipewire; do
   for f in "$gst_dir/libgst$p.so"; do [ -e "$f" ] && ln -sf "$f" "$out/gst-plugins/"; done
 done
 export GSTREAMER_PLUGINS_DIR="$out/gst-plugins"
@@ -122,6 +126,36 @@ if ! grep -q 'GTK_MEDIA' "$hook"; then
 fi
 # Find the bundled libgst* from the media module (usr/lib/gtk-4.0/4.0.0/media -> usr/lib).
 patchelf --set-rpath '$ORIGIN/../../..' "$media_dst/libmedia-gstreamer.so"
+
+# Third-party notices: the AppImage bundles LGPL/GPL libraries (GTK, GStreamer, and Ubuntu's FFmpeg,
+# which is built with --enable-gpl, so libavcodec & co. are GPL-2.0-or-later). List each bundled
+# library's Debian package and version and copy its copyright file; the matching source is on
+# https://launchpad.net/ubuntu/+source/<source package> (see THIRD-PARTY-NOTICES.md in the AppImage).
+notices="$appdir/usr/share/doc/unswiper/third-party"
+rm -rf "$notices"; mkdir -p "$notices"
+{
+  echo "# Third-party software in Unswiper-$ARCH.AppImage"
+  echo
+  echo "Unswiper itself is MIT-licensed. The AppImage also contains the shared libraries below, unmodified,"
+  echo "from Ubuntu packages, each under its own license (see the copyright files in this folder). Some, such"
+  echo "as FFmpeg (libav*, GPL-2.0-or-later as built by Ubuntu) and GStreamer (LGPL-2.1-or-later), are copyleft;"
+  echo "their source code is available from Ubuntu at https://launchpad.net/ubuntu/+source/<source package>/<version>"
+  echo "and from the Unswiper maintainer on request. Some bundled decoders (H.264, HEVC, MPEG-4 Part 2, AAC)"
+  echo "implement patented formats; check whether you need a patent license where you live."
+  echo
+  echo "| Package | Version | Source package |"
+  echo "|---|---|---|"
+  find "$appdir/usr/lib" -name '*.so*' \( -type f -o -type l \) -printf '%f\n' | sort -u | while read -r f; do
+    { dpkg -S "*/$f" 2>/dev/null || true; } | head -n1 | cut -d: -f1
+  done | sort -u | while read -r pkg; do
+    [ -n "$pkg" ] || continue
+    ver="$(dpkg-query -W -f='${Version}' "$pkg" 2>/dev/null)"
+    src="$(dpkg-query -W -f='${source:Package}' "$pkg" 2>/dev/null)"
+    echo "| $pkg | $ver | ${src:-$pkg} |"
+    if [ -e "/usr/share/doc/$pkg/copyright" ]; then cp -L "/usr/share/doc/$pkg/copyright" "$notices/$pkg.copyright"; fi
+  done
+} > "$notices/THIRD-PARTY-NOTICES.md"
+install -Dm644 "$root/LICENSE" "$appdir/usr/share/doc/unswiper/LICENSE" 2>/dev/null || true
 
 rm -f "$out"/Unswiper*.AppImage
 VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \
