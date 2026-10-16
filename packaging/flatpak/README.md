@@ -31,6 +31,10 @@ any `Cargo.lock` change:** `packaging/flatpak/update-cargo-sources.sh` (uses a p
   H.264 (`avc1`) and HEVC (`hvc1`) `.mov` clips both get thumbnails. If the codecs extension is
   missing or a codec isn't covered, the clip shows the video placeholder and everything else works.
   The ffmpeg command is not used any more.
+  **AVI** (checked 15 Oct 2026 with GNOME 50 + codecs-extra 25.08): `avidemux` and `jpegdec` come from the
+  runtime's gst-plugins-good, `avdec_mpeg4`/`avdec_msmpeg4`/`avdec_h264`/`avdec_mp3` from gst-libav with
+  codecs-extra. Test AVIs (MPEG-4 Part 2/Xvid, MS-MPEG4 v3, MJPEG, DV) all decode in the sandbox, so the
+  Flatpak needs no change. `dvdec` (libdv) isn't in the runtime, but `avdec_dvvideo` decodes DV.
 
 ## Sandbox permissions
 

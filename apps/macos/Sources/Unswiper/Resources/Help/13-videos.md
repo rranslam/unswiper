@@ -37,4 +37,6 @@ It is **off** when you first start Unswiper; then the viewer shows the still pic
 
 You'll see **This Video Can't Be Played Here**. Click **Open in Default App** to open it in your usual video player instead.
 
+The Mac's built-in video player handles MP4, MOV and M4V (H.264, HEVC). Older formats such as **AVI** (DivX, Xvid, Motion JPEG from older digital cameras), **MKV** and **WebM** usually can't be played inside Unswiper on a Mac. Open them in a player such as VLC or IINA; you can still keep or reject them as usual.
+
 Decisions are still only carried out when you click **Review & commit…** on the visit.
