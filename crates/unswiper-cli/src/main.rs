@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rob Ranslam
 
-//! `unswiper-cli`: index | groups | commit --dry-run | restore (plan §5).
+//! `unswiper-cli`: index | groups | commit --dry-run | restore (plan §5) | takeout import (§19).
+
+mod takeout;
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -9,12 +11,15 @@ use std::process::ExitCode;
 use unswiper_core::{commit, group, index, store, CommitMode, LibrarySnapshot};
 
 const USAGE: &str = "usage:
-  unswiper-cli index <folder> [--gap-hours N] [--json]   index a folder and list visits
+  unswiper-cli index <folder> [--gap-hours N] [--takeout] [--json]
+                                                          index a folder and list visits; --takeout
+                                                          also reads Google's JSON sidecars
   unswiper-cli groups <library.json>                      list visits in a saved library
   unswiper-cli commit --dry-run [--visit ID] <library.json>  what a commit would move (never moves);
                                                           --visit limits it to one visit, like the apps
   unswiper-cli restore <manifest.json>                    move files from a commit back
-  unswiper-cli --version";
+  unswiper-cli --version
+";
 
 fn print_groups(groups: &[unswiper_core::VisitGroup]) {
     for g in groups {
@@ -43,6 +48,7 @@ fn run(args: &[String]) -> Result<(), String> {
             let root = args.get(1).ok_or(USAGE)?;
             let mut gap = 36.0;
             let mut json = false;
+            let mut takeout = false;
             let mut i = 2;
             while i < args.len() {
                 match args[i].as_str() {
@@ -54,18 +60,20 @@ fn run(args: &[String]) -> Result<(), String> {
                         i += 1;
                     }
                     "--json" => json = true,
+                    "--takeout" => takeout = true,
                     other => return Err(format!("unknown option {other}\n{USAGE}")),
                 }
                 i += 1;
             }
-            let (items, groups) = index::index(
-                Path::new(root),
-                gap,
-                &HashMap::new(),
-                &index::MetadataDates,
-                |_| {},
-            )
-            .map_err(|e| e.to_string())?;
+            let takeout_dates = unswiper_takeout::TakeoutDates::new(index::MetadataDates);
+            let dates: &dyn index::DateReader = if takeout {
+                &takeout_dates
+            } else {
+                &index::MetadataDates
+            };
+            let (items, groups) =
+                index::index(Path::new(root), gap, &HashMap::new(), dates, |_| {})
+                    .map_err(|e| e.to_string())?;
             if json {
                 let mut snap = LibrarySnapshot::empty();
                 snap.config.root_path = Some(root.clone());
@@ -132,7 +140,8 @@ fn run(args: &[String]) -> Result<(), String> {
                 Err("some files were not restored".into())
             }
         }
-        _ => Err(USAGE.into()),
+        Some("takeout") => takeout::run(&args[1..]),
+        _ => Err(format!("{USAGE}{}", takeout::USAGE)),
     }
 }
 
