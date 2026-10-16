@@ -476,6 +476,10 @@ fn compare_strip() {
         "6.8 mm (24 mm equiv.) · f/1.8 · 1/120 s · ISO 64 · Sharp"
     );
     assert_eq!(strip(&MediaInfo::default(), None), "");
+    assert_eq!(
+        strip(&MediaInfo::default(), Some(Sharpness::NotChecked)),
+        ""
+    );
     let video = MediaInfo {
         is_video: true,
         duration_s: Some(7.4),

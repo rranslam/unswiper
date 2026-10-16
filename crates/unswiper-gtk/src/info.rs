@@ -11,10 +11,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 use unswiper_blur::cache::{QualityCache, Stamp};
-use unswiper_blur::decide::{is_camera_format, sharpness_word, Reason, Thresholds};
 use unswiper_core::meta::info::{self, FileFacts, FormatOptions, MediaInfo, Row, Sharpness};
-use unswiper_core::quality::{self, Sensitivity};
-use unswiper_core::{MediaItem, MediaKind};
+use unswiper_core::quality::Sensitivity;
+use unswiper_core::MediaItem;
 
 fn base_name(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
@@ -22,49 +21,18 @@ fn base_name(p: &str) -> &str {
 
 /// File facts from the index (no extra disk access).
 pub fn file_facts(item: &MediaItem) -> FileFacts {
-    FileFacts {
-        name: base_name(&item.path).to_string(),
-        size: u64::try_from(item.size_bytes).ok(),
-        folder: Path::new(&item.path)
-            .parent()
-            .map(|p| p.display().to_string()),
-        sidecars: item
-            .sidecars
-            .iter()
-            .map(|s| {
-                (
-                    base_name(&s.path).to_string(),
-                    u64::try_from(s.size_bytes).unwrap_or(0),
-                )
-            })
-            .collect(),
-    }
+    unswiper_blur::info::file_facts(item)
 }
 
-/// The blur result in words, from the quality cache. `None` for videos (the formatter says
-/// "Not checked" for them) and when blur detection is off.
+/// The blur result in words, from the quality cache (shared with the Mac helper's `info`).
+/// `None` for videos (the formatter says "Not checked" for them) and when blur detection is off.
 pub fn sharpness(
     item: &MediaItem,
     cache: &QualityCache,
     sensitivity: Sensitivity,
     blur_enabled: bool,
 ) -> Option<Sharpness> {
-    if item.kind == MediaKind::Video || !blur_enabled {
-        return None;
-    }
-    if !is_camera_format(&item.path) {
-        return Some(Sharpness::NotChecked);
-    }
-    let score = Stamp::of(Path::new(&item.path)).and_then(|st| cache.get(&item.path, st));
-    Some(match score {
-        // The library's suggestion state wins (it covers bursts and shake).
-        Some(sc) => sharpness_word(
-            &sc,
-            quality::is_suggested(item).then_some(Reason::Soft),
-            Thresholds::for_sensitivity(sensitivity),
-        ),
-        None => Sharpness::NotChecked,
-    })
+    unswiper_blur::info::sharpness_for(item, cache, sensitivity, blur_enabled)
 }
 
 /// Rows for `item`.
@@ -148,6 +116,8 @@ mod tests {
     use super::*;
     use unswiper_blur::score::Score;
     use unswiper_core::meta::info::Group;
+    use unswiper_core::quality;
+    use unswiper_core::MediaKind;
 
     fn item(dir: &Path, name: &str, kind: MediaKind) -> MediaItem {
         let p = dir.join(name);

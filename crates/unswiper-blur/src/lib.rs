@@ -19,6 +19,7 @@ pub mod cache;
 pub mod cli;
 pub mod decide;
 pub mod decode;
+pub mod info;
 pub mod scan;
 pub mod score;
 #[doc(hidden)]
