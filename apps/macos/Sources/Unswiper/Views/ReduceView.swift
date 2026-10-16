@@ -11,6 +11,8 @@ struct ReduceView: View {
     @State private var filter: MediaFilter = .all
     @State private var keepTarget: Int = 10
     @State private var viewer = ViewerModel()
+    /// Path whose right-click Show Info popover is open.
+    @State private var infoPopover: String?
 
     enum MediaFilter: String, CaseIterable, Identifiable {
         case all, photos, videos, blurry
@@ -40,6 +42,11 @@ struct ReduceView: View {
         }
     }
 
+    /// What Photo Info shows: the viewer item, else the first selected item in grid order.
+    private var infoTarget: (path: String, others: Int)? {
+        InfoRules.target(viewer: viewer.current, selected: selected, ordered: members.map(\.path))
+    }
+
     private var counts: (kept: Int, rejected: Int, left: Int) {
         group?.progress(in: state.items) ?? (0, 0, 0)
     }
@@ -65,6 +72,9 @@ struct ReduceView: View {
             } else {
                 ContentUnavailableView("Visit not found", systemImage: "questionmark.folder")
             }
+        }
+        .inspector(isPresented: $state.infoOpen) {
+            InfoInspector(path: infoTarget?.path, others: infoTarget?.others ?? 0)
         }
         .onAppear {
             keepTarget = state.keepTarget(for: groupID)
@@ -144,7 +154,20 @@ struct ReduceView: View {
                         onTap: { toggle(item.path) },
                         onOpen: { viewer.open(item.path, in: members.map(\.path)) }
                     )
+                    .popover(isPresented: Binding(
+                        get: { infoPopover == item.path },
+                        set: { if !$0 { infoPopover = nil } }
+                    ), arrowEdge: .trailing) {
+                        InfoPopover(item: item) {
+                            infoPopover = nil
+                            selected = [item.path]
+                            state.infoOpen = true
+                        }
+                        .environmentObject(state)
+                    }
                     .contextMenu {
+                        Button("Show Info") { infoPopover = item.path }
+                        Divider()
                         Button("Keep") { state.updateDecision(paths: [item.path], decision: .keep) }
                         Button("Reject") { state.updateDecision(paths: [item.path], decision: .reject) }
                         Button(BlurRules.isSuggested(item) ? "Clear (Not Blurry)" : "Clear") { state.updateDecision(paths: [item.path], decision: .undecided) }
@@ -159,7 +182,12 @@ struct ReduceView: View {
         HStack {
             Text("\(selected.count) selected")
                 .foregroundStyle(.secondary)
+            InfoStrip(path: viewer.current == nil ? infoTarget?.path : nil)
+                .frame(maxWidth: 360, alignment: .leading)
             Spacer()
+            Button("Info") { state.infoOpen.toggle() }
+                .keyboardShortcut("i", modifiers: [])
+                .help("Show or hide Photo Info (I or ⌘I)")
             Button("Keep") { apply(.keep) }
                 .keyboardShortcut("k", modifiers: [])
                 .disabled(selected.isEmpty)
