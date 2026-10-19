@@ -5,6 +5,7 @@ import SwiftUI
 
 struct SetupView: View {
     @EnvironmentObject private var state: AppState
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 28) {
@@ -33,6 +34,14 @@ struct SetupView: View {
             }
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
+
+            Button("Import from Google Photos…") {
+                openWindow(id: TakeoutSetupModel.windowID)
+            }
+            .controlSize(.large)
+            Text("Your photos are in Google Photos? This guides you step by step.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             if let root = state.config.rootPath {
                 Text(root)

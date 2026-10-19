@@ -128,7 +128,11 @@ final class AppState: ObservableObject {
         panel.message = "Choose a folder of photos and videos"
         panel.prompt = "Select"
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        openLibrary(url)
+    }
 
+    /// Makes `url` the library and indexes it (Choose Folder, and the Google Photos import).
+    func openLibrary(_ url: URL) {
         do {
             let data = try url.bookmarkData(
                 options: [.withSecurityScope],
@@ -215,11 +219,17 @@ final class AppState: ObservableObject {
         let before = items
 
         do {
-            let result = try await Task.detached(priority: .userInitiated) {
-                try LocalTreeIndexer.index(
+            let result = try await Task.detached(priority: .userInitiated) { () throws -> (items: [MediaItem], groups: [VisitGroup]) in
+                // Google Photos (Takeout) library: Google's dates for files without their own.
+                var fallback: [String: Date] = [:]
+                if TakeoutHelper.isTakeoutLibrary(root), let helper = BlurHelper.locate() {
+                    fallback = (try? TakeoutHelper.dates(helper: helper, library: root)) ?? [:]
+                }
+                return try LocalTreeIndexer.index(
                     root: root,
                     visitGapHours: gap,
                     existingDecisions: decisions,
+                    fallbackDates: fallback,
                     onProgress: { _ in }
                 )
             }.value

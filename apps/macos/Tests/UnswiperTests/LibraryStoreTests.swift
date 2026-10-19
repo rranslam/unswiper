@@ -191,7 +191,8 @@ final class PersistenceTests: StoreIsolatedTestCase {
 
 final class HelpLibraryTests: XCTestCase {
     func testAllHelpTopicsLoad() {
-        XCTAssertEqual(HelpLibrary.topics.count, 14)
+        XCTAssertEqual(HelpLibrary.topics.count, 15)
+        XCTAssertNotNil(HelpLibrary.topicID(containing: "google-photos"))
         XCTAssertNotNil(HelpLibrary.topicID(containing: "blurry"))
         XCTAssertNotNil(HelpLibrary.topicID(containing: "keyboard"))
     }

@@ -61,6 +61,7 @@ struct HelpView: View {
         case let s where s.contains("privacy"): return "lock"
         case let s where s.contains("troubleshooting"): return "wrench.and.screwdriver"
         case let s where s.contains("about"): return "info.circle"
+        case let s where s.contains("google-photos"): return "icloud.and.arrow.down"
         default: return "doc.text"
         }
     }
