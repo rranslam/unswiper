@@ -562,7 +562,7 @@ Don't build it into v0.4. If wanted later: a **separate hash store in the suppor
 - **Approved design:** a separate **`unswiper-hash`** CLI with **its own hash store**, so hashing stays a separate concern from reviewing: library.json keeps decisions, the hash store keeps hashes, and the review apps never write hashes. The app may later read the store (move/rename carry-over, a "possibly damaged" badge), as in §18.8.
 - **Schedule:** not scheduled; after v0.4. The open questions in §18.7 (BLAKE3 vs SHA-256, support-folder store vs hashes travelling with the photos, automatic vs asked carry-over on moves, verify on request vs scheduled) are decided when it is scheduled.
 
-## 19. Google Photos source: Google Takeout import (plan 15 Oct 2026; v0.5; M1 built)
+## 19. Google Photos source: Google Takeout import (plan 15 Oct 2026; v0.5; M1 and M2 built)
 
 Rob's order (15 Oct 2026): **Google Photos next**, then geo grouping, then Windows.
 
@@ -609,12 +609,12 @@ Consequences: no Google sign-in, no tokens, no network code and no Google Cloud 
 - Archives expire after **about 7 days** and each can be downloaded **at most 5 times**.
 - **Scheduled exports:** "every 2 months for 1 year"; for Google Photos, Google says scheduled exports cover "new and updated data", and Google Photos must be the only product selected. Whether a later export contains only new items or everything again is not documented clearly, so the import handles both (§19.5, incremental re-import).
 
-### 19.4 Guided setup: "Import from Google Photos" (UI in M2)
+### 19.4 Guided setup: "Import from Google Photos" (M2, built in both apps)
 A step-by-step assistant in both apps (GTK and Mac), written for beginners. Each step has a short explanation, a **Done, next** button and **Back**. Wording below is the help text; the button and option names were checked against Google's help page on 15 Oct 2026 (§19.12). Google's own screen wording can change; the assistant says "the names may differ slightly".
 
 **Step 1. Open Google Takeout.**
 Click **Open Google Takeout**. Your web browser opens takeout.google.com. If Google asks, sign in to the Google account that has your photos.
-*(Implementation: open `https://takeout.google.com/settings/takeout/custom/photos?frequency=2_months`. Google documents the `custom/<products>` path and `frequency=2_months` as supported URL parameters; `photos` is the product's `data-id`. If the preselection ever fails, the steps below still work by hand. Verify the `photos` id in M2.)*
+*(Implementation: open `https://takeout.google.com/settings/takeout/custom/photos` (no parameters); `photos` is the product's `data-id`. If the preselection ever fails, the steps below still work by hand; the assistant also has an **Open takeout.google.com** fallback button. M2 check (15 Oct 2026): signed out, the link redirects to Google sign-in with the full `custom/photos?frequency=2_months` continue URL kept; Google Photos' own Settings ▸ Export ▸ Backup link points to `takeout.google.com/settings/takeout/custom/photos`, which confirms the `photos` id. **Rob's check, signed in (19 Oct 2026):** `custom/photos?frequency=2_months` preselects **only Google Photos** (good) but does **not** preselect the 2-month frequency, although Google's help lists the parameter. So the link drops `?frequency=2_months`, and step 3 tells the user to pick **Export every 2 months for 1 year** by hand.)*
 
 **Step 2. Choose only Google Photos.**
 1. At the top of the list, under **Select data to include**, click **Deselect all**.
@@ -624,7 +624,7 @@ Click **Open Google Takeout**. Your web browser opens takeout.google.com. If Goo
 
 **Step 3. Choose how Google sends it.**
 1. **Destination** (Google calls it "Delivery method"): choose **Send download link via email**.
-2. **Frequency**: choose **Export every 2 months for 1 year**. (This only works when Google Photos is the only product ticked. Unswiper imports only what is new each time.)
+2. **Frequency**: Google starts with **Export once**; change it by hand to **Export every 2 months for 1 year** (the link can't preselect it, Rob checked 19 Oct 2026). (This only works when Google Photos is the only product ticked. Unswiper imports only what is new each time.)
 3. **File type**: choose **.zip**.
 4. **File size**: choose **50 GB** (fewer, bigger parts).
 5. Click **Create export**.
@@ -652,7 +652,7 @@ Google prepares the export. This can take from a few minutes to a few days; most
 **Step 8. Index.**
 Unswiper opens the library folder and indexes it like any local folder, using Google's JSON files for dates and places when the photo itself has none. From here on everything works as usual (visits, Keep/Reject, commit). The archives are not used again.
 
-**Next time (every 2 months):** Google emails again. Download the new parts into the archives folder and click **Import from Google Photos** → **Import new export**. The same library folder is used, and only items not imported before are added (photos you already rejected and deleted are not brought back).
+**Next time (every 2 months):** Google emails again. Download the new parts into the archives folder and click **Import from Google Photos** again; after an import the assistant reopens at step 6 with the same folders. The same library folder is used, and only items not imported before are added (photos you already rejected and deleted are not brought back).
 
 ### 19.5 How the import works (M1, built)
 New crate `crates/unswiper-takeout` (Rust, shared by both apps through the CLI/helper):
@@ -671,6 +671,14 @@ New crate `crates/unswiper-takeout` (Rust, shared by both apps through the CLI/h
   - `unswiper-cli takeout import <folder|archive>... --to <library> [--dry-run] [--exact] [--delete-archives] [--keep-duplicates] [--no-space-check]`
   - `unswiper-cli index <library> --takeout`
 - Tests use synthetic archives built in the tests (no personal data): every sidecar naming case, zip-slip variants, symlinks, multi-part sets with a sidecar in another part, resume after interruption, conflicts, other products, dry-run figures, space refusal, archive deletion, and incremental re-import with a deleted reject.
+
+### 19.5a M2 as built (15 Oct 2026)
+- **One wording source:** the 8 steps live in `crates/unswiper-takeout/src/takeout-guide.json` (step id, title, action, Markdown body, Takeout link and fallback link). The Mac bundles a byte-identical copy (`apps/macos/Sources/Unswiper/Resources/Takeout/takeout-guide.json`); Rust and Swift tests both fail if they differ. The dry-run and result lines ("lines") are also made in Rust, so both apps show the same figures and words.
+- **Linux (GTK):** Library menu and setup page: **Import from Google Photos…** opens an assistant window (step label, explanation, Back / Next). Step 1 has **Open Google Takeout** and **Open takeout.google.com**. Step 6 has **Choose…** for the archives and library folders, **Delete each archive after unpacking** and **Also unpack album copies** (off = duplicates skipped), the dry-run figures and **Check Again**; Next stays disabled until the folders are valid and the space fits. Step 7: **Unpack**, a progress bar with part, files, GB and time left, **Stop**, and **Continue Unpacking** after a stop or error. Step 8: **Open Library** indexes the folder with Google's dates (`dates_for` picks the Takeout fallback when the library has `unswiper-takeout-state.json`). The step, folders and options are kept in `takeout-setup.json` in the app's support folder.
+- **Mac (SwiftUI):** the same assistant in its own window (`takeout`), opened from the Library menu, the setup screen and Help. It runs the bundled helper: `unswiper-blur takeout import <archives> --to <library> --json --dry-run` for the figures and `--progress-json` for the unpack (NDJSON, see below); **Stop** ends the helper and the next run resumes. Setup state is kept in UserDefaults (`takeoutSetup`). Indexing a Takeout library asks the helper for Google's dates (`unswiper-blur takeout dates <library>`, JSON array of `{path, taken, lat, lon}`); the Swift indexer uses them only when a file has no capture date.
+- **Helper protocol (one JSON object per line on stdout):** `{"event":"plan","plan":{…},"fits":true,"needed":…,"lines":[…]}`, `{"event":"progress","archive":1,"archives":2,"files":…,"bytes":…,"bytes_total":…}`, `{"event":"done","report":{…},"lines":[…]}`, `{"event":"error","kind":"cancelled|not_enough_space|no_archives|no_photos|archive|write|unknown_format|…","message":…}`. Exit code 0 on success. Sample outputs are kept in `crates/unswiper-takeout/tests/fixtures/helper/` and checked by the Rust and Swift tests.
+- **Stop and continue:** `unpack_cancellable` stops between files and saves the state; finished parts and files are skipped next time.
+- **Options:** `--delete-archives`, `--keep-duplicates` (album copies; default off), `--no-space-check` (CLI only).
 
 ### 19.6 Time and space estimates
 **Space** (library on the same disk as the downloaded archives; Takeout zips are about the size of the photos, since photos and videos don't compress):
@@ -707,7 +715,7 @@ No API can delete in Google Photos, so commit gets a **Google Photos rejects** s
 - The state file holds only relative paths, sizes and archive names, in the library folder.
 
 ### 19.9 Mac and Linux parity
-- The Rust crate does all the work. Linux calls it directly; the Mac app runs the bundled helper (as with blur/info) with JSON progress (M2 adds a `--json` progress mode to `takeout import`). Mac helper builds keep using `--no-default-features`.
+- The Rust crate does all the work. Linux calls it directly; the Mac app runs the bundled helper (as with blur/info) with JSON progress (`takeout import --json --progress-json`, built in M2, §19.5a). Mac helper builds keep using `--no-default-features`.
 - The guided setup (§19.4) and the rejects list exist in both apps with the same wording.
 
 ### 19.10 Milestones
@@ -715,14 +723,17 @@ No API can delete in Google Photos, so commit gets a **Google Photos rejects** s
 | Milestone | Content | Effort |
 |---|---|---|
 | **M1** Takeout core (**built**, branch `v0.5`) | `unswiper-takeout` crate: safe resumable multi-part unpack, folder of archives, free-space check, delete after unpack, dry run, incremental re-import, progress, sidecar matching, date/geo fallback into the index, CLI, tests | done |
-| **M2** Guided setup, both apps | The 8-step assistant (§19.4), dry run and space screen, progress with time left, cancel/resume, JSON progress for the Mac helper, source label "Google Photos (Takeout)", help page | 3–4 days |
+| **M2** Guided setup, both apps (**built**, branch `v0.5`) | The 8-step assistant (§19.4), dry run and space screen, progress with time left, cancel/resume, JSON progress for the Mac helper, help page "Import from Google Photos" in both apps (§19.5a). Not done: a "Google Photos (Takeout)" source label in the library header (moved to M3) | done |
 | **M3** Rejects list | "Delete these in Google Photos" screen, CSV export, wording in Review & Commit | 2 days |
 | **M4** Later | Content hash for renamed duplicates; optional Takeout description/title in Photo Info; reminder when the next scheduled export is due | 1–2 days |
 
 Rejected: M4–M6 of the first draft (OAuth + Picker, verification, Picker release), see §19.2.
 
 ### 19.11 Open points
-- Verify in M2 that `custom/photos?frequency=2_months` preselects Google Photos and the 2-month frequency.
+- Done (19 Oct 2026, Rob, signed in): `custom/photos` preselects only Google Photos; `frequency=2_months` is ignored, so it was dropped and the frequency is chosen by hand (§19.4). The plain takeout.google.com fallback stays.
+- Flatpak: a folder chosen through the file portal may report no free space (the portal's FUSE mount has no size); the figures then say "Free space on the library disk is unknown." and the user can continue.
+- Google's JSON files stay in the library and are not moved with rejects on commit yet (M3).
+- Photo Info does not show the Takeout location yet (M4).
 - Check with Rob's first real export whether later scheduled exports are full or only new items (the import handles both).
 - Album copies are skipped as duplicates by default, so an album folder may hold only its `metadata.json` and the photos that are only in that album. If Rob wants albums complete, switch the default (costs space).
 
@@ -738,4 +749,4 @@ Rejected: M4–M6 of the first draft (OAuth + Picker, verification, Picker relea
 - Verification requirements (domain, privacy policy, video, CASA only for restricted): https://support.google.com/cloud/answer/13464321
 - Unverified apps (user cap): https://support.google.com/cloud/answer/7454865
 - Data Portability API scopes (no Google Photos resource): https://developers.google.com/data-portability/user-guide/scopes
-- Google Takeout help (Deselect all/Next step/Create export, delivery by email link, scheduled Photos exports every 2 months for one year with Photos as the only product, 50 GB size limit, archives expire in about 7 days, 5 downloads per archive, `custom/<products>?frequency=2_months` URL parameters): https://support.google.com/accounts/answer/3024190
+- Google Takeout help (Deselect all/Next step/Create export, delivery by email link, scheduled Photos exports every 2 months for one year with Photos as the only product, 50 GB size limit, archives expire in about 7 days, 5 downloads per archive, `custom/<products>?frequency=2_months` URL parameters; the frequency parameter is not honoured, Rob 19 Oct 2026): https://support.google.com/accounts/answer/3024190
