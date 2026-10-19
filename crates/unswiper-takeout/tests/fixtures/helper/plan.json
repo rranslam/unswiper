@@ -4,7 +4,7 @@
   "lines": [
     "2 archives (887 bytes): 3 photos and videos, 2 new (133 bytes).",
     "Space needed: 133 bytes keeping the archives, 129 bytes deleting each one after unpacking.",
-    "Free on the library disk: 91.6 GB. It fits (with a 1.1 GB reserve).",
+    "Free on the library disk: 89.0 GB. It fits (with a 1.1 GB reserve).",
     "Time: under a minute."
   ],
   "needed": 1073741957,
@@ -36,12 +36,14 @@
         "skipped_items": 0
       }
     ],
-    "free_bytes": 91602223104,
+    "free_bytes": 88955277312,
+    "host_path": null,
     "items": 3,
     "needed_delete": 129,
     "needed_keep": 133,
     "new_bytes": 133,
     "new_items": 2,
+    "on_portal": false,
     "photos_bytes": 136,
     "same_disk": true,
     "seconds_max": 1,

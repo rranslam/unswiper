@@ -71,6 +71,10 @@ final class TakeoutSetupModel: ObservableObject {
         return false
     }
 
+    /// Unpack needs a dry run that fits: the free space must be known and enough (a full export
+    /// can be huge). The helper refuses too (`space_unknown`, `not_enough_space`).
+    var canUnpack: Bool { !isRunning && !checking && folderProblem == nil && fits }
+
     var canGoNext: Bool {
         guard saved.step + 1 < guide.steps.count else { return false }
         switch step.action {
@@ -149,8 +153,7 @@ final class TakeoutSetupModel: ObservableObject {
     }
 
     func unpack() {
-        guard !isRunning, !checking, folderProblem == nil,
-              let archives = archivesURL, let library = libraryURL else { return }
+        guard canUnpack, let archives = archivesURL, let library = libraryURL else { return }
         guard let helper = helper() else {
             problem = "The import helper is missing from Unswiper.app. Please reinstall Unswiper."
             return
@@ -204,7 +207,9 @@ final class TakeoutSetupModel: ObservableObject {
                 : "The import stopped unexpectedly (exit code \(code)). Click Continue Unpacking to try again."
         }
         stopped = false
+        // Fresh figures (the free space changed); Continue Unpacking waits for them.
         planEvent = nil
+        if folderProblem == nil { check() }
     }
 
     /// Last step: the assistant reopens on "Choose the folders" next time (for the next export).

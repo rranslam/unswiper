@@ -74,6 +74,28 @@ final class TakeoutSetupTests: XCTestCase {
         XCTAssertEqual(m.saved.step, 5, "reopens on Choose the folders for the next export")
     }
 
+    func testUnpackNeedsKnownAndEnoughFreeSpace() throws {
+        let m = TakeoutSetupModel(guide: try guide(), defaults: defaults(), helper: { nil })
+        m.saved.archivesPath = "/a"
+        m.saved.libraryPath = "/b"
+        m.saved.step = 5
+        func plan(free: UInt64?, fits: Bool) -> TakeoutHelper.Event {
+            .plan(.init(archives: [], archiveBytes: 10, items: 1, photosBytes: 10, newItems: 1, newBytes: 10,
+                        freeBytes: free, neededKeep: 10, neededDelete: 10, sameDisk: true,
+                        secondsMin: 1, secondsMax: 1),
+                  fits: fits, needed: 10, lines: ["Free space on the library disk: can't be measured, so Unswiper won't start."])
+        }
+        m.handle(plan(free: nil, fits: false))
+        XCTAssertFalse(m.canGoNext, "unknown free space blocks Next")
+        XCTAssertFalse(m.canUnpack, "unknown free space blocks Unpack")
+        m.handle(plan(free: 1 << 40, fits: true))
+        XCTAssertTrue(m.canGoNext)
+        XCTAssertTrue(m.canUnpack)
+        // The helper refuses too; its message is shown.
+        m.handle(.error(kind: "space_unknown", message: "can't measure the free space in /b"))
+        XCTAssertEqual(m.problem, "can't measure the free space in /b")
+    }
+
     func testProgressUpdatesTheBar() throws {
         let m = TakeoutSetupModel(guide: try guide(), defaults: defaults(), helper: { nil })
         m.handle(.progress(.init(archive: 1, archives: 2, files: 5, bytes: 50, bytesTotal: 100)))

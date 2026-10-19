@@ -33,8 +33,25 @@ final class TakeoutHelperTests: XCTestCase {
         XCTAssertTrue(p.archives[0].exact)
         XCTAssertFalse(p.archives[0].doneEarlier)
         XCTAssertNotNil(p.freeBytes)
+        XCTAssertEqual(p.onPortal, false)
+        XCTAssertNil(p.hostPath)
         XCTAssertTrue(lines.first?.hasPrefix("2 archives") ?? false, "\(lines)")
         XCTAssertTrue(lines.contains { $0.hasPrefix("Space needed:") })
+    }
+
+    func testUnknownFreeSpaceDoesNotFit() throws {
+        // What the helper prints when it can't measure the library disk (free_bytes null).
+        let json = #"""
+        {"event":"plan","fits":false,"needed":1073741957,"lines":["Free space on the library disk: can't be measured, so Unswiper won't start. A full Google Photos export can be huge, and running out of space halfway is worse than not starting.","How to fix it: click Choose… next to Library folder and pick a folder on a disk of this computer, for example inside your Pictures folder. Then click Check Again."],"plan":{"archives":[],"archive_bytes":0,"items":0,"photos_bytes":0,"new_items":0,"new_bytes":0,"free_bytes":null,"on_portal":false,"host_path":null,"needed_keep":0,"needed_delete":0,"same_disk":false,"seconds_min":0,"seconds_max":0}}
+        """#
+        guard case .plan(let p, let fits, _, let lines) = try TakeoutHelper.parseEvent(Data(json.utf8)) else {
+            return XCTFail("not a plan")
+        }
+        XCTAssertFalse(fits)
+        XCTAssertNil(p.freeBytes)
+        XCTAssertTrue(TakeoutHelper.isSpaceWarning(lines[0]))
+        XCTAssertFalse(TakeoutHelper.isSpaceWarning("Time: under a minute."))
+        XCTAssertTrue(TakeoutHelper.isSpaceWarning("Free on the library disk: 1 GB. NOT enough: 2 GB more is needed."))
     }
 
     func testProgressDoneAndErrorEvents() throws {

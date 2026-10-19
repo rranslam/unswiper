@@ -83,3 +83,12 @@ used the Trash.
 behave exactly like the native build: inotify watching, and Trash. They also let the app read and
 write those folders without asking first. Dropping them is safe: everything then goes through the
 portal with the limits above. `--filesystem=home` was not used.
+
+**Google Photos import, free space (v0.5 M2):** the import never starts without knowing the free
+space on the library disk. A folder picked through the portal (`/run/user/…/doc/<id>/…`) reports the
+real disk's free space (xdg-desktop-portal 1.14 and later pass `statvfs` through for documents). If a
+portal ever reports no sizes, Unswiper reads the real path from the portal's
+`user.document-portal.host-path` attribute (1.19 and later) and measures it there when the sandbox
+can see it (Pictures, thanks to `xdg-pictures`). Otherwise the check blocks and tells the user to pick
+a folder in Pictures or to run `flatpak override --user --filesystem='<folder>' io.github.rranslam.Unswiper`.
+No permission was added for this.

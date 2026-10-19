@@ -201,6 +201,20 @@ mod tests {
     }
 
     #[test]
+    fn google_photos_page_explains_the_mandatory_space_check() {
+        let md = topics()[14].markdown;
+        for must in [
+            "can't be measured",
+            "inside your Pictures folder",
+            "flatpak override --user --filesystem=",
+            "io.github.rranslam.Unswiper",
+            "--no-space-check",
+        ] {
+            assert!(md.contains(must), "help misses {must:?}");
+        }
+    }
+
+    #[test]
     fn inline_markup() {
         assert_eq!(
             inline("a **b** `c<d>` *e* & f"),

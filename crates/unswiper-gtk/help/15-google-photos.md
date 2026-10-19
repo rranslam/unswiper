@@ -39,6 +39,17 @@ In Google's email, click **Download your files**, then click **Download** next t
 
 Unswiper then checks the archives **without changing anything** and shows the number of photos and videos, how much is new, the space needed, the free space and about how long it takes. **Next** only works when it fits.
 
+### If the free space "can't be measured"
+
+A full Google Photos export can be hundreds of GB, so Unswiper **never starts without knowing the free space** on the library disk. If the check says the free space can't be measured, **Next** and **Unpack** stay off. Fix it in one of these ways:
+
+1. **Easiest:** click **Choose…** next to **Library folder** and pick a folder **inside your Pictures folder** (for example `Pictures/GooglePhotosLibrary`; you can make a new folder in the dialog). Unswiper can always measure that one. Then click **Check Again**.
+2. **Flatpak, library on another disk:** let Unswiper see that disk directly. Open the **Terminal** app, type the line the check shows (it looks like this) and press **Enter**:
+
+   `flatpak override --user --filesystem='/media/you/BigDisk/GooglePhotosLibrary' io.github.rranslam.Unswiper`
+
+   Use the folder you chose, as your file manager shows it. Then quit Unswiper, open it again, and click **Check Again**. To undo it later: `flatpak override --user --reset io.github.rranslam.Unswiper`.
+
 ## Step 7 — Unpack
 
 Click **Unpack**. The bar shows the part, the amount done and the time left. Click **Stop** at any time; **Continue Unpacking** picks up where it stopped. Files that are already there are never unpacked twice, and a different file with the same name is never overwritten.
@@ -68,4 +79,4 @@ Every 2 months Google emails you again. Download the new parts into the archives
 
 ## Command line
 
-If you build Unswiper from source, the same import also works in a terminal: `unswiper-cli takeout import ~/Downloads --to ~/Pictures/GooglePhotosLibrary --dry-run` shows the figures, and without `--dry-run` it unpacks. Add `--delete-archives` or `--keep-duplicates` as above.
+If you build Unswiper from source, the same import also works in a terminal: `unswiper-cli takeout import ~/Downloads --to ~/Pictures/GooglePhotosLibrary --dry-run` shows the figures, and without `--dry-run` it unpacks. Add `--delete-archives` or `--keep-duplicates` as above. If the free space can't be measured, the command stops too; `--no-space-check` skips the check, but only use it when you are sure there is enough space.

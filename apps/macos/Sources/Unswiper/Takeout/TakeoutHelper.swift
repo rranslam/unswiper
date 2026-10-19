@@ -47,6 +47,9 @@ enum TakeoutHelper {
         var sameDisk: Bool
         var secondsMin: UInt64
         var secondsMax: UInt64
+        /// Linux Flatpak only (document portal); always false/nil on the Mac.
+        var onPortal: Bool?
+        var hostPath: String?
     }
 
     struct Progress: Codable, Equatable, Sendable {
@@ -231,6 +234,11 @@ enum TakeoutHelper {
     }
 
     /// Why the folders can't be checked yet (same rules as Linux), or nil.
+    /// A dry-run line that says the import can't start for lack of (measurable) space.
+    static func isSpaceWarning(_ line: String) -> Bool {
+        line.contains("NOT enough") || line.contains("can't be measured")
+    }
+
     static func folderProblem(archives: URL?, library: URL?) -> String? {
         guard let archives else { return "Choose the archives folder." }
         guard let library else { return "Choose the library folder." }

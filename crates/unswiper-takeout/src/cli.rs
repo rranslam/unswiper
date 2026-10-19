@@ -13,7 +13,7 @@
 //! Machine-readable output (one JSON object per line, for the Mac app):
 //! - `--dry-run --json`: one `{"event":"plan",…}` line.
 //! - `--progress-json`: a `plan` line, then `progress` lines, then one `done` line, or an
-//!   `error` line (with a `kind` such as `not_enough_space` or `cancelled`) and exit code 1.
+//!   `error` line (with a `kind` such as `not_enough_space`, `space_unknown` or `cancelled`) and exit code 1.
 //!
 //! ```text
 //! {"event":"plan","plan":{…Plan…},"fits":true,"needed":123,"lines":["…in words…"]}
@@ -39,7 +39,7 @@ pub const USAGE: &str = "  unswiper-cli takeout import <folder|archive>... --to 
       --exact            measure .tgz archives exactly in a dry run (reads them completely)
       --delete-archives  delete each archive after it unpacked without conflicts
       --keep-duplicates  also unpack album copies of photos already imported elsewhere
-      --no-space-check   start even if the free space looks too small
+      --no-space-check   start even if the free space looks too small or can't be measured
       --json             dry run as JSON;  --progress-json  progress as JSON lines
   unswiper-cli takeout dates <library>                    Google's dates and places as JSON
 ";
@@ -140,7 +140,11 @@ pub fn plan_lines(p: &Plan, opts: &UnpackOptions) -> Vec<String> {
             human(f),
             human(p.needed(opts).saturating_sub(f))
         )),
-        None => v.push("Free space on the library disk is unknown.".into()),
+        None if !opts.check_space => v.push(
+            "Free space on the library disk can't be measured; the space check is switched off (--no-space-check)."
+                .into(),
+        ),
+        None => v.extend(space_unknown_lines(p, flatpak_id().as_deref())),
     }
     v.push(if p.seconds_max == 0 {
         "Time: nothing to unpack.".into()
@@ -153,6 +157,46 @@ pub fn plan_lines(p: &Plan, opts: &UnpackOptions) -> Vec<String> {
             duration(p.seconds_max)
         )
     });
+    v
+}
+
+/// Flatpak app id when running inside Flatpak (`FLATPAK_ID`).
+fn flatpak_id() -> Option<String> {
+    std::env::var("FLATPAK_ID").ok().filter(|s| !s.is_empty())
+}
+
+/// Single-quoted for a shell command line.
+fn shell_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "'\\''"))
+}
+
+/// Why the import can't start when the free space can't be measured, and how to fix it, for
+/// beginners. Inside Flatpak (`flatpak_id`) this names the exact `flatpak override` command.
+pub fn space_unknown_lines(p: &Plan, flatpak_id: Option<&str>) -> Vec<String> {
+    let mut v = vec![
+        "Free space on the library disk: can't be measured, so Unswiper won't start. A full Google Photos export can be huge, and running out of space halfway is worse than not starting."
+            .to_string(),
+    ];
+    match flatpak_id {
+        Some(id) => {
+            let (folder, known) = match &p.host_path {
+                Some(h) => (h.to_string_lossy().into_owned(), true),
+                None => ("/path/to/the/disk".to_string(), false),
+            };
+            v.push("How to fix it (do one of these):".into());
+            v.push("1. Click Choose… next to Library folder and pick a folder inside your Pictures folder. Unswiper can always measure that one. Then click Check Again.".into());
+            v.push("2. Or let Unswiper see the folder you chose directly. Open the Terminal app, type this line and press Enter:".into());
+            v.push(format!(
+                "   flatpak override --user --filesystem={} {id}",
+                shell_quote(&folder)
+            ));
+            if !known {
+                v.push("   Replace /path/to/the/disk with the folder you chose, as your file manager shows it (for example /media/you/BigDisk).".into());
+            }
+            v.push("   Then quit Unswiper, open it again and click Check Again.".into());
+        }
+        None => v.push("How to fix it: click Choose… next to Library folder and pick a folder on a disk of this computer, for example inside your Pictures folder. Then click Check Again.".into()),
+    }
     v
 }
 
@@ -237,6 +281,9 @@ pub fn run(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<
     }
 }
 
+/// Command-line only: the explicit opt-out when the free space can't be measured.
+const NO_SPACE_CHECK_HINT: &str = "On the command line you can skip this check with --no-space-check, but only if you are sure there is enough space.";
+
 fn import(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<(), String> {
     let mut opts = UnpackOptions::default();
     let (mut dry, mut exact, mut json, mut progress_json) = (false, false, false, false);
@@ -308,6 +355,9 @@ fn import(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<(
             for l in plan_lines(&p, &opts) {
                 let _ = writeln!(out, "{l}");
             }
+            if p.free_bytes.is_none() && opts.check_space {
+                let _ = writeln!(out, "{NO_SPACE_CHECK_HINT}");
+            }
         }
         return Ok(());
     }
@@ -352,6 +402,13 @@ fn import(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<(
             let msg = format!("{e}\n{}", plan_lines(&p, &opts).join("\n"));
             return fail(out, e.kind(), msg);
         }
+        Err(e @ UnpackError::SpaceUnknown(_)) => {
+            let mut msg = format!("{e}\n{}", plan_lines(&p, &opts).join("\n"));
+            if !(json || progress_json) {
+                msg = format!("{msg}\n{NO_SPACE_CHECK_HINT}");
+            }
+            return fail(out, e.kind(), msg);
+        }
         Err(e) => return fail(out, e.kind(), e.to_string()),
     };
     if progress_json {
@@ -393,5 +450,72 @@ fn import(args: &[String], out: &mut dyn Write, err: &mut dyn Write) -> Result<(
             "{} conflicts; those archives were kept",
             r.conflicts.len()
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unknown_space_blocks_with_flatpak_fix() {
+        let p = Plan {
+            host_path: Some(PathBuf::from("/run/media/rob/Big Disk/GooglePhotosLibrary")),
+            on_portal: true,
+            ..Default::default()
+        };
+        let v = space_unknown_lines(&p, Some("io.github.rranslam.Unswiper")).join("\n");
+        assert!(
+            v.contains("can't be measured, so Unswiper won't start"),
+            "{v}"
+        );
+        assert!(v.contains("inside your Pictures folder"), "{v}");
+        assert!(v.contains(
+            "flatpak override --user --filesystem='/run/media/rob/Big Disk/GooglePhotosLibrary' io.github.rranslam.Unswiper"
+        ), "{v}");
+        assert!(
+            v.contains("quit Unswiper, open it again and click Check Again"),
+            "{v}"
+        );
+        assert!(!v.contains("/path/to/the/disk"), "{v}");
+    }
+
+    #[test]
+    fn unknown_space_without_host_path_explains_the_placeholder() {
+        let p = Plan {
+            on_portal: true,
+            ..Default::default()
+        };
+        let v = space_unknown_lines(&p, Some("io.github.rranslam.Unswiper")).join("\n");
+        assert!(v.contains("--filesystem='/path/to/the/disk'"), "{v}");
+        assert!(v.contains("Replace /path/to/the/disk"), "{v}");
+    }
+
+    #[test]
+    fn unknown_space_outside_flatpak() {
+        let v = space_unknown_lines(&Plan::default(), None).join("\n");
+        assert!(v.contains("won't start"), "{v}");
+        assert!(v.contains("Choose… next to Library folder"), "{v}");
+        assert!(!v.contains("flatpak"), "{v}");
+    }
+
+    #[test]
+    fn no_space_check_is_said_plainly() {
+        let opts = UnpackOptions {
+            check_space: false,
+            ..Default::default()
+        };
+        let v = plan_lines(&Plan::default(), &opts).join("\n");
+        assert!(
+            v.contains("space check is switched off (--no-space-check)"),
+            "{v}"
+        );
+        assert!(!v.contains("won't start"), "{v}");
+    }
+
+    #[test]
+    fn quoting() {
+        assert_eq!(shell_quote("/a b"), "'/a b'");
+        assert_eq!(shell_quote("/rob's"), "'/rob'\\''s'");
     }
 }

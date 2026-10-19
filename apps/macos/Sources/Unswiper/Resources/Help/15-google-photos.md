@@ -39,6 +39,10 @@ In Google's email, click **Download your files**, then click **Download** next t
 
 Unswiper then checks the archives **without changing anything** and shows the number of photos and videos, how much is new, the space needed, the free space and about how long it takes. **Next** only works when it fits.
 
+### If the free space "can't be measured"
+
+A full Google Photos export can be hundreds of GB, so Unswiper **never starts without knowing the free space** on the library disk. If the check says the free space can't be measured (this can happen with some network drives), **Next** and **Unpack** stay off. Click **Choose…** next to **Library folder** and pick a folder on a disk of this Mac, for example inside your **Pictures** folder, then click **Check Again**.
+
 ## Step 7 — Unpack
 
 Click **Unpack**. The bar shows the part, the amount done and the time left. Click **Stop** at any time; **Continue Unpacking** picks up where it stopped. Files that are already there are never unpacked twice, and a different file with the same name is never overwritten.
@@ -68,4 +72,4 @@ Every 2 months Google emails you again. Download the new parts into the archives
 
 ## Command line
 
-The same import works in Terminal with the helper inside the app: `/Applications/Unswiper.app/Contents/MacOS/unswiper-blur takeout import ~/Downloads --to ~/Pictures/GooglePhotosLibrary --dry-run` shows the figures, and without `--dry-run` it unpacks. Add `--delete-archives` or `--keep-duplicates` as above.
+The same import works in Terminal with the helper inside the app: `/Applications/Unswiper.app/Contents/MacOS/unswiper-blur takeout import ~/Downloads --to ~/Pictures/GooglePhotosLibrary --dry-run` shows the figures, and without `--dry-run` it unpacks. Add `--delete-archives` or `--keep-duplicates` as above. If the free space can't be measured, the command stops too; `--no-space-check` skips the check, but only use it when you are sure there is enough space.

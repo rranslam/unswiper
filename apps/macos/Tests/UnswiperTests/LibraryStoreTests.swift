@@ -196,4 +196,13 @@ final class HelpLibraryTests: XCTestCase {
         XCTAssertNotNil(HelpLibrary.topicID(containing: "blurry"))
         XCTAssertNotNil(HelpLibrary.topicID(containing: "keyboard"))
     }
+
+    func testGooglePhotosHelpExplainsTheSpaceCheck() throws {
+        let md = try String(contentsOf: TakeoutHelperTests.repoRoot
+            .appendingPathComponent("apps/macos/Sources/Unswiper/Resources/Help/15-google-photos.md"), encoding: .utf8)
+        for must in ["can't be measured", "Pictures", "--no-space-check"] {
+            XCTAssertTrue(md.contains(must), must)
+        }
+        XCTAssertFalse(md.contains("flatpak"), "Linux-only advice on the Mac")
+    }
 }

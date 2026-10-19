@@ -73,7 +73,7 @@ struct TakeoutSetupView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(model.figures.enumerated()), id: \.offset) { _, line in
                         Text(line)
-                            .foregroundStyle(line.contains("NOT enough") ? Color.red : Color.primary)
+                            .foregroundStyle(TakeoutHelper.isSpaceWarning(line) ? Color.red : Color.primary)
                             .fixedSize(horizontal: false, vertical: true)
                             .textSelection(.enabled)
                     }
@@ -102,7 +102,7 @@ struct TakeoutSetupView: View {
                     Button(model.problem == nil ? "Unpack" : "Continue Unpacking") { model.unpack() }
                         .buttonStyle(.borderedProminent)
                         .controlSize(.large)
-                        .disabled(model.isRunning || model.folderProblem != nil)
+                        .disabled(!model.canUnpack)
                     if model.isRunning {
                         Button("Stop") { model.stop() }.controlSize(.large)
                     }

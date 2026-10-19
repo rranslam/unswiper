@@ -659,8 +659,9 @@ fn refresh(ui: &Ui) {
     ui.check_button
         .set_sensitive(idle && m.setup.folder_problem().is_none());
 
+    // The space check is mandatory: no Unpack without a dry run that fits (the core checks too).
     ui.unpack_button
-        .set_sensitive(idle && m.setup.folder_problem().is_none());
+        .set_sensitive(idle && m.setup.folder_problem().is_none() && fits);
     ui.unpack_button.set_label(if m.unpack_problem.is_some() {
         "Continue Unpacking"
     } else {
