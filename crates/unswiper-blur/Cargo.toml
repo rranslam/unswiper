@@ -21,6 +21,8 @@ heif = ["dep:libheif-rs"]
 
 [dependencies]
 unswiper-core = { path = "../unswiper-core" }
+# `unswiper-blur takeout …`: the Mac app's Google Takeout import (plan §19).
+unswiper-takeout = { path = "../unswiper-takeout" }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 libheif-rs = { version = "3", default-features = false, features = ["v1_17"], optional = true }
 rayon = "1"

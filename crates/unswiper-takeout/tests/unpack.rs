@@ -477,3 +477,25 @@ fn incremental_reimport_only_adds_new_items() {
     assert!(!dest.join("Photos from 2019/IMG_0001(1).jpg").exists());
     assert!(dest.join("Photos from 2026/NEW.jpg").is_file());
 }
+
+#[test]
+fn stop_and_continue() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let d = tempfile::tempdir().unwrap();
+    let a = d.path().join("t.zip");
+    make_zip(&a, &refs(&photos_export()));
+    let dest = d.path().join("dest");
+    let stop = AtomicBool::new(false);
+    let opts = UnpackOptions::default();
+    // Stop as soon as the first progress report arrives (before any file is written).
+    let err =
+        unswiper_takeout::unpack_cancellable(std::slice::from_ref(&a), &dest, &opts, &stop, |_| {
+            stop.store(true, Ordering::Relaxed)
+        })
+        .unwrap_err();
+    assert!(matches!(err, UnpackError::Cancelled), "{err}");
+    assert_eq!(err.kind(), "cancelled");
+    let r = unpack(&[a], &dest, |_| {}).unwrap();
+    assert_eq!(r.extracted, 6, "continues and finishes");
+    assert!(unswiper_takeout::is_takeout_library(&dest));
+}

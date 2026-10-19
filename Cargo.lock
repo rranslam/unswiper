@@ -1977,6 +1977,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unswiper-core",
+ "unswiper-takeout",
 ]
 
 [[package]]
@@ -2019,10 +2020,13 @@ dependencies = [
  "kamadak-exif",
  "libheif-rs",
  "relm4",
+ "serde",
  "serde_json",
  "tempfile",
  "unswiper-blur",
  "unswiper-core",
+ "unswiper-takeout",
+ "zip",
 ]
 
 [[package]]

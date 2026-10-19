@@ -61,6 +61,76 @@ impl<R: DateReader> TakeoutDates<R> {
     }
 }
 
+/// Google's date and place for one media file of a Takeout library (from its JSON sidecar).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SidecarDate {
+    /// Absolute path of the photo or video.
+    pub path: PathBuf,
+    /// `photoTakenTime`, seconds since 1970 (UTC).
+    pub taken: Option<i64>,
+    pub lat: Option<f64>,
+    pub lon: Option<f64>,
+}
+
+/// Sidecar dates and places of every photo and video under `root` that has a Takeout sidecar.
+/// For the Mac app, whose own indexer uses them when a file has no capture date. Skips hidden
+/// folders and `_rejected`, like the indexers.
+pub fn library_dates(root: &Path) -> Vec<SidecarDate> {
+    use unswiper_core::index::{PHOTO_EXTS, VIDEO_EXTS};
+    let mut out = vec![];
+    let mut dirs = vec![root.to_path_buf()];
+    while let Some(dir) = dirs.pop() {
+        let Ok(rd) = std::fs::read_dir(&dir) else {
+            continue;
+        };
+        let mut media = vec![];
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with('.') {
+                continue;
+            }
+            match e.file_type() {
+                Ok(t) if t.is_dir() => {
+                    if !name.eq_ignore_ascii_case("_rejected") {
+                        dirs.push(e.path());
+                    }
+                }
+                Ok(t) if t.is_file() => {
+                    let ext = Path::new(&name)
+                        .extension()
+                        .map(|x| x.to_string_lossy().to_lowercase())
+                        .unwrap_or_default();
+                    if PHOTO_EXTS.contains(&ext.as_str()) || VIDEO_EXTS.contains(&ext.as_str()) {
+                        media.push(name);
+                    }
+                }
+                _ => {}
+            }
+        }
+        if media.is_empty() {
+            continue;
+        }
+        let folder = FolderSidecars::load(&dir);
+        media.sort();
+        for name in media {
+            if let Some(m) = folder.for_media(&name) {
+                let gps = m.location();
+                if m.taken.is_none() && gps.is_none() {
+                    continue;
+                }
+                out.push(SidecarDate {
+                    path: dir.join(&name),
+                    taken: m.taken.map(|t| t.timestamp()),
+                    lat: gps.as_ref().map(|g| g.lat),
+                    lon: gps.as_ref().map(|g| g.lon),
+                });
+            }
+        }
+    }
+    out.sort_by(|a, b| a.path.cmp(&b.path));
+    out
+}
+
 impl<R: DateReader> DateReader for TakeoutDates<R> {
     fn photo_date(&self, path: &Path) -> Option<Timestamp> {
         self.inner.photo_date(path).or_else(|| self.fallback(path))

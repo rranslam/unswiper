@@ -19,14 +19,16 @@
 //!
 //! Nothing here talks to Google or writes outside the chosen folder.
 
+pub mod cli;
 pub mod dates;
+pub mod guide;
 pub mod safe_path;
 pub mod sidecar;
 pub mod unpack;
 
-pub use dates::TakeoutDates;
+pub use dates::{library_dates, SidecarDate, TakeoutDates};
 pub use sidecar::{match_sidecar, TakeoutMeta};
 pub use unpack::{
-    find_archives, find_parts, free_space, plan, unpack, unpack_with, ArchivePlan, Plan,
-    UnpackError, UnpackOptions, UnpackProgress, UnpackReport,
+    find_archives, find_parts, free_space, is_takeout_library, plan, unpack, unpack_cancellable,
+    unpack_with, ArchivePlan, Plan, UnpackError, UnpackOptions, UnpackProgress, UnpackReport,
 };

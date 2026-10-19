@@ -32,6 +32,7 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /// Progress record in the destination folder (Unswiper's own file; not media, so not indexed).
@@ -65,10 +66,33 @@ pub enum UnpackError {
     },
     #[error("no .zip or .tgz archives in {0}")]
     NoArchives(PathBuf),
+    #[error("stopped; run the import again to continue where it stopped")]
+    Cancelled,
+}
+
+impl UnpackError {
+    /// Short machine-readable kind for the apps (`not_enough_space`, `cancelled`, …).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            UnpackError::UnknownFormat(_) => "unknown_format",
+            UnpackError::Archive { .. } => "archive",
+            UnpackError::Write { .. } => "write",
+            UnpackError::NoPhotos(_) => "no_photos",
+            UnpackError::NotEnoughSpace { .. } => "not_enough_space",
+            UnpackError::NoArchives(_) => "no_archives",
+            UnpackError::Cancelled => "cancelled",
+        }
+    }
+}
+
+/// True if `root` is a library made by a Takeout import (it has [`STATE_FILE`]); index it with
+/// [`crate::TakeoutDates`].
+pub fn is_takeout_library(root: &Path) -> bool {
+    root.join(STATE_FILE).is_file()
 }
 
 /// How to unpack.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct UnpackOptions {
     /// Delete each archive after it unpacked without conflicts (cuts peak space to about the new
     /// data plus one archive when the archives are on the same disk as the destination).
@@ -92,7 +116,7 @@ impl Default for UnpackOptions {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize)]
 pub struct UnpackProgress {
     /// 1-based number of the archive being unpacked.
     pub archive: usize,
@@ -106,7 +130,7 @@ pub struct UnpackProgress {
 }
 
 /// What happened.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 pub struct UnpackReport {
     /// Files written in this run.
     pub extracted: usize,
@@ -322,6 +346,7 @@ struct Sink<'a> {
     skip_duplicates: bool,
     last_tick_bytes: u64,
     report: &'a mut UnpackReport,
+    cancel: &'a AtomicBool,
     progress: &'a mut dyn FnMut(UnpackProgress),
     tick: UnpackProgress,
     photos_seen: bool,
@@ -344,6 +369,9 @@ impl Sink<'_> {
         kind: Kind,
         data: &mut dyn Read,
     ) -> Result<(), UnpackError> {
+        if self.cancel.load(Ordering::Relaxed) {
+            return Err(UnpackError::Cancelled);
+        }
         let comps = match components(raw_name) {
             Ok(c) => c,
             Err(_) => {
@@ -506,7 +534,7 @@ fn remove_parts(dir: &Path) {
 }
 
 /// Dry-run figures for one archive.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct ArchivePlan {
     pub path: PathBuf,
     /// Size of the archive file.
@@ -530,7 +558,7 @@ pub struct ArchivePlan {
 }
 
 /// Dry-run result: what an import would do and whether it fits.
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Plan {
     pub archives: Vec<ArchivePlan>,
     pub archive_bytes: u64,
@@ -547,7 +575,16 @@ pub struct Plan {
     /// True if the archives are on the same disk as the destination (deleting them frees space
     /// there).
     pub same_disk: bool,
+    /// Rough unpack time in seconds: fast disk (SSD) to slow disk (within one hard disk).
+    pub seconds_min: u64,
+    pub seconds_max: u64,
 }
+
+/// Unpack speeds behind [`Plan::seconds_min`]/[`Plan::seconds_max`] (bytes per second): about
+/// 400 MB/s on an internal SSD (500 MB/s measured, §19.6), about 30 MB/s reading and writing
+/// within one hard disk.
+pub const FAST_BYTES_PER_SEC: u64 = 400_000_000;
+pub const SLOW_BYTES_PER_SEC: u64 = 30_000_000;
 
 impl Plan {
     /// Space needed for this choice, including the reserve.
@@ -581,6 +618,10 @@ pub fn free_space(p: &Path) -> Option<u64> {
     #[cfg(unix)]
     {
         let s = rustix::fs::statvfs(existing_ancestor(p)).ok()?;
+        // Some FUSE file systems (the Flatpak document portal) report no sizes at all: unknown.
+        if s.f_blocks == 0 {
+            return None;
+        }
         Some(s.f_bavail.saturating_mul(s.f_frsize))
     }
     #[cfg(not(unix))]
@@ -737,6 +778,10 @@ pub fn plan(
         plan.archives.push(ap);
     }
     plan.needed_keep = written;
+    // Reading counts too: each archive is read once, even where little is new.
+    let work = plan.new_bytes.max(plan.archive_bytes / 4);
+    plan.seconds_min = work.div_ceil(FAST_BYTES_PER_SEC);
+    plan.seconds_max = work.div_ceil(SLOW_BYTES_PER_SEC);
     Ok(plan)
 }
 
@@ -756,6 +801,18 @@ pub fn unpack_with(
     archives: &[PathBuf],
     dest: &Path,
     opts: &UnpackOptions,
+    progress: impl FnMut(UnpackProgress),
+) -> Result<UnpackReport, UnpackError> {
+    unpack_cancellable(archives, dest, opts, &AtomicBool::new(false), progress)
+}
+
+/// [`unpack_with`] that stops with [`UnpackError::Cancelled`] soon after `cancel` is set. Work
+/// done so far is kept; running again continues from there.
+pub fn unpack_cancellable(
+    archives: &[PathBuf],
+    dest: &Path,
+    opts: &UnpackOptions,
+    cancel: &AtomicBool,
     mut progress: impl FnMut(UnpackProgress),
 ) -> Result<UnpackReport, UnpackError> {
     for a in archives {
@@ -806,14 +863,20 @@ pub fn unpack_with(
                 skip_duplicates: opts.skip_duplicates,
                 last_tick_bytes: tick.bytes,
                 report: &mut report,
+                cancel,
                 progress: &mut progress,
                 tick,
                 photos_seen: false,
             };
-            match format_of(a) {
-                Some(Format::Zip) => unpack_zip(a, &mut sink)?,
-                Some(Format::Tgz) => unpack_tgz(a, &mut sink)?,
+            let r = match format_of(a) {
+                Some(Format::Zip) => unpack_zip(a, &mut sink),
+                Some(Format::Tgz) => unpack_tgz(a, &mut sink),
                 None => unreachable!("checked above"),
+            };
+            if let Err(e) = r {
+                // Keep the record of what was written, so the next run skips it.
+                let _ = save_state(dest, &state);
+                return Err(e);
             }
             tick = sink.tick;
             photos_seen |= sink.photos_seen;

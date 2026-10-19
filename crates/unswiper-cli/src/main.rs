@@ -3,8 +3,6 @@
 
 //! `unswiper-cli`: index | groups | commit --dry-run | restore (plan §5) | takeout import (§19).
 
-mod takeout;
-
 use std::collections::HashMap;
 use std::path::Path;
 use std::process::ExitCode;
@@ -140,8 +138,11 @@ fn run(args: &[String]) -> Result<(), String> {
                 Err("some files were not restored".into())
             }
         }
-        Some("takeout") => takeout::run(&args[1..]),
-        _ => Err(format!("{USAGE}{}", takeout::USAGE)),
+        Some("takeout") => {
+            let (mut out, mut err) = (std::io::stdout(), std::io::stderr());
+            unswiper_takeout::cli::run(&args[1..], &mut out, &mut err)
+        }
+        _ => Err(format!("{USAGE}{}", unswiper_takeout::cli::USAGE)),
     }
 }
 
