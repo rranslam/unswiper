@@ -10,6 +10,8 @@ Unswiper helps you **pare down your photos and videos one visit at a time**. Ins
 
 Tip: the first time, try a **copy** of a small folder so you can get comfortable before using your real library.
 
+Your photos are in **Google Photos**? Choose **Import from Google Photos…** instead (on the start page or in the main menu **☰**). It guides you through downloading them with Google Takeout; see the help topic **Import from Google Photos**.
+
 ## Step 2 — Let it index
 
 Unswiper now **indexes** the folder. That means it looks at every photo and video, reads the date it was taken, and groups them into visits. A spinner and a count such as `120 media / 300 files` show progress. Large folders can take a few minutes.

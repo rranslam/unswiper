@@ -8,7 +8,8 @@ use unswiper_gtk::ui::{self, Options};
 
 const USAGE: &str =
     "Usage: unswiper [--library-dir DIR] [--open FOLDER] [--open-first-visit] [--quit-after SECS]
-       [--present-dialog about|commit] [--present-viewer] [--present-info]
+       [--present-dialog about|commit|takeout] [--present-viewer] [--present-info]
+       [--present-takeout ARCHIVES_FOLDER LIBRARY_FOLDER]
        unswiper --version | --help-selftest";
 
 fn main() {
@@ -37,6 +38,13 @@ fn main() {
             "--present-dialog" => opts.present_dialog = args.next(),
             "--present-viewer" => opts.present_viewer = true,
             "--present-info" => opts.present_info = true,
+            "--present-takeout" => match (args.next(), args.next()) {
+                (Some(a), Some(l)) => opts.present_takeout = Some((a.into(), l.into())),
+                _ => {
+                    eprintln!("--present-takeout needs two folders\n{USAGE}");
+                    std::process::exit(2);
+                }
+            },
             "-h" | "--help" => {
                 println!("{USAGE}");
                 return;

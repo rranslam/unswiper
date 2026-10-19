@@ -24,11 +24,13 @@ gstreamer = ["dep:gst", "dep:gst-app", "dep:gst-video"]
 [dependencies]
 unswiper-core = { path = "../unswiper-core" }
 unswiper-blur = { path = "../unswiper-blur", default-features = false }
+unswiper-takeout = { path = "../unswiper-takeout" }
 # GNOME 46 = GTK 4.14 + libadwaita 1.5, the Ubuntu 24.04 LTS baseline.
 relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 libheif-rs = { version = "3", default-features = false, features = ["v1_17"], optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 gst = { package = "gstreamer", version = "0.24", optional = true }
@@ -37,4 +39,5 @@ gst-video = { package = "gstreamer-video", version = "0.24", optional = true }
 
 [dev-dependencies]
 tempfile = "3"
+zip = { version = "9.0.3", default-features = false, features = ["deflate-flate2"] }
 kamadak-exif = "0.5"

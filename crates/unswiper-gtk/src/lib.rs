@@ -11,6 +11,8 @@ pub mod icons;
 pub mod info;
 pub mod player;
 pub mod state;
+pub mod takeout;
+pub mod takeout_ui;
 pub mod thumbs;
 pub mod ui;
 pub mod video;

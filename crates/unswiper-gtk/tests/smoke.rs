@@ -240,3 +240,93 @@ fn photo_info_panel_and_popover() {
     );
     assert!(!stdout.contains("info: Location"), "{stdout}");
 }
+
+/// The Google Photos import assistant end to end on a synthetic Takeout export: check, unpack
+/// (deleting the archive), open and index the library with the dates from Google's JSON files.
+#[test]
+fn takeout_assistant_imports_and_indexes() {
+    use std::io::Write;
+    if std::env::var_os("DISPLAY").is_none() && std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        eprintln!("no display; skipping (run under xvfb-run)");
+        return;
+    }
+    let d = tempfile::tempdir().unwrap();
+    let downloads = d.path().join("downloads");
+    std::fs::create_dir(&downloads).unwrap();
+    let png: &[u8] = &[
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52, 0, 0,
+        0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0, 0x1F, 0x15, 0xC4, 0x89, 0, 0, 0, 13, 0x49, 0x44, 0x41,
+        0x54, 0x78, 0x9C, 0x63, 0xF8, 0xCF, 0xC0, 0xF0, 0x1F, 0, 0x05, 0x00, 0x01, 0xFF, 0x89,
+        0x99, 0x3D, 0x1D, 0, 0, 0, 0, 0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82,
+    ];
+    let p = "Takeout/Google Photos";
+    let files: Vec<(String, Vec<u8>)> = vec![
+        (
+            format!("{p}/Photos from 2019/Screenshot_1.png"),
+            png.to_vec(),
+        ),
+        (
+            format!("{p}/Photos from 2019/Screenshot_1.png.supplemental-metadata.json"),
+            br#"{"title":"Screenshot_1.png","photoTakenTime":{"timestamp":"1561190459"}}"#.to_vec(),
+        ),
+        (format!("{p}/Trip/Screenshot_1.png"), png.to_vec()),
+    ];
+    let archive = downloads.join("takeout-20261019T000000Z-001.zip");
+    let mut z = zip::ZipWriter::new(std::fs::File::create(&archive).unwrap());
+    for (n, data) in &files {
+        z.start_file(n.as_str(), zip::write::SimpleFileOptions::default())
+            .unwrap();
+        z.write_all(data).unwrap();
+    }
+    z.finish().unwrap();
+    let support = d.path().join("support");
+    std::fs::create_dir(&support).unwrap();
+    // Delete archives after unpacking (remembered setting, as if ticked earlier).
+    std::fs::write(
+        support.join("takeout-setup.json"),
+        br#"{"step":5,"deleteArchives":true}"#,
+    )
+    .unwrap();
+    let lib = d.path().join("GooglePhotosLibrary");
+    let out = Command::new(BIN)
+        .args([
+            "--library-dir",
+            support.to_str().unwrap(),
+            "--present-takeout",
+            downloads.to_str().unwrap(),
+            lib.to_str().unwrap(),
+            "--quit-after",
+            "8",
+        ])
+        .env("XDG_CACHE_HOME", d.path().join("cache"))
+        .env("GTK_A11Y", "none")
+        .output()
+        .unwrap();
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        stdout.contains("takeout: plan archives=1 items=2 new_items=1 fits=true"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("takeout: unpacked extracted=2 duplicates_skipped=1 deleted=1"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("takeout: indexed items=1 visits=1"),
+        "{stdout}"
+    );
+    assert!(!archive.exists(), "archive deleted after unpacking");
+    assert!(lib.join("Photos from 2019/Screenshot_1.png").is_file());
+    let json = std::fs::read_to_string(support.join("library.json")).unwrap();
+    assert!(
+        json.contains("2019-06-22T08:00:59"),
+        "date from the sidecar: {json}"
+    );
+    let setup = std::fs::read_to_string(support.join("takeout-setup.json")).unwrap();
+    assert!(setup.contains("GooglePhotosLibrary"), "{setup}");
+}
