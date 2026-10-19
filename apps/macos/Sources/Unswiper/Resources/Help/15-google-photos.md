@@ -60,6 +60,26 @@ From now on, review and commit as usual. The archives aren't needed any more.
 
 Committing moves the rejected **copies on your computer** to the Trash or the quarantine folder. **Unswiper can't delete photos from Google Photos.** Delete them in Google Photos yourself if you want them gone there too.
 
+## Photos in Google Drive instead: no Takeout needed
+
+If your photos are in **Google Drive** (not Google Photos) and **Google Drive for desktop** is installed on this Mac, you can skip Takeout:
+
+1. Copy the photos you want to review into a folder in your Drive. On the Mac it appears in Finder under **Google Drive**, at `~/Library/CloudStorage/GoogleDrive-<your account>/My Drive/…`.
+2. In Unswiper, choose **Library ▸ Choose Folder…** from the menu bar and pick that folder. Unswiper opens it like any other folder.
+
+### The "Items moved" dialog when you commit
+
+With the **Quarantine folder** option, committing moves the rejected photos into `_Rejected/Unswiper/<date and time>` inside that folder. Google Drive then shows an **Items moved** dialog. It says that the items will be visible to everyone who can see the `_Rejected` folder, and that people with access to the original folder may lose access unless the items are shared with them directly.
+
+- **For a private folder** (only you): this is expected and harmless. Click **OK**.
+- **Don't click "Move back".** It undoes the commit's moves in Drive.
+- **If the folder is shared with others**, they keep or lose access to the moved photos as that dialog says.
+- If you don't want to see it each time, tick **Don't show this again** before clicking **OK**.
+
+### Rejects still use Drive space
+
+Drive syncs the moves to the cloud, so the rejected photos stay in your Drive (and use Drive storage) until you delete the `_Rejected` folder.
+
 ## The next export
 
 Every 2 months Google emails you again. Download the new parts into the archives folder, open **Import from Google Photos…** and click **Check Again**. Only photos you don't have yet are added. Photos you rejected and deleted are **not** brought back.

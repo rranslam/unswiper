@@ -31,6 +31,10 @@ If you used **Move to Trash** and the Trash was emptied, those files can't be re
 - **Move to Trash:** in the macOS Trash (click the Trash icon in the Dock).
 - **Quarantine folder:** inside your photo folder, in `_Rejected/Unswiper`. Older versions used `_Rejected/visit-media-reduce`.
 
+## Google Drive shows "Items moved" after a commit
+
+That happens when your photo folder is in Google Drive (`~/Library/CloudStorage/GoogleDrive-…`) and you commit to the quarantine folder. For a private folder click **OK**; don't click **Move back**, which undoes the commit's moves in Drive. Details: **Import from Google Photos ▸ Photos in Google Drive instead**.
+
 ## Will it change or compress my photos?
 
 No. Unswiper never edits photos. It only moves the ones you reject, after you confirm.
