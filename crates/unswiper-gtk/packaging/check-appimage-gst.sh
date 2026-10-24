@@ -30,10 +30,10 @@ for f in "${files[@]}"; do
     path="$(sed -n 's/.*=> \([^ ]*\) .*/\1/p' <<<"$line")"
     case "$name" in libgst*) ;; *) continue;; esac
     if [ -z "$path" ] || [ "$path" = "not" ]; then
-      echo "FAIL: ${f#$appdir/}: $name not found" >&2; fail=1
+      echo "FAIL: ${f#"$appdir"/}: $name not found" >&2; fail=1
     else
       real="$(readlink -f "$path")"
-      case "$real" in "$appdir"/*) ;; *) echo "FAIL: ${f#$appdir/}: $name => $real (outside the AppDir)" >&2; fail=1;; esac
+      case "$real" in "$appdir"/*) ;; *) echo "FAIL: ${f#"$appdir"/}: $name => $real (outside the AppDir)" >&2; fail=1;; esac
     fi
   done < <(env -i ldd "$f" 2>&1 | sed 's/^[[:space:]]*//')
 done
@@ -62,6 +62,7 @@ if [ "${SKIP_GST_INSPECT:-0}" != 1 ]; then
       grep -q "  $e: " <<<"$elements" || { echo "FAIL: element $e missing from the bundled plugins" >&2; fail=1; }
     done
     if command -v ffmpeg >/dev/null && command -v gst-launch-1.0 >/dev/null; then
+      # shellcheck disable=SC2015 # best effort: a missing sample is reported per file below
       ffmpeg -loglevel error -y -f lavfi -i testsrc=d=1:s=160x120:r=10 -f lavfi -i sine=d=1 \
         -c:v mpeg4 -vtag XVID -c:a libmp3lame "$tmp/xvid.avi" &&
       ffmpeg -loglevel error -y -f lavfi -i testsrc=d=1:s=160x120:r=10 -c:v mjpeg "$tmp/mjpeg.avi" || true
