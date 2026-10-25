@@ -1,0 +1,23 @@
+{
+  "event": "done",
+  "lines": [
+    "Unpacked 3 files (133 bytes).",
+    "1 album copy was skipped (the same photo is in its year folder).",
+    "Deleted 2 archives."
+  ],
+  "report": {
+    "already_there": 0,
+    "archives_deleted": [
+      "/tmp/unswiper-example/downloads/takeout-20261015T000000Z-001.zip",
+      "/tmp/unswiper-example/downloads/takeout-20261015T000000Z-002.zip"
+    ],
+    "archives_skipped": 0,
+    "bytes_written": 133,
+    "conflicts": [],
+    "duplicates_skipped": 1,
+    "extracted": 3,
+    "other_products": [],
+    "previously_imported": 0,
+    "refused": []
+  }
+}

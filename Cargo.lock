@@ -1260,6 +1260,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "13d2233c9842d08cfe13f9eac96e207ca6a2ea10b80259ebe8ad0268be27d2af"
 
 [[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
+]
+
+[[package]]
 name = "notify"
 version = "8.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1747,6 +1759,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tar"
+version = "0.4.46"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f6221d9a6003c78398e3b239969f352578258df48c8eb051caadae0015bc840"
+dependencies = [
+ "filetime",
+ "libc",
+]
+
+[[package]]
 name = "target-lexicon"
 version = "0.13.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1917,6 +1939,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "typed-path"
+version = "0.12.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e28f89b80c87b8fb0cf04ab448d5dd0dd0ade2f8891bae878de66a75a28600e"
+
+[[package]]
 name = "unarray"
 version = "0.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1939,7 +1967,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-blur"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "image",
  "libheif-rs",
@@ -1949,20 +1977,22 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unswiper-core",
+ "unswiper-takeout",
 ]
 
 [[package]]
 name = "unswiper-cli"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "serde_json",
  "tempfile",
  "unswiper-core",
+ "unswiper-takeout",
 ]
 
 [[package]]
 name = "unswiper-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "base64",
  "chrono",
@@ -1980,7 +2010,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-gtk"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "gstreamer",
@@ -1990,10 +2020,29 @@ dependencies = [
  "kamadak-exif",
  "libheif-rs",
  "relm4",
+ "serde",
  "serde_json",
  "tempfile",
  "unswiper-blur",
  "unswiper-core",
+ "unswiper-takeout",
+ "zip",
+]
+
+[[package]]
+name = "unswiper-takeout"
+version = "0.5.0"
+dependencies = [
+ "chrono",
+ "flate2",
+ "rustix",
+ "serde",
+ "serde_json",
+ "tar",
+ "tempfile",
+ "thiserror 1.0.69",
+ "unswiper-core",
+ "zip",
 ]
 
 [[package]]
@@ -2273,6 +2322,20 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.119",
+]
+
+[[package]]
+name = "zip"
+version = "9.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c2d98561b612a84ae525331a7a094429ef8a5772514ed507ff6db5f54badc971"
+dependencies = [
+ "crc32fast",
+ "flate2",
+ "indexmap",
+ "memchr",
+ "nix",
+ "typed-path",
 ]
 
 [[package]]

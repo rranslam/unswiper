@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "title": "Import from Google Photos",
+  "takeoutUrl": "https://takeout.google.com/settings/takeout/custom/photos",
+  "fallbackUrl": "https://takeout.google.com/",
+  "steps": [
+    {
+      "id": "open-takeout",
+      "title": "Open Google Takeout",
+      "action": "open_takeout",
+      "body": "Google Takeout is Google's own page for downloading a copy of your photos. Unswiper never signs in to Google and never sees your password.\n\n1. Click **Open Google Takeout** below. Your web browser opens the Takeout page.\n2. If Google asks you to sign in, sign in with the Google account that has your photos.\n3. Come back to this window and click **Next**.\n\nIf the page looks empty or wrong, click **Open takeout.google.com** instead and follow the next step by hand."
+    },
+    {
+      "id": "choose-photos",
+      "title": "Choose only Google Photos",
+      "action": "none",
+      "body": "Unswiper's link usually ticks Google Photos for you. Check it anyway:\n\n1. Under **Select data to include**, click **Deselect all**. All ticks disappear.\n2. Scroll down the list to **Google Photos** and tick its box.\n3. Leave **All photo albums included** as it is.\n4. Scroll to the very bottom of the list and click **Next step**.\n\nOnly Google Photos should be ticked. Repeated exports (next step) only work when Google Photos is the only product ticked."
+    },
+    {
+      "id": "choose-options",
+      "title": "Choose how Google sends it",
+      "action": "none",
+      "body": "Google now shows a few choices. Pick these:\n\n1. **Destination** (Google may call it **Delivery method**): choose **Send download link via email**.\n2. **Frequency**: Google starts with **Export once**. You have to change this by hand: click **Export every 2 months for 1 year** so its circle is filled. Google then sends a new export every 2 months, and Unswiper adds only what is new each time.\n3. **File type**: choose **.zip**.\n4. **File size**: choose **50 GB**. Bigger parts mean fewer downloads.\n5. Click **Create export**.\n\nThe names on Google's page may differ slightly from these."
+    },
+    {
+      "id": "wait-email",
+      "title": "Wait for Google's email",
+      "action": "none",
+      "body": "Google now prepares your export. This takes from a few minutes to a few days; most people get it the same day.\n\nYou'll get an email from Google saying your files are ready to download.\n\nYou can quit Unswiper while you wait. When you open **Import from Google Photos** again, it remembers where you were."
+    },
+    {
+      "id": "download",
+      "title": "Download all parts into one folder",
+      "action": "none",
+      "body": "1. In Google's email, click **Download your files**.\n2. Google shows one **Download** button per part. For example, 120 GB of photos comes as about 3 parts of 50 GB. Click each **Download** button. Google may ask for your password again.\n3. Save all parts in **one folder**, for example your **Downloads** folder, on a disk with enough free space.\n4. Wait until every download has finished.\n\nDownload within 7 days: Google's links expire, and each part can be downloaded only 5 times."
+    },
+    {
+      "id": "choose-folders",
+      "title": "Choose the folders and check the space",
+      "action": "choose_folders",
+      "body": "1. **Archives folder**: click **Choose…** and pick the folder with the downloaded parts. Unswiper finds every .zip and .tgz file in it, including all parts.\n2. **Library folder**: click **Choose…** and pick or create the folder where your photos should go, for example **GooglePhotosLibrary**. This becomes a normal Unswiper library.\n\nUnswiper then checks the archives without changing anything and shows how many photos and videos there are, how much is new, how much space is needed, how much is free and about how long it takes. **Next** only works when it fits.\n\nNot enough space? Tick **Delete each archive after unpacking**, or choose a library folder on a bigger disk."
+    },
+    {
+      "id": "unpack",
+      "title": "Unpack",
+      "action": "unpack",
+      "body": "1. If you want, tick **Delete each archive after unpacking**. Each part is deleted only after it unpacked completely and without problems. Your library keeps all photos.\n2. Click **Unpack**. The bar shows the part being unpacked, how much is done and about how long is left.\n3. You can click **Stop** at any time. Click **Unpack** again later to continue where it stopped.\n\nPhotos that are also in an album are unpacked only once (the year folder copy). Tick **Also unpack album copies** if you want complete album folders; it needs more space."
+    },
+    {
+      "id": "index",
+      "title": "Open the library",
+      "action": "index",
+      "body": "Click **Open Library**. Unswiper opens the library folder and sorts it into visits, like any folder on your computer. When a photo has no date or place of its own, Unswiper uses the one Google saved next to it.\n\nFrom now on Unswiper works only on this folder. The archives aren't needed any more.\n\n**Next time:** when Google emails you again (every 2 months), download the new parts into the archives folder, open **Import from Google Photos** and click **Check Again**. Only photos you don't have yet are added; photos you already rejected and deleted are not brought back."
+    }
+  ]
+}

@@ -8,7 +8,7 @@ set -euo pipefail
 
 APP_NAME="Unswiper"
 BUNDLE_ID="io.github.rranslam.Unswiper"  # same as Linux; com.rranslam.unswiper up to 0.1.2
-VERSION="${1:-${VERSION:-0.4.0}}"
+VERSION="${1:-${VERSION:-0.5.0}}"
 VERSION="${VERSION#v}"
 MIN_MACOS="14.0"
 
@@ -107,5 +107,9 @@ echo "==> Done: $DMG"
 lipo -info "$APP/Contents/MacOS/$APP_NAME" || true
 lipo -info "$APP/Contents/MacOS/unswiper-blur" || true
 "$APP/Contents/MacOS/unswiper-blur" --version
+echo "==> Takeout helper self-test"
+TAKEOUT_TMP="$(mktemp -d)"
+[ "$("$APP/Contents/MacOS/unswiper-blur" takeout dates "$TAKEOUT_TMP")" = "[]" ] || { echo "unswiper-blur takeout dates failed"; exit 1; }
+rmdir "$TAKEOUT_TMP"
 echo "==> Help self-test"
 "$APP/Contents/MacOS/$APP_NAME" --help-selftest

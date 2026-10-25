@@ -31,7 +31,7 @@ version="$("$bin" --version | cut -d' ' -f2)"
 ARCH="${ARCH:-$(uname -m)}"
 case "$ARCH" in x86_64|aarch64) ;; *) echo "unsupported arch $ARCH" >&2; exit 1;; esac
 fetch() { [ -s "$tools/$1" ] || { wget -q -O "$tools/$1" "$2"; chmod +x "$tools/$1"; }; }
-fetch linuxdeploy-$ARCH.AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-$ARCH.AppImage
+fetch linuxdeploy-"$ARCH".AppImage https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-"$ARCH".AppImage
 fetch linuxdeploy-plugin-gtk.sh https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gtk/master/linuxdeploy-plugin-gtk.sh
 fetch linuxdeploy-plugin-gstreamer.sh https://raw.githubusercontent.com/linuxdeploy/linuxdeploy-plugin-gstreamer/master/linuxdeploy-plugin-gstreamer.sh
 
@@ -59,10 +59,12 @@ rm -f "$out/gst-plugins"/*
 for p in coreelements typefindfunctions playback app videoconvertscale videoconvert videoscale \
          isomp4 matroska avi mpegtsdemux ogg audioparsers videoparsersbad libav jpeg dv mpg123 \
          vorbis opus wavparse audiofx autodetect audioconvert audioresample volume pulseaudio pipewire; do
-  for f in "$gst_dir/libgst$p.so"; do [ -e "$f" ] && ln -sf "$f" "$out/gst-plugins/"; done
+  f="$gst_dir/libgst$p.so"
+  if [ -e "$f" ]; then ln -sf "$f" "$out/gst-plugins/"; fi
 done
 export GSTREAMER_PLUGINS_DIR="$out/gst-plugins"
-export GSTREAMER_HELPERS_DIR="$(pkg-config --variable=pluginscannerdir gstreamer-1.0)"
+GSTREAMER_HELPERS_DIR="$(pkg-config --variable=pluginscannerdir gstreamer-1.0)"
+export GSTREAMER_HELPERS_DIR
 
 # The in-app player (gtk::Video) needs GTK's GStreamer media backend, a module the GTK plugin
 # does not copy. Copy it in BEFORE linuxdeploy runs and let linuxdeploy deploy its dependencies
@@ -71,6 +73,7 @@ export GSTREAMER_HELPERS_DIR="$(pkg-config --variable=pluginscannerdir gstreamer
 # and through them libgstaudio, from the HOST while libgstreamer/libgstbase come from the bundle.
 # On newer hosts that fails: "libgstaudio-1.0.so.0: undefined symbol: gst_cpuid_supports_x86_sse2"
 # and GTK reports the "gstreamer" media extension as not found (bug on Ubuntu 26.04, Oct 2026).
+# shellcheck disable=SC2012 # first match of a version glob; paths have no odd characters
 media_src="$(ls -d "$(pkg-config --variable=libdir gtk4)"/gtk-4.0/*/media 2>/dev/null | head -n1)"
 if [ -z "$media_src" ] || [ ! -e "$media_src/libmedia-gstreamer.so" ]; then
   echo "GTK media module libmedia-gstreamer.so not found (install libgtk-4-media-gstreamer)" >&2; exit 1
@@ -79,7 +82,7 @@ media_dst="$appdir/usr/lib/gtk-4.0/$(basename "$(dirname "$media_src")")/media" 
 mkdir -p "$media_dst"
 cp -L "$media_src/libmedia-gstreamer.so" "$media_dst/"
 
-linuxdeploy-$ARCH.AppImage --appdir "$appdir" --plugin gtk --plugin gstreamer \
+linuxdeploy-"$ARCH".AppImage --appdir "$appdir" --plugin gtk --plugin gstreamer \
   --deploy-deps-only "$media_dst/libmedia-gstreamer.so" \
   --desktop-file "$appdir/usr/share/applications/$id.desktop" \
   --icon-file "$appdir/usr/share/icons/hicolor/256x256/apps/$id.png"
@@ -123,9 +126,11 @@ export GST_REGISTRY="$GST_REGISTRY_1_0"
 HOOK
 fi
 if ! grep -q 'GTK_MEDIA' "$hook"; then
+  # shellcheck disable=SC2016 # $APPDIR must expand at AppImage run time, not now
   echo 'export GTK_PATH="$APPDIR/usr/lib/gtk-4.0" GTK_MEDIA=gstreamer' >> "$hook"
 fi
 # Find the bundled libgst* from the media module (usr/lib/gtk-4.0/4.0.0/media -> usr/lib).
+# shellcheck disable=SC2016 # literal $ORIGIN for the dynamic loader
 patchelf --set-rpath '$ORIGIN/../../..' "$media_dst/libmedia-gstreamer.so"
 
 # Third-party notices: the AppImage bundles LGPL/GPL libraries (GTK, GStreamer, and Ubuntu's FFmpeg,
@@ -160,7 +165,7 @@ install -Dm644 "$root/LICENSE" "$appdir/usr/share/doc/unswiper/LICENSE" 2>/dev/n
 
 rm -f "$out"/Unswiper*.AppImage
 VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \
-  linuxdeploy-$ARCH.AppImage --appdir "$appdir" --output appimage
+  linuxdeploy-"$ARCH".AppImage --appdir "$appdir" --output appimage
 # Every libgst* the media module, plugins, scanner and bundled GStreamer libraries load must come
 # from the AppDir (no host GStreamer mixed with the bundled one).
 "$here/packaging/check-appimage-gst.sh" "$appdir"

@@ -191,8 +191,30 @@ final class PersistenceTests: StoreIsolatedTestCase {
 
 final class HelpLibraryTests: XCTestCase {
     func testAllHelpTopicsLoad() {
-        XCTAssertEqual(HelpLibrary.topics.count, 14)
+        XCTAssertEqual(HelpLibrary.topics.count, 15)
+        XCTAssertNotNil(HelpLibrary.topicID(containing: "google-photos"))
         XCTAssertNotNil(HelpLibrary.topicID(containing: "blurry"))
         XCTAssertNotNil(HelpLibrary.topicID(containing: "keyboard"))
+    }
+
+    func testGoogleDriveNoteInHelp() throws {
+        let help = TakeoutHelperTests.repoRoot.appendingPathComponent("apps/macos/Sources/Unswiper/Resources/Help")
+        let md = try String(contentsOf: help.appendingPathComponent("15-google-photos.md"), encoding: .utf8)
+        for must in ["Google Drive for desktop", "~/Library/CloudStorage/GoogleDrive-", "_Rejected/Unswiper/",
+                     "Items moved", "Click **OK**", "Don't click \"Move back\"", "Don't show this again",
+                     "until you delete the `_Rejected` folder"] {
+            XCTAssertTrue(md.contains(must), must)
+        }
+        let trouble = try String(contentsOf: help.appendingPathComponent("10-troubleshooting.md"), encoding: .utf8)
+        XCTAssertTrue(trouble.contains("Items moved") && trouble.contains("Move back"))
+    }
+
+    func testGooglePhotosHelpExplainsTheSpaceCheck() throws {
+        let md = try String(contentsOf: TakeoutHelperTests.repoRoot
+            .appendingPathComponent("apps/macos/Sources/Unswiper/Resources/Help/15-google-photos.md"), encoding: .utf8)
+        for must in ["can't be measured", "Pictures", "--no-space-check"] {
+            XCTAssertTrue(md.contains(must), must)
+        }
+        XCTAssertFalse(md.contains("flatpak"), "Linux-only advice on the Mac")
     }
 }

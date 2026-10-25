@@ -1,0 +1,5 @@
+{
+  "event": "error",
+  "kind": "no_archives",
+  "message": "no .zip or .tgz archives in /tmp/unswiper-example/empty"
+}

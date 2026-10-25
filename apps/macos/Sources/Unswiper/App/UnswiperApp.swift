@@ -6,6 +6,7 @@ import SwiftUI
 @main
 struct UnswiperApp: App {
     @StateObject private var state = AppState()
+    @StateObject private var takeout = TakeoutSetupModel()
     @AppStorage(ViewerRules.liveMotionKey) private var liveMotion = false
 
     init() {
@@ -32,6 +33,7 @@ struct UnswiperApp: App {
                 Button("Choose Folder…") {
                     state.path = .setup
                 }
+                ImportGooglePhotosMenuItem()
                 Button("Re-index") {
                     Task { await state.reindex() }
                 }
@@ -82,6 +84,21 @@ struct UnswiperApp: App {
             HelpView()
         }
         .defaultSize(width: 900, height: 640)
+
+        Window("Import from Google Photos", id: TakeoutSetupModel.windowID) {
+            TakeoutSetupView()
+                .environmentObject(state)
+                .environmentObject(takeout)
+        }
+        .defaultSize(width: 720, height: 640)
+    }
+}
+
+/// Library ▸ Import from Google Photos… (plan §19.4).
+private struct ImportGooglePhotosMenuItem: View {
+    @Environment(\.openWindow) private var openWindow
+    var body: some View {
+        Button("Import from Google Photos…") { openWindow(id: TakeoutSetupModel.windowID) }
     }
 }
 
@@ -94,6 +111,7 @@ private struct HelpMenuItems: View {
             .keyboardShortcut("?", modifiers: .command)
         Button("Keyboard Shortcuts") { show("keyboard") }
         Button("Getting Started") { show("getting-started") }
+        Button("Import from Google Photos") { show("google-photos") }
         Divider()
         Button("Release Notes (GitHub Releases)") { openURL(HelpLibrary.releasesURL) }
         Button("Report an Issue…") { openURL(HelpLibrary.issuesURL) }

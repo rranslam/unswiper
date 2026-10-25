@@ -17,7 +17,7 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use unswiper_blur::decide::Thresholds;
-use unswiper_core::index::{index, MetadataDates};
+use unswiper_core::index::index;
 use unswiper_core::meta::info::{MediaInfo, Row};
 use unswiper_core::quality::Sensitivity;
 use unswiper_core::store::{default_support_dir, LibraryStore};
@@ -47,6 +47,9 @@ pub struct Options {
     /// Select the first item of the first visit, open the photo info inspector and the
     /// right-click popover, and print the rows (`info: <group> | <label> | <value>`) to stdout.
     pub present_info: bool,
+    /// Run the Google Photos import assistant on its own with these archives and library folders,
+    /// then index the library; prints `takeout: …` lines to stdout (smoke test).
+    pub present_takeout: Option<(PathBuf, PathBuf)>,
 }
 
 pub fn run(opts: Options) {
@@ -122,6 +125,8 @@ type IndexResult = Result<(Vec<MediaItem>, Vec<VisitGroup>), String>;
 pub enum Msg {
     ChooseFolder,
     FolderChosen(PathBuf),
+    /// Open the "Import from Google Photos" assistant.
+    ImportGooglePhotos,
     Reindex,
     IndexProgress(usize, usize),
     Indexed(IndexResult),
@@ -336,6 +341,10 @@ impl Component for App {
         let menu = gio::Menu::new();
         let lib = gio::Menu::new();
         lib.append(Some("Choose Folder…"), Some("win.choose"));
+        lib.append(
+            Some("Import from Google Photos…"),
+            Some("win.import-google-photos"),
+        );
         lib.append(Some("Re-index"), Some("win.reindex"));
         lib.append(Some("Restore Last Commit"), Some("win.restore"));
         menu.append_section(None, &lib);
@@ -392,6 +401,9 @@ impl Component for App {
         );
 
         action(&root, "choose", &sender, || Msg::ChooseFolder);
+        action(&root, "import-google-photos", &sender, || {
+            Msg::ImportGooglePhotos
+        });
         action(&root, "reindex", &sender, || Msg::Reindex);
         let restore_action = action(&root, "restore", &sender, || Msg::RestoreLast);
         action(&root, "help", &sender, || Msg::Help);
@@ -525,11 +537,27 @@ impl Component for App {
             let s = sender.clone();
             choose.connect_clicked(move |_| s.input(Msg::ChooseFolder));
         }
+        let import_gp = gtk::Button::builder()
+            .label("Import from Google Photos…")
+            .halign(gtk::Align::Center)
+            .css_classes(["pill"])
+            .build();
+        {
+            let s = sender.clone();
+            import_gp.connect_clicked(move |_| s.input(Msg::ImportGooglePhotos));
+        }
+        let setup_buttons = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .halign(gtk::Align::Center)
+            .build();
+        setup_buttons.append(&choose);
+        setup_buttons.append(&import_gp);
         let setup = adw::StatusPage::builder()
             .icon_name("folder-pictures-symbolic")
             .title("Choose Your Photo Library")
-            .description("Pick the folder with your photos and videos. Unswiper groups them into visits so you can keep the best and set aside the rest. Nothing moves until you commit.")
-            .child(&choose)
+            .description("Pick the folder with your photos and videos. Unswiper groups them into visits so you can keep the best and set aside the rest. Nothing moves until you commit.\n\nYour photos are in Google Photos? Import from Google Photos guides you step by step.")
+            .child(&setup_buttons)
             .build();
 
         // Indexing page.
@@ -948,6 +976,21 @@ impl Component for App {
             let w = root.clone();
             glib::idle_add_local_once(move || d.present(Some(&w)));
         }
+        if let Some((archives, library)) = opts.present_takeout.clone() {
+            let s = sender.clone();
+            let w = root.clone();
+            let support = model.state.store.support_dir().to_path_buf();
+            glib::idle_add_local_once(move || {
+                let s2 = s.clone();
+                crate::takeout_ui::open(
+                    &w,
+                    support,
+                    move |lib| s2.input(Msg::FolderChosen(lib)),
+                    Some(crate::takeout_ui::Auto { archives, library }),
+                )
+                .present();
+            });
+        }
         if let Some(which) = opts.present_dialog.clone() {
             let s = sender.clone();
             glib::timeout_add_seconds_local_once(3, move || match which.as_str() {
@@ -956,6 +999,7 @@ impl Component for App {
                     s.input(Msg::Decide(Decision::Reject));
                     s.input(Msg::ReviewCommit);
                 }
+                "takeout" => s.input(Msg::ImportGooglePhotos),
                 _ => s.input(Msg::About),
             });
         }
@@ -991,6 +1035,17 @@ impl Component for App {
                     }
                 });
             }
+            Msg::ImportGooglePhotos => {
+                changed = false;
+                let s = sender.clone();
+                crate::takeout_ui::open(
+                    root,
+                    self.state.store.support_dir().to_path_buf(),
+                    move |lib| s.input(Msg::FolderChosen(lib)),
+                    None,
+                )
+                .present();
+            }
             Msg::FolderChosen(p) => {
                 self.state.set_root(&p);
                 self.start_index(&sender, w);
@@ -1011,6 +1066,9 @@ impl Component for App {
                 match r {
                     Ok((items, groups)) => {
                         let n = items.len();
+                        if self.opts.present_takeout.is_some() {
+                            println!("takeout: indexed items={n} visits={}", groups.len());
+                        }
                         self.state.apply_index(items, groups, chrono::Utc::now());
                         self.start_watcher(&sender);
                         self.start_blur(&sender);
@@ -1132,7 +1190,8 @@ impl Component for App {
                 if self.indexing {
                     changed = false;
                 } else {
-                    let d = self.state.apply_watch(&b, &MetadataDates);
+                    let dates = crate::takeout::dates_for(&self.state.root().unwrap_or_default());
+                    let d = self.state.apply_watch(&b, dates.as_ref());
                     changed = !d.is_empty();
                     if changed {
                         self.rebuild_grid(w, &sender);
@@ -1724,7 +1783,9 @@ impl App {
         let tx = sender.input_sender().clone();
         std::thread::spawn(move || {
             let mut last = std::time::Instant::now();
-            let r = index(&root, gap, &decisions, &MetadataDates, |p| {
+            // Google Photos (Takeout) libraries also use Google's JSON sidecars (plan §19.5).
+            let dates = crate::takeout::dates_for(&root);
+            let r = index(&root, gap, &decisions, dates.as_ref(), |p| {
                 if last.elapsed().as_millis() > 100 {
                     last = std::time::Instant::now();
                     tx.emit(Msg::IndexProgress(p.files_seen, p.media_found));

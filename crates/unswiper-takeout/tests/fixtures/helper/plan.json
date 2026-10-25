@@ -1,0 +1,52 @@
+{
+  "event": "plan",
+  "fits": true,
+  "lines": [
+    "2 archives (887 bytes): 3 photos and videos, 2 new (133 bytes).",
+    "Space needed: 133 bytes keeping the archives, 129 bytes deleting each one after unpacking.",
+    "Free on the library disk: 89.0 GB. It fits (with a 1.1 GB reserve).",
+    "Time: under a minute."
+  ],
+  "needed": 1073741957,
+  "plan": {
+    "archive_bytes": 887,
+    "archives": [
+      {
+        "archive_bytes": 687,
+        "done_earlier": false,
+        "exact": true,
+        "items": 2,
+        "new_bytes": 129,
+        "new_items": 1,
+        "path": "/tmp/unswiper-example/takeout-20261015T000000Z-001.zip",
+        "photos_bytes": 132,
+        "sidecars": 1,
+        "skipped_items": 1
+      },
+      {
+        "archive_bytes": 200,
+        "done_earlier": false,
+        "exact": true,
+        "items": 1,
+        "new_bytes": 4,
+        "new_items": 1,
+        "path": "/tmp/unswiper-example/takeout-20261015T000000Z-002.zip",
+        "photos_bytes": 4,
+        "sidecars": 0,
+        "skipped_items": 0
+      }
+    ],
+    "free_bytes": 88955277312,
+    "host_path": null,
+    "items": 3,
+    "needed_delete": 129,
+    "needed_keep": 133,
+    "new_bytes": 133,
+    "new_items": 2,
+    "on_portal": false,
+    "photos_bytes": 136,
+    "same_disk": true,
+    "seconds_max": 1,
+    "seconds_min": 1
+  }
+}

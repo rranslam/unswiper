@@ -19,6 +19,9 @@ finish-args:
   # Library folders are normally picked with the portal file chooser (document portal).
   # These two give direct access to the usual photo locations so live folder watching uses
   # inotify and commits/restores use real paths. See README.md for the tradeoff.
+  # xdg-pictures is also what makes the mandatory free-space check of the Google Photos import
+  # work for the suggested library location (Pictures/GooglePhotosLibrary); no extra
+  # permission is needed for it (plan §19.5b).
   - --filesystem=xdg-pictures
   - --filesystem=xdg-videos
   # Move to Trash: the freedesktop home trash, so files can be put back by Restore Last Commit.

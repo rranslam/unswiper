@@ -26,6 +26,7 @@ enum LocalTreeIndexer {
         root: URL,
         visitGapHours: Double,
         existingDecisions: [String: Decision],
+        fallbackDates: [String: Date] = [:],
         onProgress: @escaping (Progress) -> Void
     ) throws -> (items: [MediaItem], groups: [VisitGroup]) {
         var items: [MediaItem] = []
@@ -96,7 +97,13 @@ enum LocalTreeIndexer {
 
             for e in standalone {
                 let kind: MediaKind = photoExts.contains(e.ext) ? .photo : .video
-                let captured = kind == .photo ? exifDate(for: e.url) : videoDate(for: e.url)
+                var captured = kind == .photo ? exifDate(for: e.url) : videoDate(for: e.url)
+                // Google Photos (Takeout) libraries: Google's photoTakenTime from the JSON next to
+                // the file, when the file has no date of its own (plan §19.5). Keys are paths with
+                // symlinks resolved (TakeoutHelper.parseDates).
+                if captured == nil, !fallbackDates.isEmpty {
+                    captured = fallbackDates[e.url.resolvingSymlinksInPath().path]
+                }
                 let folderPath = relativeFolderPath(of: e.url.deletingLastPathComponent(), root: root)
                 // Undated rule (v0.1.2): capture date, else a date in the folder path. File
                 // modification/creation dates are no longer used for grouping (only for commit checks).

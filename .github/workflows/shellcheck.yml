@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# Lint every tracked shell script with ShellCheck (default severity: style and up).
+name: ShellCheck
+
+on:
+  push:
+    branches: ["main", "phase*", "v*"]
+    paths: ["**.sh", ".github/workflows/shellcheck.yml"]
+  pull_request:
+    paths: ["**.sh", ".github/workflows/shellcheck.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install ShellCheck
+        run: command -v shellcheck || (sudo apt-get update && sudo apt-get install -y shellcheck)
+      - name: Run ShellCheck on tracked *.sh
+        run: |
+          shellcheck --version
+          git ls-files -z '*.sh' | xargs -0 --no-run-if-empty shellcheck
