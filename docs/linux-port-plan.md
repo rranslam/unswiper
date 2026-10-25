@@ -771,8 +771,30 @@ Rob's order: v0.5 Google Photos (Takeout) → **v0.6 geo grouping** → Windows.
 
 Sample set (Rob's calibration photos, 25 Oct 2026, counts only): 91 files; **78 carry GPS** (76 of 85 JPG, 2 of 2 MP4); 0 of 2 3GP, 0 of 1 AVI, 0 of 1 MOV. So about 86 % have a location, and the "no location" path must work well.
 
-### 20.2 Clustering
-Geo grouping **refines** today's time-gap visits; it does not replace them.
+### 20.2 Clustering: three grouping modes (Rob, 25 Oct 2026)
+The grouping mode is chosen per library (`AppConfig.groupMode`) and per run on the CLI (`--group-mode`, §20.7):
+
+| Mode | Value | What it does |
+|---|---|---|
+| **Visit only** (default) | `visit` | Time-gap visits exactly as in v0.5. Place names may still appear as a title hint, but grouping is unchanged. |
+| **Geo only** | `geo` | True place clustering, regardless of time gaps (§20.2.2). |
+| **Visit + geo** | `visit-geo` | Each time visit is split by place (§20.2.3). |
+
+The default is `visit`, so existing libraries and users see no change until they pick another mode.
+
+#### 20.2.1 Visit only (`visit`, default)
+`group::cluster` with `visit_gap_hours`, undated items joined to their dated folder siblings: unchanged code path.
+
+#### 20.2.2 Geo only (`geo`)
+- **Algorithm: DBSCAN on haversine distance**, `eps = place_radius_km` (default **1 km** in this mode) and `min_pts = min_place_items` (default **3**), using a k-d tree / ball tree over the located items (kiddo or the geocoder's tree), so it is O(n log n) for 100k+ photos.
+- Why DBSCAN: it needs no cluster count, finds places of any shape (a beach, a long trail), and marks one-off photos as noise instead of forcing them into a place. HDBSCAN handles varying density better (a city block vs. a national park) but is more complex, slower on 100k points, and its result changes more when photos are added; it is noted as an M3 option if fixed `eps` proves poor. k-means is rejected (needs k, round clusters).
+- **Noise points** (located but in no dense place) form a place of their own when the reverse geocoder gives them the same town; otherwise they go to "Other places", sorted by time.
+- **No location**: items without GPS **fall back to date-based sets**, built exactly like visit-only mode (time-gap visits; undated items by folder sibling as today). They are listed after the places, under "No location".
+- **Sub-groups and order**: a place with photos from several trips is split into **time sub-groups** by the visit gap (`visit_gap_hours`), so "Lisbon, PT" holds "Jun 2019" and "Mar 2023". Places are ordered by their most recent item (newest first, like visits today); sub-groups oldest first inside a place.
+- **Titles**: place = geocoder name ("Lisbon, PT"); sub-group = "<place> · <date range>". IDs: place `g-<geohash7 of centroid>`; sub-group `g-<geohash7>-<first item date>`, stable when photos are added unless a cluster centre moves.
+
+#### 20.2.3 Visit + geo (`visit-geo`)
+Geo refines today's time-gap visits; it does not replace them.
 1. Build time visits as now (`group::cluster`, `visit_gap_hours`, default unchanged).
 2. Inside each visit, split by place with a simple, deterministic pass over time-sorted located items: start a new place cluster when the item is more than **`place_radius_km` (default 2 km)** from the running cluster centroid (haversine) **and** the place change persists for at least **`min_place_items` (default 3)** items or **30 minutes**. This absorbs single stray GPS fixes and short detours.
 3. Merge neighbouring place clusters in the same visit when their centroids are within `place_radius_km` (you left and came back).
@@ -802,20 +824,25 @@ Rejected: C (far too big, a server, ODbL share-alike obligations) and Apple `CLG
 - `CURRENT_SCHEMA_VERSION` 1 → **2**.
 - `MediaItem` gets optional `location: {lat, lon, source: "exif"|"quicktime"|"takeout"}` (rounded to 5 decimals, about 1 m) — written only when present, so v1 readers' `extra` passthrough keeps working.
 - `VisitGroup` gets optional `place: {name, admin1, country, lat, lon}` and `parentVisitId`.
-- `AppConfig` gets `geoGrouping` (default **on**), `placeRadiusKm`, `minPlaceItems`, `joinSamePlaceDays`.
+- `AppConfig` gets **`groupMode`** (`"visit"` | `"geo"` | `"visit-geo"`, default **`"visit"`**), `placeRadiusKm` (optional; defaults 1 km for `geo`, 2 km for `visit-geo`), `minPlaceItems`, `joinSamePlaceDays`. A missing or unknown `groupMode` reads as `visit`.
+- v1 migration: a v1 file has no `groupMode`, so it loads as `visit`: identical grouping to v0.5. `location` is still filled on the next index, so switching modes later needs no re-scan. The setting is written only when the user changes it.
 - Migration: a v1 file loads as before; the next index fills `location` and regroups. Older app versions opening a v2 file keep unknown fields (the existing `extra` flatten) and fall back to time grouping. Swift and Rust share the same serialised layout (`to_json` golden tests).
 
 ### 20.6 UI
-- **GTK and Mac**: the visit list shows the place name as the title and a small pin icon; a visit with several places expands into its places. A "Group by place" toggle in Library settings (off = exact v0.5 behaviour). Photo Info (§17) shows the place name next to the coordinates it already shows.
+- **GTK and Mac**: the visit list shows the place name as the title and a small pin icon; a visit with several places expands into its places. A **Grouping** picker in Preferences / Library settings (GTK: an `AdwComboRow` in the preferences window; Mac: a `Picker` in Settings and in the View menu) with **By visit (time)** (default, exact v0.5 behaviour), **By place** and **By visit and place**. Changing it regroups in the background and saves `groupMode`. In **By place** the sidebar shows places with their time sub-groups, then "Other places" and "No location". Photo Info (§17) shows the place name next to the coordinates it already shows.
 - No maps or map tiles in v0.6 (tiles would need the network). A later option could link "Open in Maps" that the user clicks themselves.
 
 ### 20.7 CLI
-- `unswiper-cli index <folder> [--no-geo] [--place-radius-km N] [--min-place-items N] [--join-same-place]`.
+- `unswiper-cli index <folder> [--group-mode visit|geo|visit-geo] [--place-radius-km N] [--min-place-items N] [--join-same-place]`.
+- `--group-mode` overrides the saved `AppConfig.groupMode` **for that run only**; it is never written back. Without it the saved setting is used (default `visit`). `--no-geo` is dropped: it is `--group-mode visit`. Geo flags are ignored with a warning in `visit` mode; `--join-same-place` applies only to `visit-geo`.
+- `unswiper-cli config set group-mode <mode> <library.json>` changes the saved setting.
 - `unswiper-cli groups <library.json> --json` includes `place`.
 - `unswiper-cli geo <lat> <lon>` prints the place name (debug and tests).
 
 ### 20.8 Tests
-- Unit: haversine, the split/merge rules with stray fixes, items without location, undated plus unlocated, cross-day join, `0,0` ignored, stable IDs after adding photos.
+- Modes: `visit` output is byte-identical to v0.5 on the same library (golden test); CLI `--group-mode` overrides without changing the saved config; unknown/missing `groupMode` reads as `visit`.
+- Geo only: DBSCAN with known synthetic clusters, noise, a place visited on two trips (two sub-groups), no-location items in date sets, ordering and stable IDs.
+- Visit + geo: haversine, the split/merge rules with stray fixes, items without location, undated plus unlocated, cross-day join, `0,0` ignored, stable IDs after adding photos.
 - Geocoder: fixed points (a few world cities, an ocean point, near the antimeridian and the poles) with expected names.
 - Schema: v1 → v2 load and round trip; Rust/Swift golden JSON; Mac `swift test` through the helper `geo` command.
 - Fixtures are synthetic files with made-up coordinates; **Rob's sample photos are never committed** (local calibration only).
@@ -824,11 +851,11 @@ Rejected: C (far too big, a server, ODbL share-alike obligations) and Apple `CLG
 Location never leaves the machine: no network calls, the geocoder data is bundled, coordinates are stored only in the local `library.json`, and logs never print coordinates. Help (Privacy page) says so. Exports such as the §19.7 CSV leave out coordinates unless the user asks.
 
 ### 20.10 Milestones
-- **M1 core**: `unswiper-geo` crate, location reading for photos and videos plus Takeout fallback, clustering, schema v2, CLI flags, tests.
-- **M2 apps**: GTK and Mac UI, helper `geo` command, settings toggle, Help and attribution.
-- **M3 tune**: calibrate thresholds on Rob's libraries (locally), cross-day join decision, release notes. Then v0.6.0 after Rob tests and says go.
+- **M1 core**: `unswiper-geo` crate, location reading for photos and videos plus Takeout fallback, the three grouping modes (visit unchanged, DBSCAN geo, visit-geo split), schema v2 with `groupMode`, CLI `--group-mode`, tests.
+- **M2 apps**: GTK and Mac UI, helper `geo` command, the Grouping mode picker in GTK and Mac preferences, Help and attribution.
+- **M3 tune**: calibrate thresholds per mode (and decide whether `geo` needs HDBSCAN) on Rob's libraries (locally), cross-day join decision, release notes. Then v0.6.0 after Rob tests and says go.
 
 ### 20.11 Open points
-- Default `place_radius_km` (2 km) for cities vs. hikes: tune in M3.
+- Default `place_radius_km` (1 km in `geo`, 2 km in `visit-geo`) for cities vs. hikes: tune in M3.
 - Whether to show admin-1 names outside the US (needs option B data).
 - Videos without location (3GP, AVI, many MOV in the samples): rely on time neighbours, as designed.
