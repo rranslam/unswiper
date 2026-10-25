@@ -26,7 +26,7 @@ unswiper-core = { path = "../unswiper-core" }
 unswiper-blur = { path = "../unswiper-blur", default-features = false }
 unswiper-takeout = { path = "../unswiper-takeout" }
 # GNOME 46 = GTK 4.14 + libadwaita 1.5, the Ubuntu 24.04 LTS baseline.
-relm4 = { version = "0.11", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
+relm4 = { version = "0.10.1", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }
 libheif-rs = { version = "3", default-features = false, features = ["v1_17"], optional = true }
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
