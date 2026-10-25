@@ -856,7 +856,7 @@ Location never leaves the machine: no network calls, the geocoder data is bundle
 - **M3 tune**: calibrate thresholds per mode (and decide whether `geo` needs HDBSCAN) on Rob's libraries (locally), cross-day join decision, release notes. Then v0.6.0 after Rob tests and says go.
 
 ### 20.11 Open points
-- Default `place_radius_km` (1 km in `geo`, 2 km in `visit-geo`) for cities vs. hikes: tune in M3.
+- Decided (Rob, 25 Oct 2026): default `place_radius_km` is 1 km in `geo` and 2 km in `visit-geo`; tune in M3 with Rob's new geo-diverse test photos.
 - Decided (Rob, 25 Oct 2026): start with option A; add option B data (GeoNames admin1CodesASCII, pinned snapshot) later only if admin-1 names outside the US are needed. The `unswiper-geo` crate keeps that swap local.
 - Decided (Rob, 25 Oct 2026): all other §20 choices approved; development can start.
-- Videos without location (3GP, AVI, many MOV in the samples): rely on time neighbours, as designed.
+- Decided (Rob, 25 Oct 2026): videos without location (3GP, AVI, many MOV) take their place hint from neighbouring items taken at the same time.
