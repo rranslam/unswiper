@@ -225,9 +225,13 @@ fn photo_info_panel_and_popover() {
         .parse()
         .unwrap();
     assert!(n >= 6, "{stdout}");
-    // Privacy: the location is never written to library.json.
+    // Since schema 2 (plan §20.5) the capture location is stored, only as the item's local
+    // `location` for geo grouping; it never appears in titles or anywhere else in the file.
     let json = std::fs::read_to_string(support.join("library.json")).unwrap();
-    assert!(!json.contains("37.5") && !json.contains("122.25"), "{json}");
+    let v: serde_json::Value = serde_json::from_str(&json).unwrap();
+    assert_eq!(v["items"][0]["location"]["lat"], 37.5, "{json}");
+    assert_eq!(v["items"][0]["location"]["lon"], -122.25, "{json}");
+    assert_eq!(json.matches("37.5").count(), 1, "{json}");
 
     // With "Show Location in Photo Info" off, no Location rows.
     let mut v: serde_json::Value = serde_json::from_str(&json).unwrap();
