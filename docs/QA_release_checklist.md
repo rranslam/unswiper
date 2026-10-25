@@ -5,7 +5,13 @@ Work through this list for every release, before you push the `vX.Y.Z` tag. The 
 ## 1. Code and CI
 
 - [ ] The release branch is merged into `main` with a merge commit (no squash).
-- [ ] All checks pass on the merge head: lint, validate, shellcheck, tests on Linux, macOS and Windows, coverage, AppImage and Flatpak for x86_64 and aarch64.
+- [ ] All checks pass on the merge head. These are the jobs in `.github/workflows/`:
+  - `rust.yml`: `lint` (`cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`), `test-linux` (`xvfb-run -a cargo test --workspace`), `test-windows`, `coverage`
+  - `ci.yml`: `test-macos` (`swift test` with the blur helper)
+  - `shellcheck.yml`: `shellcheck` (every tracked `*.sh`; runs only when a script or the workflow changes)
+  - `appimage.yml`: `appimage` for x86_64 and aarch64
+  - `flatpak.yml`: `validate` (metainfo and desktop file) and `flatpak` for x86_64 and aarch64
+- [ ] Every open PR meant for this release (docs, README, Help) is merged into `main` first.
 
 ## 2. Version bump
 
@@ -48,9 +54,10 @@ Check each of these:
 
 - [ ] Create an annotated tag `vX.Y.Z` on the `main` merge commit and push it. Create only the tag; `.github/workflows/release.yml` creates the release.
 - [ ] The Release workflow succeeds.
+- [ ] The `.dmg` is ad-hoc signed only (no paid Apple Developer ID until Q1 2027), so the README and Help "open it the first time" steps still apply.
 - [ ] The release has 5 assets: `Unswiper-X.Y.Z.dmg`, `Unswiper-x86_64.AppImage`, `Unswiper-aarch64.AppImage`, `Unswiper-x86_64.flatpak` and `Unswiper-aarch64.flatpak`.
 - [ ] The release is marked **Latest**, and every `releases/latest/download/<asset>` link returns HTTP 200.
-- [ ] The release notes contain the highlights from CHANGELOG plus `**Full Changelog**: …/compare/vOLD...vNEW`.
+- [ ] The workflow generates the release notes automatically (`generate_release_notes: true`), which only lists PRs. Edit the release and paste the highlights from the new CHANGELOG section above them; keep the `**Full Changelog**: …/compare/vOLD...vNEW` line.
 
 ## 5. After release
 
