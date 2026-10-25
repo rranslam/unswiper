@@ -27,7 +27,7 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 ### Step 3 — Open it the first time
 
-Unswiper is not yet signed by a paid Apple Developer account, so the first time you open it macOS will stop it with a warning like *"Unswiper" Not Opened* or *Apple could not verify "Unswiper" is free of malware*. This is expected. You only have to approve it **once**.
+Unswiper is not yet signed by a paid Apple Developer account (planned for early 2027), so the first time you open it macOS will stop it with a warning like *"Unswiper" Not Opened* or *Apple could not verify "Unswiper" is free of malware*. This is expected. You only have to approve it **once**.
 
 **macOS 15 (Sequoia) and newer:**
 
@@ -209,7 +209,7 @@ Try it on a **copy** of a small photo folder first. Re-index after upgrading (ne
 - Commit rejects to Trash or a `_Rejected/` quarantine folder, or dry run (nothing moves)
 - Safety: files validated (inside library, unchanged size/mtime) before moving; confirm dialog; Live Photo + sidecar pairing; per-commit manifest with **Restore Last Commit**
 - Commit/restore off the main thread; debounced saves
-- **Import from Google Photos** (v0.5, Linux and Mac): a step-by-step assistant (Library menu, setup screen and Help) explains which Google Takeout options to pick, shows the size, space and time needed, unpacks your exports with a progress bar (stop and continue later), can delete each archive afterwards, skips album copies, and opens the library with Google's dates and places. Also from the command line: `unswiper-cli takeout import <folder|archives> --to <library>` (with `--dry-run`).
+- **Import from Google Photos** (v0.5, Linux and Mac): a step-by-step assistant (Library menu, setup screen and Help) explains which Google Takeout options to pick, shows the size, space and time needed, unpacks your exports with a progress bar (stop and continue later), always checks the free space on the library disk first (it never starts when the space is too small or can't be measured), can delete each archive afterwards, skips album copies (tick **Also unpack album copies** to keep them), and opens the library with Google's dates and places. Also from the command line: `unswiper-cli takeout import <folder|archives> --to <library>` with `--dry-run`, `--delete-archives`, `--keep-duplicates` (keep album copies) and `--no-space-check` (start anyway; command line only, at your own risk). On the Mac, photos already in Google Drive can be opened directly through Google Drive for desktop, no Takeout needed; Help explains Drive's "Items moved" dialog after a commit.
 
 Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (stub left at that path). The GitHub repo was renamed to `unswiper` (old links redirect); the local folder may still be named `visit-media-reduce`.
 
@@ -228,7 +228,7 @@ unswiper/
 ├── apps/macos/            ← SwiftUI macOS app (Swift Package)
 ├── crates/
 │   ├── unswiper-core/     ← shared Rust core (index, group, commit, restore)
-│   ├── unswiper-cli/      ← `unswiper` command-line tool
+│   ├── unswiper-cli/      ← `unswiper-cli` command-line tool
 │   └── unswiper-gtk/      ← GTK 4 + libadwaita Linux app (+ AppImage script)
 ├── packaging/flatpak/     ← Flatpak manifest
 ├── docs/                  ← plans and design notes
@@ -237,7 +237,7 @@ unswiper/
 
 ## Roadmap
 
-v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → v0.5: Google Photos import (Takeout) → geo grouping → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–19.
+v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → v0.5: Google Photos import (Takeout) → v0.6: geo grouping → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–19.
 
 ## Contributing
 
