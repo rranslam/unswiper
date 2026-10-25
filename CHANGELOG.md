@@ -2,7 +2,7 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
-## [Unreleased]
+## [0.5.0] - 2026-10-25
 
 ### Added
 - Google Takeout import, core (plan §19, M1): `unswiper-cli takeout import <folder|archives> --to <library>` safely unpacks the Google Photos part of Takeout `.zip`/`.tgz` exports (all parts, resumable, never writes outside the library folder), with a dry run (`--dry-run`), a free-space check, optional deletion of each archive after unpacking (`--delete-archives`) and incremental re-import of later exports. `unswiper-cli index <library> --takeout` uses Google's JSON files for dates and places when a photo has none. The app UI follows in M2.
