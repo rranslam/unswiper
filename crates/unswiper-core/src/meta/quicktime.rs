@@ -169,6 +169,37 @@ fn apple_keys_opt(moov: &[u8]) -> Option<Vec<(String, String)>> {
     Some(out)
 }
 
+/// The ISO 6709 location in `udta`: QuickTime `udta/©xyz` (length, language, text), or the
+/// MP4 / iTunes-style `udta/meta/ilst/©xyz/data` that Android phones and ffmpeg write.
+fn udta_xyz(udta: &[u8]) -> Option<String> {
+    let children = boxes(udta);
+    let plain = children
+        .iter()
+        .find(|(t, _)| t == b"\xA9xyz")
+        .and_then(|(_, p)| {
+            let n = u16::from_be_bytes(p.get(0..2)?.try_into().ok()?) as usize;
+            std::str::from_utf8(p.get(4..4 + n)?)
+                .ok()
+                .map(str::to_string)
+        });
+    plain.or_else(|| {
+        let (_, meta) = children.iter().find(|(t, _)| t == b"meta")?;
+        // ISO `meta` has version/flags before its children; QuickTime `meta` doesn't.
+        let meta = if meta.get(4..8) == Some(b"hdlr") {
+            &meta[..]
+        } else {
+            meta.get(4..)?
+        };
+        let ilst = boxes(meta).into_iter().find(|(t, _)| t == b"ilst")?.1;
+        let item = boxes(ilst).into_iter().find(|(t, _)| t == b"\xA9xyz")?.1;
+        let data = boxes(item).into_iter().find(|(t, _)| t == b"data")?.1;
+        // data: type indicator (4), locale (4), UTF-8 text
+        std::str::from_utf8(data.get(8..)?)
+            .ok()
+            .map(|s| s.trim_end_matches('\0').to_string())
+    })
+}
+
 /// Technical facts of a video for the photo info view (plan §17.5). Every field is optional.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct VideoFacts {
@@ -227,14 +258,7 @@ pub fn facts_from_moov(moov: &[u8]) -> VideoFacts {
         f.location = top
             .iter()
             .find(|(t, _)| t == b"udta")
-            .and_then(|(_, u)| boxes(u).into_iter().find(|(t, _)| t == b"\xA9xyz"))
-            .and_then(|(_, p)| {
-                // ©xyz: string length (2), language (2), text
-                let n = u16::from_be_bytes(p.get(0..2)?.try_into().ok()?) as usize;
-                std::str::from_utf8(p.get(4..4 + n)?)
-                    .ok()
-                    .map(str::to_string)
-            });
+            .and_then(|(_, u)| udta_xyz(u));
     }
     for (_, trak) in top.iter().filter(|(t, _)| t == b"trak") {
         let tb = boxes(trak);
@@ -646,6 +670,25 @@ mod tests {
         );
         assert_eq!(facts_from_moov(&[]), VideoFacts::default());
         assert_eq!(video_facts(Path::new("/nonexistent.mov")), None);
+    }
+
+    #[test]
+    fn mp4_ilst_xyz_location() {
+        // udta/meta (ISO, version+flags)/hdlr + ilst/©xyz/data, as Android and ffmpeg write it.
+        let mut data = vec![0, 0, 0, 1, 0, 0, 0, 0];
+        data.extend_from_slice(b"+12.3456-065.4321/");
+        let ilst = bx(b"ilst", &bx(b"\xA9xyz", &bx(b"data", &data)));
+        let mut meta = vec![0, 0, 0, 0];
+        meta.extend(bx(b"hdlr", &[0u8; 25]));
+        meta.extend(ilst);
+        let udta = bx(b"udta", &bx(b"meta", &meta));
+        let f = facts_from_moov(&udta);
+        assert_eq!(
+            parse_iso6709(f.location.as_deref().unwrap()),
+            Some((12.3456, -65.4321, None))
+        );
+        // A udta without any location stays None.
+        assert_eq!(facts_from_moov(&bx(b"udta", &[])).location, None);
     }
 
     #[test]
