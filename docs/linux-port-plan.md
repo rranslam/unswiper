@@ -857,5 +857,6 @@ Location never leaves the machine: no network calls, the geocoder data is bundle
 
 ### 20.11 Open points
 - Default `place_radius_km` (1 km in `geo`, 2 km in `visit-geo`) for cities vs. hikes: tune in M3.
-- Whether to show admin-1 names outside the US (needs option B data).
+- Decided (Rob, 25 Oct 2026): start with option A; add option B data (GeoNames admin1CodesASCII, pinned snapshot) later only if admin-1 names outside the US are needed. The `unswiper-geo` crate keeps that swap local.
+- Decided (Rob, 25 Oct 2026): all other §20 choices approved; development can start.
 - Videos without location (3GP, AVI, many MOV in the samples): rely on time neighbours, as designed.
