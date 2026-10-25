@@ -4,7 +4,7 @@ Pare down your photos and videos **one visit at a time** (grouped by place and t
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** v0.4.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64), with photo info, blurry-photo detection and in-app video playback. Next: Google Photos as a source, then geo grouping. See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
+**Status:** v0.5.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64), with **guided import from Google Photos** (via Google Takeout), photo info, blurry-photo detection and in-app video playback. Next: geo grouping. See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
 
 ## Download & Install (macOS)
 
@@ -14,20 +14,20 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
-3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.4.0.dmg`**. Do *not* click "Source code".
+3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.5.0.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
 
 ### Step 2 — Install
 
 1. Open **Finder** (the blue-and-white smiley face at the left end of the Dock, the row of icons at the bottom of your screen).
 2. In the Finder window's left sidebar, click **Downloads**.
-3. **Double-click** `Unswiper-0.4.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
+3. **Double-click** `Unswiper-0.5.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
 4. **Click and hold** on the Unswiper icon, **drag** it on top of the Applications folder icon, and let go. This copies the app into your Applications folder.
-5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.4.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
+5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.5.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
 
 ### Step 3 — Open it the first time
 
-Unswiper is not yet signed by a paid Apple Developer account, so the first time you open it macOS will stop it with a warning like *"Unswiper" Not Opened* or *Apple could not verify "Unswiper" is free of malware*. This is expected. You only have to approve it **once**.
+Unswiper is not yet signed by a paid Apple Developer account (planned for early 2027), so the first time you open it macOS will stop it with a warning like *"Unswiper" Not Opened* or *Apple could not verify "Unswiper" is free of malware*. This is expected. You only have to approve it **once**.
 
 **macOS 15 (Sequoia) and newer:**
 
@@ -151,7 +151,7 @@ Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/shar
 
 ## Known issues
 
-- **Unswiper 0.3.0 AppImage: videos don't play on newer distros (GStreamer clash).** Use the Flatpak, or 0.4.0 where it's fixed. See https://github.com/rranslam/unswiper/issues/1.
+- **Unswiper 0.3.0 AppImage: videos don't play on newer distros (GStreamer clash).** Use the Flatpak, or 0.4.0 or newer, where it's fixed. See https://github.com/rranslam/unswiper/issues/1.
 - **Linux AppImage on Ubuntu 26.04 (and other systems with strict AppArmor rules):** when started from a terminal, it may print `GLib-GIO-WARNING: Error creating IO channel for /proc/self/mountinfo: Permission denied`. It is harmless: GLib only uses that file to notice USB drives and network shares being connected, which Unswiper doesn't need. Photos, videos, commits and restores work normally. The Flatpak doesn't show it.
 - **Linux, older Intel graphics (for example Haswell, 4th-generation Core):** when started from a terminal, the Flatpak or AppImage may print warnings such as `MESA-INTEL: warning: Haswell Vulkan support is incomplete` or lines containing `FINISHME`. They are harmless: Unswiper works normally. To silence them, make GTK draw with OpenGL instead of Vulkan:
   - Flatpak: `GSK_RENDERER=ngl flatpak run io.github.rranslam.Unswiper`
@@ -194,10 +194,10 @@ swift test
 To build the downloadable app and `.dmg` yourself:
 
 ```
-apps/macos/scripts/build-dmg.sh 0.4.0
+apps/macos/scripts/build-dmg.sh 0.5.0
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.4.0.dmg`). Pushing a tag such as `v0.4.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.5.0.dmg`). Pushing a tag such as `v0.5.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
 
 Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
 
@@ -209,6 +209,7 @@ Try it on a **copy** of a small photo folder first. Re-index after upgrading (ne
 - Commit rejects to Trash or a `_Rejected/` quarantine folder, or dry run (nothing moves)
 - Safety: files validated (inside library, unchanged size/mtime) before moving; confirm dialog; Live Photo + sidecar pairing; per-commit manifest with **Restore Last Commit**
 - Commit/restore off the main thread; debounced saves
+- **Import from Google Photos** (v0.5, Linux and Mac): a step-by-step assistant (Library menu, setup screen and Help) explains which Google Takeout options to pick, shows the size, space and time needed, unpacks your exports with a progress bar (stop and continue later), always checks the free space on the library disk first (it never starts when the space is too small or can't be measured), can delete each archive afterwards, skips album copies (tick **Also unpack album copies** to keep them), and opens the library with Google's dates and places. Also from the command line: `unswiper-cli takeout import <folder|archives> --to <library>` with `--dry-run`, `--delete-archives`, `--keep-duplicates` (keep album copies) and `--no-space-check` (start anyway; command line only, at your own risk). On the Mac, photos already in Google Drive can be opened directly through Google Drive for desktop, no Takeout needed; Help explains Drive's "Items moved" dialog after a commit.
 
 Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (stub left at that path). The GitHub repo was renamed to `unswiper` (old links redirect); the local folder may still be named `visit-media-reduce`.
 
@@ -227,7 +228,7 @@ unswiper/
 ├── apps/macos/            ← SwiftUI macOS app (Swift Package)
 ├── crates/
 │   ├── unswiper-core/     ← shared Rust core (index, group, commit, restore)
-│   ├── unswiper-cli/      ← `unswiper` command-line tool
+│   ├── unswiper-cli/      ← `unswiper-cli` command-line tool
 │   └── unswiper-gtk/      ← GTK 4 + libadwaita Linux app (+ AppImage script)
 ├── packaging/flatpak/     ← Flatpak manifest
 ├── docs/                  ← plans and design notes
@@ -236,7 +237,7 @@ unswiper/
 
 ## Roadmap
 
-v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → Google Photos source → geo grouping → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–17.
+v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → v0.5: Google Photos import (Takeout) → v0.6: geo grouping → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–19.
 
 ## Contributing
 
