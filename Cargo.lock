@@ -2192,6 +2192,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "unswiper-core",
+ "unswiper-geo",
  "unswiper-takeout",
 ]
 

@@ -25,6 +25,7 @@ pub const USAGE: &str = "usage:
       --only FILE            score only the photos listed in FILE (one path per line, e.g.
                              the open visit); results still cover every photo with a score
   unswiper-blur info [options] FILE...      photo info rows as JSON (see `info` below)
+  unswiper-blur geo < request.json          place names: {\"cmd\":\"geo\",\"points\":[[lat,lon],...]}
   unswiper-blur --version
 Nothing is moved or deleted.";
 

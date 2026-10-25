@@ -11,6 +11,7 @@
 //! * [`cache`]: `quality-cache.json`, keyed by size + mtime + algorithm version.
 //! * [`scan`]: parallel, cancellable scoring with the cache.
 //! * [`cli`]: the `unswiper-blur` command.
+//! * [`geo`]: `unswiper-blur geo`, offline place names for the Mac app (plan §20).
 //!
 //! Suggestions are written into the library through `unswiper_core::quality`; nothing here
 //! moves or deletes files.
@@ -19,6 +20,7 @@ pub mod cache;
 pub mod cli;
 pub mod decide;
 pub mod decode;
+pub mod geo;
 pub mod info;
 pub mod scan;
 pub mod score;

@@ -2,7 +2,8 @@
 // Copyright (c) 2026 Rob Ranslam
 
 //! `unswiper-blur`: find likely blurry photos (never moves anything), photo info, and the Mac
-//! app's Google Takeout import (`takeout …`, see [`unswiper_takeout::cli`]). See
+//! app's Google Takeout import (`takeout …`, see [`unswiper_takeout::cli`]), place names
+//! (`geo`, JSON on stdin, see [`unswiper_blur::geo`]). See
 //! [`unswiper_blur::cli`].
 
 use std::io::Write;
@@ -17,6 +18,21 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 let _ = writeln!(err, "{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+    // Place names for the Mac app: one JSON request on stdin, one JSON answer on stdout.
+    if args.first().map(String::as_str) == Some("geo") {
+        let mut input = String::new();
+        let _ = std::io::Read::read_to_string(&mut std::io::stdin(), &mut input);
+        return match unswiper_blur::geo::run(&input) {
+            Ok(out) => {
+                println!("{out}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
                 ExitCode::FAILURE
             }
         };
