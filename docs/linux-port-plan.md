@@ -759,3 +759,76 @@ Rejected: M4–M6 of the first draft (OAuth + Picker, verification, Picker relea
 - Unverified apps (user cap): https://support.google.com/cloud/answer/7454865
 - Data Portability API scopes (no Google Photos resource): https://developers.google.com/data-portability/user-guide/scopes
 - Google Takeout help (Deselect all/Next step/Create export, delivery by email link, scheduled Photos exports every 2 months for one year with Photos as the only product, 50 GB size limit, archives expire in about 7 days, 5 downloads per archive, `custom/<products>?frequency=2_months` URL parameters; the frequency parameter is not honoured, Rob 19 Oct 2026): https://support.google.com/accounts/answer/3024190
+
+## 20. Geo grouping (design 25 Oct 2026; v0.6.0; plan only)
+
+Rob's order: v0.5 Google Photos (Takeout) → **v0.6 geo grouping** → Windows. Approved scope: group photos by **place**, using the GPS location stored in each file, with Takeout JSON `geoData` as an optional source. Items without a location stay in their **date-based set**, the same way undated items are handled today (§group.rs: they join the visit of their dated folder siblings). Place names come from an **offline, standalone open-source reverse geocoder with bundled data**; no outside API, no network (Rob's tools rule). App ID stays `io.github.rranslam.Unswiper`.
+
+### 20.1 Sources of location (in order)
+1. **The file's own metadata**: EXIF `GPSLatitude/GPSLongitude(+Ref)` for photos (already read by `unswiper-core::meta::info::gps`, §17); QuickTime `©xyz` / `com.apple.quicktime.location.ISO6709` and the MP4 `udta` location box for videos.
+2. **Takeout sidecar** `geoData` (then `geoDataExif`), already parsed by `unswiper-takeout::dates` (§19). Used only when the file has none. `0.0, 0.0` means "no location" in Google's JSON and is ignored.
+3. Nothing else: no guessing from folder names, no Wi-Fi/IP lookup.
+
+Sample set (Rob's calibration photos, 25 Oct 2026, counts only): 91 files; **78 carry GPS** (76 of 85 JPG, 2 of 2 MP4); 0 of 2 3GP, 0 of 1 AVI, 0 of 1 MOV. So about 86 % have a location, and the "no location" path must work well.
+
+### 20.2 Clustering
+Geo grouping **refines** today's time-gap visits; it does not replace them.
+1. Build time visits as now (`group::cluster`, `visit_gap_hours`, default unchanged).
+2. Inside each visit, split by place with a simple, deterministic pass over time-sorted located items: start a new place cluster when the item is more than **`place_radius_km` (default 2 km)** from the running cluster centroid (haversine) **and** the place change persists for at least **`min_place_items` (default 3)** items or **30 minutes**. This absorbs single stray GPS fixes and short detours.
+3. Merge neighbouring place clusters in the same visit when their centroids are within `place_radius_km` (you left and came back).
+4. Items **without** location stay with the cluster nearest in time inside their visit (or the whole visit if it has no located items). Undated items keep today's folder-sibling rule; undated **and** unlocated items behave exactly as now.
+5. Optional cross-day joining (same place on consecutive days, for example a weekend at one campsite): join adjacent visits when centroids are within `place_radius_km` and the gap is under **36 h**. Off by default in v0.6, behind a setting; decided after Rob tries it.
+Why not DBSCAN/HDBSCAN: the data is already a time series, the time-then-distance pass is O(n), stable when photos are added, and easy to explain. Thresholds are config in `AppConfig` (`placeRadiusKm`, `minPlaceItems`, `joinSamePlaceDays`) and CLI flags.
+
+### 20.3 Place names (offline reverse geocoder)
+Compared 25 Oct 2026:
+
+| Option | Code licence | Data | Size | Rust | Mac |
+|---|---|---|---|---|---|
+| **A. `reverse_geocoder` crate (gx0r/rrgeo) 4.1.1** | MIT OR Apache-2.0 | GeoNames `cities1000` (CC BY 4.0), k-d tree | crate about 2.2 MB compressed, about 150k places in memory | native crate | through the existing Rust helper |
+| B. Own table: GeoNames `cities1000`/`cities15000` + `admin1CodesASCII` + `countryInfo`, `kiddo` k-d tree (MIT/Apache) | ours (MIT) | CC BY 4.0 | cities15000 about 3 MB, cities1000 about 10 MB raw | yes | through the helper, or a Swift k-d tree over the same file |
+| C. Nominatim / Photon (OSM) self-hosted | GPL-2.0 / Apache-2.0 | OSM, ODbL | tens of GB, needs a server or Java | HTTP only | HTTP only |
+
+Rejected: C (far too big, a server, ODbL share-alike obligations) and Apple `CLGeocoder` (online, Apple-only, rate limited).
+
+**Recommendation: A behind our own small `unswiper-geo` crate**, so we can swap to B later (for example to add admin-1 region names or translations) without touching callers. Output per place: nearest city/town name, admin-1 (state) and country code; titles like "Bend, OR" or "Lisbon, PT". The Mac app gets the same answers from the bundled Rust helper (`unswiper-blur`, already shipped in the dmg and called over JSON lines): add a `{"cmd":"geo","points":[[lat,lon],...]}` request. One implementation, identical names on both platforms. GeoNames attribution (CC BY 4.0) goes in About/Help and `THIRD_PARTY_NOTICES`. Data is a build-time asset; the Flatpak and AppImage need no new permissions.
+
+### 20.4 Fit with existing visit/date grouping
+- Visit IDs stay stable: a geo sub-group's ID is `<visit id>-p<n>`, ordered by first item time. A visit with one place keeps its existing ID and looks the same as today.
+- Titles: "<place> · <date range>"; visits without location keep today's date title and folder hint.
+- Decisions, commits, restore and manifests are per item, so nothing changes there.
+
+### 20.5 `library.json` schema and migration
+- `CURRENT_SCHEMA_VERSION` 1 → **2**.
+- `MediaItem` gets optional `location: {lat, lon, source: "exif"|"quicktime"|"takeout"}` (rounded to 5 decimals, about 1 m) — written only when present, so v1 readers' `extra` passthrough keeps working.
+- `VisitGroup` gets optional `place: {name, admin1, country, lat, lon}` and `parentVisitId`.
+- `AppConfig` gets `geoGrouping` (default **on**), `placeRadiusKm`, `minPlaceItems`, `joinSamePlaceDays`.
+- Migration: a v1 file loads as before; the next index fills `location` and regroups. Older app versions opening a v2 file keep unknown fields (the existing `extra` flatten) and fall back to time grouping. Swift and Rust share the same serialised layout (`to_json` golden tests).
+
+### 20.6 UI
+- **GTK and Mac**: the visit list shows the place name as the title and a small pin icon; a visit with several places expands into its places. A "Group by place" toggle in Library settings (off = exact v0.5 behaviour). Photo Info (§17) shows the place name next to the coordinates it already shows.
+- No maps or map tiles in v0.6 (tiles would need the network). A later option could link "Open in Maps" that the user clicks themselves.
+
+### 20.7 CLI
+- `unswiper-cli index <folder> [--no-geo] [--place-radius-km N] [--min-place-items N] [--join-same-place]`.
+- `unswiper-cli groups <library.json> --json` includes `place`.
+- `unswiper-cli geo <lat> <lon>` prints the place name (debug and tests).
+
+### 20.8 Tests
+- Unit: haversine, the split/merge rules with stray fixes, items without location, undated plus unlocated, cross-day join, `0,0` ignored, stable IDs after adding photos.
+- Geocoder: fixed points (a few world cities, an ocean point, near the antimeridian and the poles) with expected names.
+- Schema: v1 → v2 load and round trip; Rust/Swift golden JSON; Mac `swift test` through the helper `geo` command.
+- Fixtures are synthetic files with made-up coordinates; **Rob's sample photos are never committed** (local calibration only).
+
+### 20.9 Privacy
+Location never leaves the machine: no network calls, the geocoder data is bundled, coordinates are stored only in the local `library.json`, and logs never print coordinates. Help (Privacy page) says so. Exports such as the §19.7 CSV leave out coordinates unless the user asks.
+
+### 20.10 Milestones
+- **M1 core**: `unswiper-geo` crate, location reading for photos and videos plus Takeout fallback, clustering, schema v2, CLI flags, tests.
+- **M2 apps**: GTK and Mac UI, helper `geo` command, settings toggle, Help and attribution.
+- **M3 tune**: calibrate thresholds on Rob's libraries (locally), cross-day join decision, release notes. Then v0.6.0 after Rob tests and says go.
+
+### 20.11 Open points
+- Default `place_radius_km` (2 km) for cities vs. hikes: tune in M3.
+- Whether to show admin-1 names outside the US (needs option B data).
+- Videos without location (3GP, AVI, many MOV in the samples): rely on time neighbours, as designed.
