@@ -1,0 +1,16 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+[package]
+name = "unswiper-geo"
+description = "Offline place names for Unswiper's geo grouping (plan §20.3): wraps reverse_geocoder (GeoNames cities1000, CC BY 4.0)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+unswiper-core = { path = "../unswiper-core" }
+# Option A of plan §20.3, pinned. Bundles GeoNames cities1000 (CC BY 4.0); see THIRD_PARTY_NOTICES.
+reverse_geocoder = "=4.1.1"
