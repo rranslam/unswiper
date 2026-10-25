@@ -12,6 +12,7 @@ use std::sync::{Arc, Mutex};
 use unswiper_core::index::DateReader;
 use unswiper_core::meta::info::{self, Gps};
 use unswiper_core::time::Timestamp;
+use unswiper_core::{Location, LocationSource, MediaKind};
 
 /// A [`DateReader`] for the normal indexer that falls back to Takeout's `photoTakenTime` when a
 /// photo or video has no EXIF/QuickTime date (screenshots, edited copies, messenger images, files
@@ -138,6 +139,13 @@ impl<R: DateReader> DateReader for TakeoutDates<R> {
     fn video_date(&self, path: &Path) -> Option<Timestamp> {
         self.inner.video_date(path).or_else(|| self.fallback(path))
     }
+    /// The file's own location first, then Takeout's `geoData`/`geoDataExif` (`0,0` is none).
+    fn location(&self, path: &Path, kind: MediaKind) -> Option<Location> {
+        self.inner.location(path, kind).or_else(|| {
+            let g = self.meta(path)?.location()?;
+            Location::new(g.lat, g.lon, LocationSource::Takeout)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -263,5 +271,30 @@ mod tests {
         assert_ne!(two.date_source, Some(DateSource::Capture));
         assert!(!groups.is_empty());
         assert_eq!(dates.sidecar_dates(), 1);
+    }
+
+    #[test]
+    fn index_location_falls_back_to_geo_data_and_ignores_zero() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path();
+        for f in ["geo.jpg", "zero.jpg", "bare.jpg"] {
+            std::fs::write(p.join(f), b"not really an image").unwrap();
+        }
+        sidecar(p, "geo.jpg.json", 1_600_000_000, Some((12.5, -65.25)));
+        sidecar(p, "zero.jpg.json", 1_600_000_000, Some((0.0, 0.0)));
+        let r = TakeoutDates::new(unswiper_core::index::MetadataDates);
+        let l = DateReader::location(&r, &p.join("geo.jpg"), MediaKind::Photo).unwrap();
+        assert_eq!(
+            (l.lat, l.lon, l.source),
+            (12.5, -65.25, LocationSource::Takeout)
+        );
+        assert_eq!(
+            DateReader::location(&r, &p.join("zero.jpg"), MediaKind::Photo),
+            None
+        );
+        assert_eq!(
+            DateReader::location(&r, &p.join("bare.jpg"), MediaKind::Photo),
+            None
+        );
     }
 }
