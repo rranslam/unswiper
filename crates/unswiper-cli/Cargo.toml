@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 unswiper-core = { path = "../unswiper-core" }
 unswiper-takeout = { path = "../unswiper-takeout" }
+unswiper-geo = { path = "../unswiper-geo" }
 serde_json = "1"
 
 [dev-dependencies]
