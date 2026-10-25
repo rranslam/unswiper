@@ -1,7 +1,9 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rob Ranslam
 
-//! Data model, field-for-field compatible with `Models.swift` (library.json schema v1).
+//! Data model, field-for-field compatible with `Models.swift` (library.json schema v1), plus the
+//! optional schema v2 geo fields (plan §20.5). Every v2 field is optional and left out when empty,
+//! so a library without locations serialises exactly as v1 apart from `schemaVersion`.
 //! Unknown JSON fields are kept (`extra`) so a newer app's data survives a round trip.
 
 use crate::time::{serde_opt_ts, serde_ts, Timestamp};
@@ -57,6 +59,109 @@ pub enum DateSource {
     Unknown,
 }
 
+/// Where an item's location came from (plan §20.1).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocationSource {
+    /// EXIF GPS of a photo.
+    Exif,
+    /// QuickTime / MP4 location of a video.
+    Quicktime,
+    /// Google Takeout JSON `geoData` / `geoDataExif`.
+    Takeout,
+}
+
+/// A capture location, rounded to 5 decimals (about 1 m). `0,0` is never stored.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Location {
+    pub lat: f64,
+    pub lon: f64,
+    pub source: LocationSource,
+}
+
+impl Location {
+    /// A rounded location, or `None` for `0,0`, NaN or out-of-range values.
+    pub fn new(lat: f64, lon: f64, source: LocationSource) -> Option<Location> {
+        let ok = lat.is_finite()
+            && lon.is_finite()
+            && (-90.0..=90.0).contains(&lat)
+            && (-180.0..=180.0).contains(&lon)
+            && !(lat == 0.0 && lon == 0.0);
+        let r = |v: f64| (v * 1e5).round() / 1e5;
+        ok.then(|| Location {
+            lat: r(lat),
+            lon: r(lon),
+            source,
+        })
+    }
+}
+
+/// A place name from the offline reverse geocoder (plan §20.3).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Place {
+    pub name: String,
+    #[serde(default)]
+    pub admin1: String,
+    #[serde(default)]
+    pub country: String,
+    pub lat: f64,
+    pub lon: f64,
+}
+
+impl Place {
+    /// "Bend, OR" (US state abbreviation) or "Lisbon, PT" (country code).
+    pub fn label(&self) -> String {
+        let suffix = if self.country == "US" {
+            crate::geo::us_state_code(&self.admin1).unwrap_or("US")
+        } else {
+            self.country.as_str()
+        };
+        if suffix.is_empty() {
+            self.name.clone()
+        } else {
+            format!("{}, {suffix}", self.name)
+        }
+    }
+}
+
+/// How visits are built (plan §20.2). Stored as text in `AppConfig.groupMode`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+pub enum GroupMode {
+    /// Time-gap visits exactly as in v0.5 (default).
+    #[default]
+    Visit,
+    /// Place clusters regardless of time (DBSCAN).
+    Geo,
+    /// Each time visit split by place.
+    VisitGeo,
+}
+
+impl GroupMode {
+    /// `visit`, `geo` or `visit-geo`; anything else is `None`.
+    pub fn parse(s: &str) -> Option<GroupMode> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "visit" => Some(GroupMode::Visit),
+            "geo" => Some(GroupMode::Geo),
+            "visit-geo" | "visit_geo" | "visitgeo" => Some(GroupMode::VisitGeo),
+            _ => None,
+        }
+    }
+    pub fn as_str(self) -> &'static str {
+        match self {
+            GroupMode::Visit => "visit",
+            GroupMode::Geo => "geo",
+            GroupMode::VisitGeo => "visit-geo",
+        }
+    }
+    /// Default `placeRadiusKm` for this mode: 1 km for `geo`, 2 km otherwise.
+    pub fn default_radius_km(self) -> f64 {
+        match self {
+            GroupMode::Geo => 1.0,
+            _ => 2.0,
+        }
+    }
+}
+
 /// A file that travels with a primary item (Live Photo MOV, .AAE/.XMP sidecar).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -97,6 +202,9 @@ pub struct MediaItem {
     pub date_source: Option<DateSource>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub folder_path: Option<String>,
+    /// Schema v2: capture location, when the file (or its Takeout sidecar) has one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<Location>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -195,6 +303,12 @@ pub struct VisitGroup {
     pub video_count: i64,
     pub total_bytes: i64,
     pub folder_hint: String,
+    /// Schema v2: the place of a geo group.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place: Option<Place>,
+    /// Schema v2: the visit (`visit-geo`) or place (`geo`) this group belongs to.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_visit_id: Option<String>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -264,8 +378,28 @@ pub struct AppConfig {
     pub bookmark_data: Option<Vec<u8>>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub keep_targets: Option<BTreeMap<String, i64>>,
+    /// Schema v2: `visit` | `geo` | `visit-geo`, kept as written so an unknown value from a newer
+    /// app survives a round trip. Missing or unknown reads as `visit` ([`AppConfig::group_mode`]).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_mode: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub place_radius_km: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_place_items: Option<i64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub join_same_place_days: Option<bool>,
     #[serde(flatten)]
     pub extra: Map<String, Value>,
+}
+
+impl AppConfig {
+    /// The saved grouping mode; missing or unknown values read as [`GroupMode::Visit`].
+    pub fn group_mode(&self) -> GroupMode {
+        self.group_mode
+            .as_deref()
+            .and_then(GroupMode::parse)
+            .unwrap_or_default()
+    }
 }
 
 impl Default for AppConfig {
@@ -277,6 +411,10 @@ impl Default for AppConfig {
             commit_mode: CommitMode::Trash,
             bookmark_data: None,
             keep_targets: None,
+            group_mode: None,
+            place_radius_km: None,
+            min_place_items: None,
+            join_same_place_days: None,
             extra: Map::new(),
         }
     }
@@ -302,7 +440,7 @@ pub struct LibrarySnapshot {
 }
 
 impl LibrarySnapshot {
-    pub const CURRENT_SCHEMA_VERSION: i64 = 1;
+    pub const CURRENT_SCHEMA_VERSION: i64 = 2;
 
     pub fn empty() -> Self {
         LibrarySnapshot {
@@ -350,6 +488,7 @@ mod tests {
             is_undated: false,
             date_source: None,
             folder_path: None,
+            location: None,
             extra: Map::new(),
         }
     }
@@ -380,6 +519,8 @@ mod tests {
             video_count: 0,
             total_bytes: 0,
             folder_hint: "".into(),
+            place: None,
+            parent_visit_id: None,
             extra: Map::new(),
         };
         assert_eq!(g.item_count(), 3);
@@ -430,5 +571,58 @@ mod tests {
             r#"{"path":"/a","sizeBytes":1,"modifiedAt":"yesterday"}"#,
         );
         assert!(bad_date.is_err());
+    }
+
+    #[test]
+    fn unknown_or_missing_group_mode_reads_as_visit() {
+        let mut c = AppConfig::default();
+        assert_eq!(c.group_mode(), GroupMode::Visit);
+        c.group_mode = Some("spiral".into());
+        assert_eq!(c.group_mode(), GroupMode::Visit);
+        // The unknown value itself is kept for a round trip.
+        let v = serde_json::to_value(&c).unwrap();
+        assert_eq!(v["groupMode"], "spiral");
+        c.group_mode = Some("visit-geo".into());
+        assert_eq!(c.group_mode(), GroupMode::VisitGeo);
+        c.group_mode = Some("GEO".into());
+        assert_eq!(c.group_mode(), GroupMode::Geo);
+    }
+
+    #[test]
+    fn v1_config_has_no_v2_keys() {
+        let v = serde_json::to_value(AppConfig::default()).unwrap();
+        for k in [
+            "groupMode",
+            "placeRadiusKm",
+            "minPlaceItems",
+            "joinSamePlaceDays",
+        ] {
+            assert!(v.get(k).is_none(), "{k}");
+        }
+    }
+
+    #[test]
+    fn location_rounds_and_rejects_zero() {
+        let l = Location::new(45.123456789, -122.987654321, LocationSource::Exif).unwrap();
+        assert_eq!((l.lat, l.lon), (45.12346, -122.98765));
+        assert!(Location::new(0.0, 0.0, LocationSource::Takeout).is_none());
+        assert!(Location::new(91.0, 0.0, LocationSource::Exif).is_none());
+        assert!(Location::new(f64::NAN, 1.0, LocationSource::Exif).is_none());
+        let j = serde_json::to_value(l).unwrap();
+        assert_eq!(j["source"], "exif");
+    }
+
+    #[test]
+    fn place_labels() {
+        let p = |n: &str, a: &str, c: &str| Place {
+            name: n.into(),
+            admin1: a.into(),
+            country: c.into(),
+            lat: 0.0,
+            lon: 0.0,
+        };
+        assert_eq!(p("Bend", "Oregon", "US").label(), "Bend, OR");
+        assert_eq!(p("Lisbon", "Lisbon", "PT").label(), "Lisbon, PT");
+        assert_eq!(p("Somewhere", "", "").label(), "Somewhere");
     }
 }

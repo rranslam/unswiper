@@ -489,3 +489,55 @@ fn compare_strip() {
     };
     assert_eq!(strip(&video, Some(Sharpness::Blurry)), "0:07 · 1080 × 1920");
 }
+
+#[test]
+fn index_locations_from_exif_and_quicktime_zero_is_none() {
+    use crate::index::file_location;
+    use crate::model::{LocationSource, MediaKind};
+    let (_d, p) = write("IMG_0001.JPG", &jpeg(Some(&iphone_fields()), 40, 30));
+    let l = file_location(&p, MediaKind::Photo).unwrap();
+    assert_eq!(l.source, LocationSource::Exif);
+    let g = read(&p).gps.unwrap();
+    assert_eq!(
+        (l.lat, l.lon),
+        ((g.lat * 1e5).round() / 1e5, (g.lon * 1e5).round() / 1e5)
+    );
+
+    let zero = vec![
+        f(Tag::GPSLatitudeRef, ascii("N")),
+        f(
+            Tag::GPSLatitude,
+            Value::Rational(vec![rat(0, 1), rat(0, 1), rat(0, 1)]),
+        ),
+        f(Tag::GPSLongitudeRef, ascii("E")),
+        f(
+            Tag::GPSLongitude,
+            Value::Rational(vec![rat(0, 1), rat(0, 1), rat(0, 1)]),
+        ),
+    ];
+    let (_d2, z) = write("ZERO.JPG", &jpeg(Some(&zero), 4, 3));
+    assert!(read(&z).gps.is_some(), "the reader sees 0,0 …");
+    assert_eq!(
+        file_location(&z, MediaKind::Photo),
+        None,
+        "… indexing ignores it"
+    );
+    let (_d3, n) = write("NONE.JPG", &jpeg(None, 4, 3));
+    assert_eq!(file_location(&n, MediaKind::Photo), None);
+
+    use crate::meta::quicktime::build::*;
+    let bytes = file(
+        &[
+            mvhd_dur(3_900_000_000, 600, 600),
+            apple_meta_keys(&[(
+                "com.apple.quicktime.location.ISO6709",
+                "+12.3456-065.4321+010.000/",
+            )]),
+        ],
+        false,
+    );
+    let (_d4, m) = write("CLIP.MOV", &bytes);
+    let l = file_location(&m, MediaKind::Video).unwrap();
+    assert_eq!(l.source, LocationSource::Quicktime);
+    assert_eq!((l.lat, l.lon), (12.3456, -65.4321));
+}

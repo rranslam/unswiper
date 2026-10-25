@@ -201,7 +201,7 @@ impl LibraryStore {
         Ok(backup)
     }
 
-    /// Saves (schemaVersion forced to 1) in Swift's byte layout.
+    /// Saves (schemaVersion forced to the current version) in Swift's byte layout.
     pub fn save(&self, snapshot: &LibrarySnapshot) -> Result<(), StoreError> {
         if let Some(r) = &self.save_blocked_reason {
             return Err(StoreError::SaveBlocked(r.clone()));

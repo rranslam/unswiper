@@ -5,7 +5,9 @@
 
 use crate::group;
 use crate::meta::{exif::exif_date, folder_date, quicktime::video_date};
-use crate::model::{DateSource, Decision, MediaItem, MediaKind, SidecarFile, VisitGroup};
+use crate::model::{
+    DateSource, Decision, Location, LocationSource, MediaItem, MediaKind, SidecarFile, VisitGroup,
+};
 use crate::path_util::canonical_path;
 use crate::time::{distant_past, Timestamp};
 use serde_json::Map;
@@ -49,6 +51,10 @@ pub enum IndexError {
 pub trait DateReader {
     fn photo_date(&self, path: &Path) -> Option<Timestamp>;
     fn video_date(&self, path: &Path) -> Option<Timestamp>;
+    /// Capture location (plan §20.1). Readers without location support return `None`.
+    fn location(&self, _path: &Path, _kind: MediaKind) -> Option<Location> {
+        None
+    }
 }
 
 /// Real metadata readers (EXIF/TIFF, QuickTime/MP4).
@@ -61,6 +67,19 @@ impl DateReader for MetadataDates {
     fn video_date(&self, path: &Path) -> Option<Timestamp> {
         video_date(path)
     }
+    fn location(&self, path: &Path, kind: MediaKind) -> Option<Location> {
+        file_location(path, kind)
+    }
+}
+
+/// The file's own GPS: EXIF for photos, QuickTime/MP4 for videos. `0,0` counts as none.
+pub fn file_location(path: &Path, kind: MediaKind) -> Option<Location> {
+    let g = crate::meta::info::read(path).gps?;
+    let source = match kind {
+        MediaKind::Photo => LocationSource::Exif,
+        MediaKind::Video => LocationSource::Quicktime,
+    };
+    Location::new(g.lat, g.lon, source)
 }
 
 #[derive(Debug, Clone)]
@@ -286,6 +305,7 @@ pub(crate) fn items_for_set(
             is_undated: source == DateSource::Unknown,
             date_source: Some(source),
             folder_path: Some(folder_path),
+            location: dates.location(&e.path, kind),
             extra: Map::new(),
         });
     }

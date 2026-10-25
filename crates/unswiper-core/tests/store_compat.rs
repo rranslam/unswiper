@@ -78,7 +78,10 @@ fn load_missing_save_and_reload() {
     st.save(&snap).unwrap();
     let r = st.load();
     assert!(r.problem.is_none());
-    assert_eq!(r.snapshot.schema_version, Some(1));
+    assert_eq!(
+        r.snapshot.schema_version,
+        Some(LibrarySnapshot::CURRENT_SCHEMA_VERSION)
+    );
     assert_eq!(r.snapshot.items, snap.items);
     assert_eq!(st.support_dir(), d.path().join("support"));
 }

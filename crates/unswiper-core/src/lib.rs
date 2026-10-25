@@ -11,6 +11,7 @@
 
 pub mod apple_json;
 pub mod commit;
+pub mod geo;
 pub mod group;
 pub mod index;
 pub mod meta;

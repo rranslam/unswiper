@@ -98,6 +98,7 @@ mod tests {
             is_undated: false,
             date_source: None,
             folder_path: None,
+            location: None,
             extra: Default::default(),
         }
     }

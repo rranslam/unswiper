@@ -158,7 +158,12 @@ fn counts(members: &[MediaItem]) -> (i64, i64, i64) {
     (photos, videos, bytes)
 }
 
-fn simple_group(id: String, title: String, members: &[MediaItem], hint: String) -> VisitGroup {
+pub(crate) fn simple_group(
+    id: String,
+    title: String,
+    members: &[MediaItem],
+    hint: String,
+) -> VisitGroup {
     let (photo_count, video_count, total_bytes) = counts(members);
     VisitGroup {
         id,
@@ -170,13 +175,15 @@ fn simple_group(id: String, title: String, members: &[MediaItem], hint: String) 
         video_count,
         total_bytes,
         folder_hint: hint,
+        place: None,
+        parent_visit_id: None,
         extra: Map::new(),
     }
 }
 
 /// Builds a visit from a cluster: dated items (time order) first; undated folder-siblings
 /// appended at the end don't affect dates or the ID.
-fn make_visit(cluster: &[MediaItem]) -> VisitGroup {
+pub(crate) fn make_visit(cluster: &[MediaItem]) -> VisitGroup {
     let dated: Vec<&MediaItem> = cluster.iter().filter(|i| !i.is_undated).collect();
     let start = dated.first().expect("cluster has a dated item").taken_at;
     let end = dated.last().unwrap().taken_at;
@@ -287,6 +294,7 @@ mod tests {
                 DateSource::Unknown
             }),
             folder_path: Some(folder.into()),
+            location: None,
             extra: Map::new(),
         }
     }
