@@ -760,7 +760,7 @@ Rejected: M4–M6 of the first draft (OAuth + Picker, verification, Picker relea
 - Data Portability API scopes (no Google Photos resource): https://developers.google.com/data-portability/user-guide/scopes
 - Google Takeout help (Deselect all/Next step/Create export, delivery by email link, scheduled Photos exports every 2 months for one year with Photos as the only product, 50 GB size limit, archives expire in about 7 days, 5 downloads per archive, `custom/<products>?frequency=2_months` URL parameters; the frequency parameter is not honoured, Rob 19 Oct 2026): https://support.google.com/accounts/answer/3024190
 
-## 20. Geo grouping (design 25 Oct 2026; v0.6.0; plan only)
+## 20. Geo grouping (design 25 Oct 2026; v0.6.0; M1 built, see §20.12)
 
 Rob's order: v0.5 Google Photos (Takeout) → **v0.6 geo grouping** → Windows. Approved scope: group photos by **place**, using the GPS location stored in each file, with Takeout JSON `geoData` as an optional source. Items without a location stay in their **date-based set**, the same way undated items are handled today (§group.rs: they join the visit of their dated folder siblings). Place names come from an **offline, standalone open-source reverse geocoder with bundled data**; no outside API, no network (Rob's tools rule). App ID stays `io.github.rranslam.Unswiper`.
 
@@ -860,3 +860,16 @@ Location never leaves the machine: no network calls, the geocoder data is bundle
 - Decided (Rob, 25 Oct 2026): start with option A; add option B data (GeoNames admin1CodesASCII, pinned snapshot) later only if admin-1 names outside the US are needed. The `unswiper-geo` crate keeps that swap local.
 - Decided (Rob, 25 Oct 2026): all other §20 choices approved; development can start.
 - Decided (Rob, 25 Oct 2026): videos without location (3GP, AVI, many MOV) take their place hint from neighbouring items taken at the same time.
+
+### 20.12 M1 as built (25 Oct 2026)
+- `unswiper-core::geo`: `group_with(items, GroupSettings, PlaceNamer)` with the three modes. `visit` calls the unchanged v0.5 `group::group`. Golden tests compare it against the Swift-written crosscheck library and the v0.5 grouper.
+- `geo`: DBSCAN. Neighbours are found with a 3-D grid on the sphere (cell size = radius) instead of a k-d tree. Chord distance is never longer than arc distance, so no neighbour is missed, also at the poles and across the antimeridian. Each place is split into trips by `visitGapHours`, with IDs `g-<geohash7>-<YYYYMMDD of first item, UTC>` and `parentVisitId` = `g-<geohash7>`. Located noise in one town (2 or more items) forms a place; the rest goes to `g-other` "Other places". The date sets of items without a location get `parentVisitId` = `no-location`. Undated items that have a location join the trip holding most of their folder siblings.
+- `visit-geo`: implements §20.2.3. A single visit at one place keeps its v0.5 ID and only gains `place` and a place title.
+- Titles follow the existing app convention, date range first: `Jun 1–Jun 3 · Lisbon, PT`. A place without a name is shown as "Unnamed place".
+- Place hint (§20.11): an item without a location uses the location of the nearest located item taken within 30 minutes, for grouping only. The hint is not stored.
+- `unswiper-geo`: wraps `reverse_geocoder` 4.1.1. Points more than 100 km from any town get no name. US titles use the state abbreviation, other countries the country code.
+- Schema 2: `CURRENT_SCHEMA_VERSION` = 2 in Rust. The Swift `currentSchemaVersion` stays 1 until M2, which is safe because the apps keep separate libraries.
+- CLI: `groups <library.json>` uses the saved mode; any flag applies to that run only. `config set|get group-mode`. `geo <lat> <lon>`. `commit --dry-run --visit` uses the saved mode, so IDs match `groups`.
+- Helper: `unswiper-blur geo` reads one JSON request on stdin and writes the places as JSON. It is a new subcommand; `scan`, `info` and `takeout` are unchanged.
+- The indexer (and so the GTK app) fills `location`, but still groups by visit until M2 adds the mode picker.
+

@@ -1,0 +1,32 @@
+Third-party notices for Unswiper
+================================
+
+Unswiper itself is MIT licensed (see LICENSE). It bundles the following data and code
+that carry their own terms.
+
+GeoNames place names (geo grouping, plan section 20)
+----------------------------------------------------
+Place names shown by geo grouping come from the GeoNames geographical database,
+https://www.geonames.org/ ("cities1000" table: populated places with more than
+1000 inhabitants, as packaged in the reverse_geocoder crate 4.1.1).
+
+  Data: GeoNames, licensed under the Creative Commons Attribution 4.0 License
+  (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/
+  Attribution: "Place names: GeoNames (www.geonames.org), CC BY 4.0"
+
+The data is used offline. Unswiper never sends locations anywhere.
+
+reverse_geocoder 4.1.1 (crate)
+------------------------------
+https://github.com/gx0r/rrgeo
+Licensed under MIT OR Apache-2.0. Unswiper uses it under the MIT license.
+
+kiddo 4 (crate, used by reverse_geocoder)
+-----------------------------------------
+https://github.com/sdd/kiddo
+Licensed under MIT OR Apache-2.0. Unswiper uses it under the MIT license.
+
+Other Rust crates
+-----------------
+Other crates Unswiper builds on are listed in Cargo.lock. Each one keeps its own
+license, which can be found on crates.io.
