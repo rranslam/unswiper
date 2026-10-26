@@ -888,3 +888,11 @@ Smoke test on Rob's geo-diverse photos (142 items) and the calibration set (91 i
 - **Radius**: after the town merge, geo results barely change between 0.5 and 2 km (11 places each), and visit-geo gives the same 3 split visits at 1, 2 and 3 km. The defaults stay 1 km (geo) and 2 km (visit-geo).
 - **visit-geo**: a detour of 2 or more items (`MOVE_ON_ITEMS`) that moves on or ends the visit without returning is now its own part. Before, it was treated as a stray, and visits covering two places were left whole. visit-geo groups spanning more than one geo place: 4 → 0 (142 items) and 2 → 0 (91 items).
 - **Mac**: the indexer reads EXIF GPS (location and timestamp) and QuickTime ISO 6709 locations itself; the helper `group` command still fills any missing locations.
+
+### 20.15 M3b: By Place by name (decision, 25 Oct 2026)
+
+Rob, 25 Oct 2026: By Place should group all photos with one place name, e.g. Walla Walla, into a single group regardless of date and time. Distance clustering gave many separate places for one town. This supersedes DBSCAN (§20.3 and §20.14) for `geo`:
+
+- `geo`: key = reverse-geocoded (name, admin1, country). One group per key, items in time order, no trips (`parentVisitId` empty), newest place first. Keys whose short label collides get the title "name, admin1, country". Located items with no name (> 100 km from any town) go to **Other places**; unlocated items to one **No location** group. Videos still borrow a location within 30 minutes (§20.11). `placeRadiusKm` and `minPlaceItems` no longer apply to `geo`; `dbscan` stays in the code for reference.
+- `visit-geo`: kept. Each visit splits where the place name changes (stray, 30-minute and move-on rules unchanged) instead of at the 2 km radius. Neighbouring towns under 2 km apart now split; spots over 2 km apart with one name stay together. The radius is used only by `joinSamePlace`.
+- `visit`: unchanged.

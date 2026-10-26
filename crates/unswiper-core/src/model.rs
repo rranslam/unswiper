@@ -135,7 +135,7 @@ pub enum GroupMode {
     /// Time-gap visits exactly as in v0.5 (default).
     #[default]
     Visit,
-    /// Place clusters regardless of time (DBSCAN).
+    /// One group per place name, regardless of time (Rob, 25 Oct 2026).
     Geo,
     /// Each time visit split by place.
     VisitGeo,

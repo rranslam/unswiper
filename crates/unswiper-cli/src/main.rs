@@ -21,7 +21,8 @@ const USAGE: &str = "usage:
   grouping options (override the saved setting for this run only; never saved):
       --group-mode visit|geo|visit-geo   visit (default): time visits as in v0.5; geo: by place;
                                          visit-geo: each visit split by place
-      --place-radius-km N                place radius (default 1 for geo, 2 for visit-geo)
+      --place-radius-km N                visit-geo with --join-same-place: how close two visits
+                                         must be to join (default 2 km); not used by geo
       --min-place-items N                items that make a place (default 3)
       --join-same-place                  visit-geo: join visits at one place under 36 h apart
   unswiper-cli config set group-mode visit|geo|visit-geo <library.json>

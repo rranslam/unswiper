@@ -1413,7 +1413,12 @@ mod tests {
         s.set_group_mode(GroupMode::Geo);
         assert_eq!(s.snap.config.group_mode.as_deref(), Some("geo"));
         assert!(s.needs_save());
-        assert!(s.snap.groups.iter().any(|g| g.parent_visit_id.is_some()));
+        assert!(s.snap.groups.iter().any(|g| g.id == "no-location"));
+        assert!(s
+            .snap
+            .groups
+            .iter()
+            .any(|g| g.id != "no-location" && g.item_count() == 3));
         let n: usize = s.snap.groups.iter().map(|g| g.item_count()).sum();
         assert_eq!(n, 4);
         s.save().unwrap();

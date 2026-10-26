@@ -16,6 +16,9 @@ impl PlaceNamer for Towns {
     fn place(&self, lat: f64, lon: f64) -> Option<Place> {
         let towns = [
             ("Alphaville", "Oregon", "US", 44.0, -121.0),
+            ("Northville", "Oregon", "US", 44.05, -121.0),
+            ("Deltaton", "Oregon", "US", 43.9, -121.0),
+            ("Betatown", "North", "PT", 41.5, -8.4),
             ("Betatown", "Region", "PT", 38.7, -9.1),
             ("Gammaburg", "Land", "DE", 50.0, 8.0),
         ];
@@ -170,101 +173,90 @@ fn dbscan_across_antimeridian_and_pole() {
 // ---- geo mode ----
 
 #[test]
-fn geo_groups_by_place_regardless_of_time() {
+fn geo_one_group_per_place_name_regardless_of_time() {
+    // Rob, 25 Oct 2026: every photo with one place name is one group, whatever the date.
     let mut items = burst("a1", "2019-06-01T10:00:00Z", 5, A);
     items.extend(burst("b1", "2020-03-01T10:00:00Z", 4, B));
     items.extend(burst("a2", "2023-03-01T10:00:00Z", 6, A)); // A again, years later
     let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
-    // A's newest item (2023) is newer than B's (2020), so A comes first.
     assert_eq!(
         g.len(),
-        3,
+        2,
         "{:?}",
         g.iter().map(|x| &x.title).collect::<Vec<_>>()
     );
+    // Newest place first: A's newest item (2023) is newer than B's (2020).
     assert_eq!(g[0].place.as_ref().unwrap().name, "Alphaville");
-    assert_eq!(g[1].place.as_ref().unwrap().name, "Alphaville");
-    assert_eq!(g[2].place.as_ref().unwrap().name, "Betatown");
-    // Two trips to A, oldest first, sharing a parent place ID.
-    assert!(g[0].start_date < g[1].start_date);
-    assert_eq!(g[0].parent_visit_id, g[1].parent_visit_id);
-    let parent = g[0].parent_visit_id.clone().unwrap();
-    assert!(parent.starts_with("g-") && parent.len() == 9);
-    assert_eq!(g[0].id, format!("{parent}-20190601"));
-    assert_eq!(g[1].id, format!("{parent}-20230301"));
+    assert_eq!(g[0].item_count(), 11);
+    assert_eq!(g[0].id, "g-alphaville-oregon-us");
+    assert!(g[0].parent_visit_id.is_none(), "no trips");
     assert!(g[0].title.ends_with(" · Alphaville, OR"), "{}", g[0].title);
-    assert!(g[2].title.ends_with(" · Betatown, PT"));
+    assert_eq!(g[1].id, "g-betatown-region-pt");
+    // Items in time order.
+    let first = &g[0].item_paths;
+    assert!(first[0].contains("a1_000") && first[10].contains("a2_005"));
     assert_eq!(g.iter().map(|x| x.item_count()).sum::<usize>(), 15);
 }
 
 #[test]
-fn geo_no_location_falls_back_to_date_sets_and_noise_to_other_places() {
+fn geo_ignores_distance_inside_one_name_and_splits_different_names() {
+    // 16 km apart but both nearest to Alphaville: one group. Northville: its own group.
+    let far_east = (A.0, A.1 + 0.2);
+    let items = vec![
+        item("/lib/x1.jpg", "2021-01-01T10:00:00Z", Some(A)),
+        item("/lib/x2.jpg", "2024-01-02T10:00:00Z", Some(far_east)),
+        item("/lib/n1.jpg", "2022-01-02T10:00:00Z", Some(A2)),
+    ];
+    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
+    assert_eq!(g.len(), 2);
+    assert_eq!(g[0].item_count(), 2);
+    assert_eq!(g[1].place.as_ref().unwrap().name, "Northville");
+}
+
+#[test]
+fn geo_same_name_in_two_regions_stays_apart_with_clear_titles() {
+    let items = vec![
+        item("/lib/b1.jpg", "2021-01-01T10:00:00Z", Some(B)),
+        item("/lib/b2.jpg", "2021-02-01T10:00:00Z", Some((41.5, -8.4))),
+    ];
+    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
+    assert_eq!(g.len(), 2);
+    let titles: Vec<&str> = g.iter().map(|x| x.title.as_str()).collect();
+    assert!(
+        titles.iter().any(|t| t.ends_with("Betatown, Region, PT")),
+        "{titles:?}"
+    );
+    assert!(
+        titles.iter().any(|t| t.ends_with("Betatown, North, PT")),
+        "{titles:?}"
+    );
+}
+
+#[test]
+fn geo_no_location_and_other_places() {
     let mut items = burst("a", "2021-01-01T10:00:00Z", 4, A);
-    // Unlocated photos far in time from any located one: date sets.
+    // Unlocated photos far in time from any located one: one No location group.
     items.push(item("/lib/n1.jpg", "2022-05-01T10:00:00Z", None));
     items.push(item("/lib/n2.jpg", "2022-05-01T11:00:00Z", None));
     items.push(item("/lib/n3.jpg", "2024-05-01T11:00:00Z", None));
-    // A lone located photo nowhere near a town: Other places.
+    // A located photo nowhere near a town: Other places.
     items.push(item(
         "/lib/lone.jpg",
         "2021-07-01T10:00:00Z",
         Some((-40.0, -140.0)),
     ));
     let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
+    assert_eq!(g.len(), 3);
     assert_eq!(g[0].place.as_ref().unwrap().name, "Alphaville");
-    let other = g.iter().find(|x| x.id == OTHER_PLACES_ID).unwrap();
-    assert_eq!(other.title, "Other places");
-    assert_eq!(other.item_paths, vec!["/lib/lone.jpg".to_string()]);
-    let none: Vec<_> = g
-        .iter()
-        .filter(|x| x.parent_visit_id.as_deref() == Some(NO_LOCATION_ID))
-        .collect();
-    assert_eq!(none.len(), 2, "two date sets (2022 and 2024)");
-    assert!(none.iter().all(|x| x.id.starts_with("visit-")));
-    // Places, then Other places, then No location.
-    let pos = |id: &str| g.iter().position(|x| x.id == id).unwrap();
-    assert!(pos(OTHER_PLACES_ID) > 0 && pos(OTHER_PLACES_ID) < pos(&none[0].id));
-}
-
-#[test]
-fn geo_noise_in_the_same_town_forms_a_place_only_when_close() {
-    // Two loose photos 1.1 km apart in one town: noise for DBSCAN (min 3), but one place.
-    let near = (A.0 + 0.01, A.1);
-    let items = vec![
-        item("/lib/x1.jpg", "2021-01-01T10:00:00Z", Some(A)),
-        item("/lib/x2.jpg", "2021-01-02T10:00:00Z", Some(near)),
-    ];
-    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
-    assert_eq!(g.len(), 1);
-    assert_eq!(g[0].place.as_ref().unwrap().name, "Alphaville");
-    // M3: 5.6 km apart is too far for loose photos (town name alone used to chain them).
-    let items = vec![
-        item("/lib/x1.jpg", "2021-01-01T10:00:00Z", Some(A)),
-        item("/lib/x2.jpg", "2021-01-02T10:00:00Z", Some(A2)),
-    ];
-    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
-    assert_eq!(g.len(), 1);
-    assert_eq!(g[0].id, OTHER_PLACES_ID);
-}
-
-#[test]
-fn geo_merges_places_of_one_town_within_5_km() {
-    // Two dense spots 2.2 km apart in one town: DBSCAN (1 km) finds two clusters, one place.
-    let a_east = (A.0, A.1 + 0.028);
-    let mut items = burst("a", "2021-01-01T10:00:00Z", 4, A);
-    items.extend(burst("b", "2021-01-01T12:00:00Z", 4, a_east));
-    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
-    let parents: std::collections::BTreeSet<_> =
-        g.iter().filter_map(|x| x.parent_visit_id.clone()).collect();
-    assert_eq!(parents.len(), 1, "{g:#?}");
-    assert_eq!(g.iter().map(|x| x.item_count()).sum::<usize>(), 8);
-    // Same town name but 5.6 km apart: two places.
-    let mut items = burst("a", "2021-01-01T10:00:00Z", 4, A);
-    items.extend(burst("b", "2021-01-01T12:00:00Z", 4, A2));
-    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
-    let parents: std::collections::BTreeSet<_> =
-        g.iter().filter_map(|x| x.parent_visit_id.clone()).collect();
-    assert_eq!(parents.len(), 2);
+    assert_eq!(g[1].id, OTHER_PLACES_ID);
+    assert_eq!(g[1].title, "Other places");
+    assert_eq!(g[1].item_paths, vec!["/lib/lone.jpg".to_string()]);
+    assert_eq!(g[2].id, NO_LOCATION_ID);
+    assert_eq!(g[2].title, "No location");
+    assert_eq!(
+        g[2].item_paths,
+        vec!["/lib/n1.jpg", "/lib/n2.jpg", "/lib/n3.jpg"]
+    );
 }
 
 #[test]
@@ -395,7 +387,7 @@ fn visit_geo_splits_when_two_items_move_on_and_never_return() {
     let mut items = burst("a", "2021-01-01T10:00:00Z", 5, A);
     items.push(item("/lib/b1.jpg", "2021-01-01T10:10:00Z", Some(A2)));
     items.push(item("/lib/b2.jpg", "2021-01-01T10:11:00Z", Some(A2)));
-    items.extend(burst("c", "2021-01-01T10:20:00Z", 5, (A.0 - 0.1, A.1)));
+    items.extend(burst("c", "2021-01-01T10:20:00Z", 5, (43.9, -121.0))); // Deltaton
     let g = group_with(&items, &settings(GroupMode::VisitGeo), &Towns);
     assert_eq!(
         g.iter().map(|x| x.item_count()).collect::<Vec<_>>(),
@@ -461,15 +453,15 @@ fn zero_zero_is_ignored() {
     let items = vec![item("/lib/z.jpg", "2021-01-01T10:00:00Z", Some((0.0, 0.0)))];
     assert!(items[0].location.is_none());
     let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
-    assert_eq!(g[0].parent_visit_id.as_deref(), Some(NO_LOCATION_ID));
+    assert_eq!(g[0].id, NO_LOCATION_ID);
 }
 
 #[test]
-fn no_names_gives_unnamed_places() {
+fn no_names_puts_located_items_in_other_places() {
     let items = burst("a", "2021-01-01T10:00:00Z", 4, A);
     let g = group_with(&items, &settings(GroupMode::Geo), &NoNames);
-    assert!(g[0].place.is_none());
-    assert!(g[0].title.ends_with(" · Unnamed place"));
+    assert_eq!(g.len(), 1);
+    assert_eq!(g[0].id, OTHER_PLACES_ID);
 }
 
 #[test]

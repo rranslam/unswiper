@@ -178,12 +178,13 @@ mod tests {
         std::fs::write(&lib, snap.to_json()).unwrap();
         let v: serde_json::Value = serde_json::from_str(&group(&lib, None).unwrap()).unwrap();
         let g = v["groups"].as_array().unwrap();
-        assert!(g.iter().all(|g| g["parentVisitId"].is_string()));
+        assert_eq!(g.len(), 1, "one group per place name");
+        assert_eq!(g[0]["itemPaths"].as_array().unwrap().len(), 3);
         assert_eq!(g[0]["place"]["name"], "Lisbon");
         assert!(v["locations"].as_object().unwrap().is_empty());
         let v: serde_json::Value =
             serde_json::from_str(&group(&lib, Some(GroupMode::Visit)).unwrap()).unwrap();
-        assert!(v["groups"][0]["parentVisitId"].is_null());
+        assert!(v["groups"][0]["id"].as_str().unwrap().starts_with("visit-"));
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         assert_eq!(
             parse_group(&a(&["group", "--library", "x.json", "--mode", "visit-geo"])).unwrap(),

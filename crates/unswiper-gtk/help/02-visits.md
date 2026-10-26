@@ -19,10 +19,10 @@ A **visit** is a pile of photos and videos taken close together in time — a tr
 To group by where photos were taken instead of only by time, choose **Grouping** in the main menu (**☰**):
 
 - **By Visit (Time)**: the default, as described above.
-- **By Place**: photos taken within about 1 km of each other form a place, whenever they were taken. Each place is split into its separate trips. Photos far from any other photo go into **Other places**; photos without a location stay in date-based sets marked **No location**.
-- **By Visit and Place**: each visit is split where you moved more than about 2 km, so a road trip becomes one group per town.
+- **By Place**: all photos with the same place name, for example **Walla Walla, WA**, form one group, whenever they were taken and wherever they are in that town. Each group is in time order. Place names are the nearest town, looked up offline. Photos more than 100 km from any town go into **Other places**; photos without a location go into **No location** (a video without one borrows the place of a photo taken within 30 minutes).
+- **By Visit and Place**: each visit is split where the place name changes, so a road trip becomes one group per town. A single stray photo doesn't split a visit.
 
-Place groups show a pin and the nearest town, looked up offline (no map or internet needed). Your choice is saved with your library. Changing it never changes your Keep and Reject decisions.
+Place groups show a pin and the town name (no map or internet needed). Your choice is saved with your library. Changing it never changes your Keep and Reject decisions.
 
 ## The visits list
 

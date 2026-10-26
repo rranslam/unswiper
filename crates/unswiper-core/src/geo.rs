@@ -4,8 +4,9 @@
 //! Geo grouping (plan §20.2): the three grouping modes.
 //!
 //! - [`GroupMode::Visit`] is exactly [`group::group`] (v0.5 output, byte for byte).
-//! - [`GroupMode::Geo`] clusters located items by place with DBSCAN on haversine distance,
-//!   regardless of time, then splits each place into trips by the visit gap.
+//! - [`GroupMode::Geo`] puts every item with one reverse-geocoded place name (name, region,
+//!   country) into one group, regardless of time: no trips, no distance clustering (Rob,
+//!   25 Oct 2026; superseded DBSCAN). [`dbscan`] is kept for reference and tests.
 //! - [`GroupMode::VisitGeo`] splits each time visit by place with a time-ordered pass.
 //!
 //! Items without a location borrow a place hint from a located item taken within
@@ -27,12 +28,6 @@ pub const PLACE_CHANGE_MIN: i64 = 30;
 /// `visit-geo` cross-day join: adjacent visits at the same place closer than this.
 pub const JOIN_GAP_HOURS: f64 = 36.0;
 pub const DEFAULT_MIN_PLACE_ITEMS: usize = 3;
-/// `geo`: places with the same town name whose centres are this close are one place (M3: the
-/// 1 km radius split towns into several places). Fixed, not scaled with the radius.
-pub const TOWN_MERGE_KM: f64 = 5.0;
-/// `geo`: loose photos (DBSCAN noise) in one town form a place only when each is within this
-/// many radii of another (M3: grouping noise by town name alone chained points 19 km apart).
-pub const TOWN_NOISE_RADII: f64 = 2.0;
 /// `parentVisitId` of the date-based sets of items without a location in `geo` mode.
 pub const NO_LOCATION_ID: &str = "no-location";
 /// ID of the `geo` group of located items that belong to no place.
@@ -321,191 +316,130 @@ fn attach_undated(parts: &mut [Vec<MediaItem>], undated: Vec<MediaItem>) {
     }
 }
 
-fn group_geo(items: &[MediaItem], s: &GroupSettings, namer: &dyn PlaceNamer) -> Vec<VisitGroup> {
+/// (name, admin1, country) of a place: equal keys share a `geo` group.
+type PlaceKey = (String, String, String);
+
+/// The key of a named place. Two towns with one name in different states or countries stay apart.
+fn place_key(p: &Place) -> PlaceKey {
+    (p.name.clone(), p.admin1.clone(), p.country.clone())
+}
+
+/// A stable group ID from a place key: `g-walla-walla-washington-us`.
+fn place_id(k: &(String, String, String)) -> String {
+    let mut id = String::from("g");
+    for part in [&k.0, &k.1, &k.2] {
+        let mut slug = String::new();
+        for c in part.chars().flat_map(char::to_lowercase) {
+            if c.is_alphanumeric() {
+                slug.push(c);
+            } else if !slug.ends_with('-') {
+                slug.push('-');
+            }
+        }
+        let slug = slug.trim_matches('-');
+        if !slug.is_empty() {
+            id.push('-');
+            id.push_str(slug);
+        }
+    }
+    id
+}
+
+/// `geo` (Rob, 25 Oct 2026, supersedes DBSCAN): one group per reverse-geocoded place name, no
+/// matter the date, no trips, no distance clustering. Items without a name (more than 100 km
+/// from any town) go to "Other places"; items without a location (after the neighbour hint)
+/// go to one "No location" group. Items in a group are in time order; places newest first.
+fn group_geo(items: &[MediaItem], _s: &GroupSettings, namer: &dyn PlaceNamer) -> Vec<VisitGroup> {
     let mut sorted: Vec<MediaItem> = items.to_vec();
     sorted.sort_by(by_time);
     let eff = effective_locations(&sorted);
-    let mut located: Vec<(MediaItem, (f64, f64))> = vec![];
-    let mut unlocated: Vec<MediaItem> = vec![];
+    let mut places: BTreeMap<(String, String, String), (Place, Vec<MediaItem>)> = BTreeMap::new();
+    let mut other = vec![];
+    let mut unlocated = vec![];
     for (i, e) in sorted.into_iter().zip(eff) {
-        match e {
-            Some(p) => located.push((i, p)),
+        match e.map(|p| namer.place(p.0, p.1)) {
+            Some(Some(pl)) => places
+                .entry(place_key(&pl))
+                .or_insert_with(|| (pl, vec![]))
+                .1
+                .push(i),
+            Some(None) => other.push(i),
             None => unlocated.push(i),
         }
     }
-    let pts: Vec<(f64, f64)> = located.iter().map(|(_, p)| *p).collect();
-    let labels = dbscan(&pts, s.radius_km, s.min_items.max(1));
-
-    // Clusters, then noise grouped by town (2+ items) or "Other places".
-    let mut clusters: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-    let mut noise = vec![];
-    for (k, l) in labels.iter().enumerate() {
-        match l {
-            Some(c) => clusters.entry(*c).or_default().push(k),
-            None => noise.push(k),
-        }
+    // Labels shared by two keys ("Springfield, PT" twice) get the region too.
+    let mut label_count: HashMap<String, usize> = HashMap::new();
+    for (pl, _) in places.values() {
+        *label_count.entry(pl.label()).or_default() += 1;
     }
-    let mut places: Vec<Vec<usize>> = clusters.into_values().collect();
-    let mut towns: BTreeMap<String, Vec<usize>> = BTreeMap::new();
-    let mut other = vec![];
-    for k in noise {
-        match namer.place(pts[k].0, pts[k].1) {
-            Some(p) => towns.entry(p.label()).or_default().push(k),
-            None => other.push(k),
-        }
-    }
-    // Loose photos in one town: only those close to each other (single link) form a place.
-    for (_, v) in towns {
-        let town_pts: Vec<(f64, f64)> = v.iter().map(|&k| pts[k]).collect();
-        let mut by_cluster: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
-        for (j, l) in dbscan(&town_pts, s.radius_km * TOWN_NOISE_RADII, 2)
-            .into_iter()
-            .enumerate()
-        {
-            match l {
-                Some(c) => by_cluster.entry(c).or_default().push(v[j]),
-                None => other.push(v[j]),
-            }
-        }
-        places.extend(by_cluster.into_values());
-    }
-    merge_same_town(&mut places, &pts, namer);
-
-    struct PlaceOut {
-        newest: Timestamp,
-        groups: Vec<VisitGroup>,
-    }
-    let mut outs: Vec<PlaceOut> = vec![];
-    let mut used_ids: HashMap<String, usize> = HashMap::new();
-    for members in places {
-        let c = centroid(&members.iter().map(|&k| pts[k]).collect::<Vec<_>>()).unwrap();
-        let place = namer.place(c.0, c.1).map(|mut p| {
-            p.lat = (c.0 * 1e5).round() / 1e5;
-            p.lon = (c.1 * 1e5).round() / 1e5;
-            p
-        });
-        let parent = format!("g-{}", geohash(c.0, c.1, 7));
-        let (dated, undated): (Vec<MediaItem>, Vec<MediaItem>) = members
-            .iter()
-            .map(|&k| located[k].0.clone())
-            .partition(|i| !i.is_undated);
-        let mut parts = if dated.is_empty() {
-            vec![vec![]]
-        } else {
-            group::cluster(&dated, s.gap_hours)
-        };
-        attach_undated(&mut parts, undated);
-        let newest = dated
-            .iter()
-            .map(|i| i.taken_at)
-            .max()
-            .unwrap_or_else(crate::time::distant_past);
-        let mut groups = vec![];
-        for mut part in parts {
-            let day = part
+    let mut named: Vec<(Option<Timestamp>, VisitGroup)> = places
+        .into_iter()
+        .map(|(k, (pl, mut members))| {
+            let newest = members
                 .iter()
                 .filter(|i| !i.is_undated)
                 .map(|i| i.taken_at)
-                .min()
-                .map(|t| t.format("%Y%m%d").to_string())
-                .unwrap_or_else(|| "undated".into());
-            let mut id = format!("{parent}-{day}");
-            let n = used_ids.entry(id.clone()).or_default();
-            *n += 1;
-            if *n > 1 {
-                id = format!("{id}-{n}");
+                .max();
+            let mut g = place_group(place_id(&k), &mut members, Some(pl.clone()), None);
+            if label_count[&pl.label()] > 1 {
+                let label = format!("{}, {}, {}", pl.name, pl.admin1, pl.country);
+                g.title = if members.iter().any(|i| !i.is_undated) {
+                    title_for(&label, &g.start_date, &g.end_date)
+                } else {
+                    label
+                };
             }
-            groups.push(place_group(
-                id,
-                &mut part,
-                place.clone(),
-                Some(parent.clone()),
-            ));
-        }
-        outs.push(PlaceOut { newest, groups });
-    }
-    // Places newest first (ties by ID for stability); trips oldest first inside a place.
-    outs.sort_by(|a, b| {
-        b.newest
-            .cmp(&a.newest)
-            .then_with(|| a.groups[0].id.cmp(&b.groups[0].id))
-    });
-    let mut result: Vec<VisitGroup> = outs.into_iter().flat_map(|p| p.groups).collect();
+            (newest, g)
+        })
+        .collect();
+    // Newest place first (ties by ID for stability).
+    named.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.id.cmp(&b.1.id)));
+    let mut result: Vec<VisitGroup> = named.into_iter().map(|(_, g)| g).collect();
     if !other.is_empty() {
-        let mut m: Vec<MediaItem> = other.iter().map(|&k| located[k].0.clone()).collect();
-        let mut g = place_group(OTHER_PLACES_ID.into(), &mut m, None, None);
+        let mut g = place_group(OTHER_PLACES_ID.into(), &mut other, None, None);
         g.title = "Other places".into();
         result.push(g);
     }
-    for mut g in group::group(&unlocated, s.gap_hours) {
-        g.parent_visit_id = Some(NO_LOCATION_ID.into());
+    if !unlocated.is_empty() {
+        let mut g = place_group(NO_LOCATION_ID.into(), &mut unlocated, None, None);
+        g.title = "No location".into();
         result.push(g);
     }
     result
-}
-
-/// Merges places with the same town name whose centres are within [`TOWN_MERGE_KM`].
-fn merge_same_town(places: &mut Vec<Vec<usize>>, pts: &[(f64, f64)], namer: &dyn PlaceNamer) {
-    let centre = |v: &[usize]| centroid(&v.iter().map(|&k| pts[k]).collect::<Vec<_>>()).unwrap();
-    let label = |v: &[usize]| {
-        let c = centre(v);
-        namer.place(c.0, c.1).map(|p| p.label())
-    };
-    loop {
-        let labels: Vec<Option<String>> = places.iter().map(|v| label(v)).collect();
-        let mut best: Option<(f64, usize, usize)> = None;
-        for a in 0..places.len() {
-            for b in a + 1..places.len() {
-                if labels[a].is_none() || labels[a] != labels[b] {
-                    continue;
-                }
-                let d = haversine_km(centre(&places[a]), centre(&places[b]));
-                if d <= TOWN_MERGE_KM && best.is_none_or(|(bd, _, _)| d < bd) {
-                    best = Some((d, a, b));
-                }
-            }
-        }
-        let Some((_, a, b)) = best else { break };
-        let mut moved = places.remove(b);
-        places[a].append(&mut moved);
-        places[a].sort_unstable();
-    }
 }
 
 /// `visit-geo`: a detour with this many items that never returns to the current place is a
 /// place of its own, even when it is shorter than `min_items` items or [`PLACE_CHANGE_MIN`].
 pub const MOVE_ON_ITEMS: usize = 2;
 
-/// `visit-geo` split of one visit's dated, located members (time order): indices into `pts`
-/// per place. A change of place needs `min_items` items or [`PLACE_CHANGE_MIN`] minutes far from
-/// the current place; shorter detours (stray fixes) stay in the current place.
-fn split_by_place(
-    pts: &[(Timestamp, (f64, f64))],
-    radius_km: f64,
-    min_items: usize,
-) -> Vec<Vec<usize>> {
+/// `visit-geo` split of one visit's dated, located members (time order) by place name (M3b,
+/// same names as `geo`): indices per place. A change of place needs `min_items` items or
+/// [`PLACE_CHANGE_MIN`] minutes at another name; shorter detours (stray fixes) stay in the
+/// current place, unless [`MOVE_ON_ITEMS`] of them move on and never come back. Parts with the
+/// same name merge (left and came back).
+fn split_by_place<K: PartialEq>(pts: &[(Timestamp, K)], min_items: usize) -> Vec<Vec<usize>> {
     let mut parts: Vec<Vec<usize>> = vec![];
     let mut cur: Vec<usize> = vec![];
     let mut pending: Vec<usize> = vec![];
-    let centre = |v: &[usize]| centroid(&v.iter().map(|&k| pts[k].1).collect::<Vec<_>>());
     let change = chrono::Duration::minutes(PLACE_CHANGE_MIN);
     for k in 0..pts.len() {
-        let near_cur = centre(&cur).is_none_or(|c| haversine_km(c, pts[k].1) <= radius_km);
-        if near_cur {
+        if cur.first().is_none_or(|&c| pts[c].1 == pts[k].1) {
             cur.append(&mut pending);
             cur.push(k);
             continue;
         }
-        if let Some(pc) = centre(&pending) {
-            if haversine_km(pc, pts[k].1) > radius_km {
-                if pending.len() >= MOVE_ON_ITEMS {
-                    // Moved on without coming back: the detour was a place of its own (M3).
-                    parts.push(std::mem::take(&mut cur));
-                    cur = std::mem::take(&mut pending);
-                } else {
-                    // A different detour: the earlier one was a stray.
-                    cur.append(&mut pending);
+        if pending.first().is_some_and(|&p| pts[p].1 != pts[k].1) {
+            if pending.len() >= MOVE_ON_ITEMS {
+                // Moved on without coming back: the detour was a place of its own.
+                parts.push(std::mem::take(&mut cur));
+                cur = std::mem::take(&mut pending);
+                if pts[cur[0]].1 == pts[k].1 {
+                    cur.push(k);
+                    continue;
                 }
+            } else {
+                // A different detour: the earlier one was a stray.
+                cur.append(&mut pending);
             }
         }
         pending.push(k);
@@ -515,8 +449,7 @@ fn split_by_place(
             cur = std::mem::take(&mut pending);
         }
     }
-    // The visit ended away from the current place: 2+ items there are a place of their own
-    // (M3; before, they were treated as strays and the visit was not split).
+    // The visit ended at another place: 2+ items there are a place of their own.
     if pending.len() >= MOVE_ON_ITEMS && !cur.is_empty() {
         parts.push(std::mem::take(&mut cur));
     }
@@ -524,30 +457,19 @@ fn split_by_place(
     if !cur.is_empty() {
         parts.push(cur);
     }
-    for p in &mut parts {
+    // Merge parts with the same place (left and came back); a part's place is its first item's.
+    let mut merged: Vec<Vec<usize>> = vec![];
+    for p in parts {
+        match merged.iter_mut().find(|m| pts[m[0]].1 == pts[p[0]].1) {
+            Some(m) => m.extend(p),
+            None => merged.push(p),
+        }
+    }
+    for p in &mut merged {
         p.sort_unstable();
     }
-    // Merge places whose centres are within the radius (left and came back).
-    loop {
-        let mut merged = false;
-        'outer: for a in 0..parts.len() {
-            for b in a + 1..parts.len() {
-                let (ca, cb) = (centre(&parts[a]).unwrap(), centre(&parts[b]).unwrap());
-                if haversine_km(ca, cb) <= radius_km {
-                    let mut moved = parts.remove(b);
-                    parts[a].append(&mut moved);
-                    parts[a].sort_unstable();
-                    merged = true;
-                    break 'outer;
-                }
-            }
-        }
-        if !merged {
-            break;
-        }
-    }
-    parts.sort_by_key(|p| p[0]);
-    parts
+    merged.sort_by_key(|p| p[0]);
+    merged
 }
 
 fn group_visit_geo(
@@ -577,6 +499,11 @@ fn group_visit_geo(
         )
     };
 
+    // One geocoder lookup per located item; the same names as `geo` (M3b).
+    let names: HashMap<String, Option<Place>> = eff
+        .iter()
+        .map(|(path, p)| (path.clone(), namer.place(p.0, p.1)))
+        .collect();
     let mut visits = group::group(items, s.gap_hours);
     if s.join_same_place {
         visits = join_same_place(visits, &members_of, &visit_centre, s.radius_km);
@@ -592,9 +519,16 @@ fn group_visit_geo(
         members.sort_by(by_time);
         let (dated, undated): (Vec<MediaItem>, Vec<MediaItem>) =
             members.into_iter().partition(|i| !i.is_undated);
-        let located: Vec<(Timestamp, (f64, f64))> = dated
+        let located: Vec<(Timestamp, Option<PlaceKey>)> = dated
             .iter()
-            .filter_map(|i| eff.get(&i.path).map(|p| (i.taken_at, *p)))
+            .filter_map(|i| {
+                eff.get(&i.path).map(|_| {
+                    (
+                        i.taken_at,
+                        names.get(&i.path).and_then(|n| n.as_ref().map(place_key)),
+                    )
+                })
+            })
             .collect();
         if located.is_empty() {
             result.push(v);
@@ -602,7 +536,7 @@ fn group_visit_geo(
         }
         let located_items: Vec<&MediaItem> =
             dated.iter().filter(|i| eff.contains_key(&i.path)).collect();
-        let split = split_by_place(&located, s.radius_km, s.min_items.max(1));
+        let split = split_by_place(&located, s.min_items.max(1));
         let mut parts: Vec<Vec<MediaItem>> = split
             .iter()
             .map(|p| p.iter().map(|&k| located_items[k].clone()).collect())
@@ -626,14 +560,26 @@ fn group_visit_geo(
             parts[best].push(i.clone());
         }
         attach_undated(&mut parts, undated);
-        let name = |p: &[MediaItem]| {
-            visit_centre(p).and_then(|c| {
-                namer.place(c.0, c.1).map(|mut pl| {
-                    pl.lat = (c.0 * 1e5).round() / 1e5;
-                    pl.lon = (c.1 * 1e5).round() / 1e5;
-                    pl
-                })
-            })
+        // A part's place: the most common name among its members (ties: the earliest).
+        let name = |p: &[MediaItem]| -> Option<Place> {
+            let mut counts: Vec<(Place, usize)> = vec![];
+            for pl in p
+                .iter()
+                .filter_map(|i| names.get(&i.path).cloned().flatten())
+            {
+                match counts
+                    .iter_mut()
+                    .find(|(c, _)| place_key(c) == place_key(&pl))
+                {
+                    Some((_, n)) => *n += 1,
+                    None => counts.push((pl, 1)),
+                }
+            }
+            let best = counts.iter().map(|(_, n)| *n).max()?;
+            counts
+                .into_iter()
+                .find(|(_, n)| *n == best)
+                .map(|(pl, _)| pl)
         };
         if parts.len() == 1 {
             let mut g = v.clone();

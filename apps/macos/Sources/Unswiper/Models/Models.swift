@@ -48,7 +48,7 @@ enum DateSource: String, Codable, Hashable {
 enum GroupMode: String, Codable, CaseIterable, Identifiable {
     /// Time-gap visits exactly as in v0.5 (default).
     case visit
-    /// Places regardless of time, each split into trips.
+    /// One group per place name, regardless of time.
     case geo
     /// Each visit split by place.
     case visitGeo = "visit-geo"
