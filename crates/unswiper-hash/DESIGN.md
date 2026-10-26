@@ -1,6 +1,6 @@
 # unswiper-hash: design (draft, 26 Oct 2026)
 
-Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](../../docs/linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The numbered **open choices** for Rob are in §12.
+Status: **approved design (Rob, 26 Oct 2026): all open choices 1–11 decided as recommended (§12). Not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](../../docs/linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4.5–5.5 days (M1–M4, including logging, §15); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The decisions are in §12.
 
 ## 1. Goals and non-goals
 
@@ -25,7 +25,7 @@ Status: **design for review, not scheduled, nothing built.** It implements the a
 
 ## 3. CLI
 
-`unswiper-hash <command> [options]`. Every command takes `--store <file>` (default: §5), `--json` (machine-readable output on stdout, progress on stderr) and `-q/--quiet`.
+`unswiper-hash <command> [options]`. Every command takes `--store <file>` (default: §5), `--json` (machine-readable output on stdout; progress and log messages on stderr) and the logging options below (§15).
 
 | Command | What it does |
 |---|---|
@@ -40,6 +40,8 @@ Status: **design for review, not scheduled, nothing built.** It implements the a
 
 Common options: `--jobs N` (default `min(4, cores)`; use 1 for spinning disks), `--exclude <glob>` (repeatable), `--include-hidden`, `--no-follow-symlinks` (default; symlinks are not followed), `--low-priority` (nice/ionice on Linux, `taskpolicy -b` style background QoS on the Mac), `--limit-mb-s N` for throttling.
 
+Logging options (all commands, §15): `--log-file PATH`, `--log-level error|warn|info|debug|trace`, `--log-max-size SIZE`, `--log-keep N`, `-v`/`-vv` (one or two levels more), `-q` (errors only); env `UNSWIPER_HASH_LOG`.
+
 Exit codes: 0 all good; 1 differences found that need attention (`damaged?` files, or diff not equal); 2 usage error; 3 I/O or store error. `edited`, `new`, `moved` alone exit 0.
 
 ## 4. Hash algorithm
@@ -52,7 +54,7 @@ Exit codes: 0 all good; 1 differences found that need attention (`damaged?` file
 | Verify without our tool | `b3sum` (separate install) | `xxhsum` (separate install) | Built in: `sha256sum`, `shasum -a 256`, `Get-FileHash` |
 | Rust crate, licence | `blake3` 1.8, CC0-1.0 / Apache-2.0 | `xxhash-rust`, BSL-1.0 | `sha2` 0.11, MIT / Apache-2.0 |
 
-**Recommendation: BLAKE3 stored, SHA-256 on export only.** Reading a photo library is limited by the disk (100–500 MB/s for HDDs, NAS and USB; a few GB/s for NVMe), so xxh3's extra CPU speed buys almost nothing. Its weaker guarantee does matter here, though: content identity across machines and backups (moves, duplicates, diff) should not be fooled by crafted or unlucky collisions. BLAKE3 is as fast as the disk, pure Rust, and has a clear licence. SHA-256 stays available for archives that must be checkable with built-in OS tools. Every stored hash is tagged (`"b3:<64 hex>"`), so a later switch keeps old entries readable.
+**Decision (Rob, 26 Oct 2026): BLAKE3 stored, SHA-256 on export only.** Reading a photo library is limited by the disk (100–500 MB/s for HDDs, NAS and USB; a few GB/s for NVMe), so xxh3's extra CPU speed buys almost nothing. Its weaker guarantee does matter here, though: content identity across machines and backups (moves, duplicates, diff) should not be fooled by crafted or unlucky collisions. BLAKE3 is as fast as the disk, pure Rust, and has a clear licence. SHA-256 stays available for archives that must be checkable with built-in OS tools. Every stored hash is tagged (`"b3:<64 hex>"`), so a later switch keeps old entries readable.
 
 Whole-file bytes are hashed: an edit to EXIF metadata counts as a change. An optional second, **content-only** fingerprint that ignores metadata is proposed in §14 (open choice 11).
 
@@ -135,25 +137,25 @@ Packaging: added to the AppImage and Flatpak as `unswiper-hash` (next to `unswip
 - CLI: golden `--json` outputs and exit codes.
 - CI: Linux (x86_64, aarch64) and macOS jobs, `cargo +1.92` MSRV job; a timed scan of ~10k small synthetic files as a smoke benchmark.
 
-## 12. Open choices for Rob (with recommendations)
+## 12. Decisions (were open choices; all decided by Rob, 26 Oct 2026, as recommended)
 
-1. **Algorithm.** BLAKE3 stored with SHA-256 on export, BLAKE3 only, SHA-256 only, or xxh3. *Recommend: BLAKE3 stored, SHA-256 export on request* (§4).
-2. **Store format.** SQLite (bundled) or a single JSON file. *Recommend: SQLite.* It's crash-safe and resumable and scales to large libraries; the cost is one C dependency.
-3. **Store location.** Per-user app-data folder (§5), or a store next to the library on the same disk (not inside the photo folders), so it travels with an external drive. *Recommend: app-data folder by default, `--store` for drives and NAS.*
-4. **Which files.** Media files only (same list as Unswiper), or every file under the root (sidecars, `.AAE`, XMP, Takeout JSON). *Recommend: media + known sidecars (`.AAE`, `.XMP`, `.json` from Takeout), behind `--all-files` for everything.*
-5. **Verify scheduling.** On request only, or a ready-made weekly timer (launchd plist / systemd timer printed by `unswiper-hash schedule --print`, never installed silently). *Recommend: on request; ship the `--print` helper in M4.*
-6. **App integration (M5).** None, read-only (badge + carry decisions across moves), or read-only plus a `contentHash` field in library.json. *Recommend: read-only, no library.json field, after v0.6 ships; decide when scheduled.*
-7. **Carry-over on moves (if M5).** Automatic or ask. *Recommend: automatic when exactly one missing file matches, ask when ambiguous.*
-8. **Where it ships.** Inside each release (AppImage, Flatpak, dmg) or as separate downloads / `cargo install`. *Recommend: inside the release bundles plus `cargo install --path crates/unswiper-hash`.*
-9. **Release timing.** With v0.6, v0.7, or on its own tag. *Recommend: after v0.6 is released, as part of v0.7, before the Windows port.*
-10. **`damaged?` handling.** Report only, or also write a list for restore from backup (`--out damaged.txt`). *Recommend: report plus optional list; never touch the file.*
-11. **Content-only fingerprint (§14).** Full-file hash only; full-file plus a container-data content hash (JPEG, PNG, HEIC/AVIF, MP4/MOV), with "metadata changed only" vs "image changed" reports and move matching on content; or plus a decoded-pixel hash. *Recommend: full-file plus container-data content hash (M2b, +1.5–2 days), plus rotation detection (§14.5, M2c, +1.5–2 days; approved by Rob 26 Oct 2026). Pixels are decoded only when the content hash changes.*
+1. **Algorithm.** BLAKE3 stored with SHA-256 on export, BLAKE3 only, SHA-256 only, or xxh3. **Decided (Rob, 26 Oct 2026):** BLAKE3 stored, SHA-256 export on request (§4).
+2. **Store format.** SQLite (bundled) or a single JSON file. **Decided (Rob, 26 Oct 2026):** SQLite. It's crash-safe and resumable and scales to large libraries; the cost is one C dependency.
+3. **Store location.** Per-user app-data folder (§5), or a store next to the library on the same disk (not inside the photo folders), so it travels with an external drive. **Decided (Rob, 26 Oct 2026):** app-data folder by default, `--store` for drives and NAS.
+4. **Which files.** Media files only (same list as Unswiper), or every file under the root (sidecars, `.AAE`, XMP, Takeout JSON). **Decided (Rob, 26 Oct 2026):** media + known sidecars (`.AAE`, `.XMP`, `.json` from Takeout), behind `--all-files` for everything.
+5. **Verify scheduling.** On request only, or a ready-made weekly timer (launchd plist / systemd timer printed by `unswiper-hash schedule --print`, never installed silently). **Decided (Rob, 26 Oct 2026):** on request; ship the `--print` helper in M4.
+6. **App integration (M5).** None, read-only (badge + carry decisions across moves), or read-only plus a `contentHash` field in library.json. **Decided (Rob, 26 Oct 2026):** read-only, no library.json field, after v0.6 ships; decide when scheduled.
+7. **Carry-over on moves (if M5).** Automatic or ask. **Decided (Rob, 26 Oct 2026):** automatic when exactly one missing file matches, ask when ambiguous.
+8. **Where it ships.** Inside each release (AppImage, Flatpak, dmg) or as separate downloads / `cargo install`. **Decided (Rob, 26 Oct 2026):** inside the release bundles plus `cargo install --path crates/unswiper-hash`.
+9. **Release timing.** With v0.6, v0.7, or on its own tag. **Decided (Rob, 26 Oct 2026):** after v0.6 is released, as part of v0.7, before the Windows port.
+10. **`damaged?` handling.** Report only, or also write a list for restore from backup (`--out damaged.txt`). **Decided (Rob, 26 Oct 2026):** report plus optional list; never touch the file.
+11. **Content-only fingerprint (§14).** Full-file hash only; full-file plus a container-data content hash (JPEG, PNG, HEIC/AVIF, MP4/MOV), with "metadata changed only" vs "image changed" reports and move matching on content; or plus a decoded-pixel hash. **Decided (Rob, 26 Oct 2026):** full-file plus container-data content hash (M2b, +1.5–2 days), plus rotation detection (§14.5, M2c, +1.5–2 days; approved by Rob 26 Oct 2026). Pixels are decoded only when the content hash changes.
 
-## 13. Milestones (4–5 days; 7–9 with M2b and M2c)
+## 13. Milestones (4.5–5.5 days; 7.5–9.5 with M2b and M2c)
 
 | Milestone | Scope | Estimate |
 |---|---|---|
-| **M1** Store and scan | Crate, SQLite schema v1, walk + incremental BLAKE3 scan, `status`, `--json`, exit codes, store locations, unit tests | 1.5 days |
+| **M1** Store and scan | Crate, SQLite schema v1, walk + incremental BLAKE3 scan, `status`, `--json`, exit codes, store locations, logging (§15), unit tests | 2 days |
 | **M2** Verify, moves, duplicates | `verify` (resumable, low priority, throttle), `damaged?`, move and rename matching, `moves`, `dups`, `forget`/`gc`, integration tests | 1–1.5 days |
 | **M2b** Content-only fingerprint (open choice 11) | Content hash for JPEG, PNG, HEIC/AVIF and MP4/MOV, "metadata changed only" and "image changed" reports, move matching on content, tests against exiftool and ffmpeg | 1.5–2 days |
 | **M2c** Rotation detection (§14.5) | Rotation fingerprint at scan time (JPEG, PNG; HEIC with the optional `heif` feature), the 8-orientation matcher with edge tolerance, "rotated" and "rotated (approx)" reports, tests with jpegtran on MCU-aligned and non-aligned files | 1.5–2 days |
@@ -161,7 +163,7 @@ Packaging: added to the AppImage and Flatpak as `unswiper-hash` (next to `unswip
 | **M4** Ship | AppImage, Flatpak (cargo-sources), dmg; THIRD_PARTY_NOTICES; README, help page and man-style `--help`; CI jobs incl. MSRV; `schedule --print` | 0.5–1 day |
 | **M5** (optional, later) App integration | Read-only store access, move carry-over, "possibly damaged" badge, "Verify Library…" | 2 days |
 
-## 14. Content-only fingerprint (proposal, 26 Oct 2026)
+## 14. Content-only fingerprint (approved by Rob, 26 Oct 2026)
 
 Rob asked (26 Oct 2026) whether the image can be checked separately from its EXIF data: some tools (he recalls a Windows app) rewrite EXIF when they rename a file or change its date. Then the full-file hash changes although the picture did not, and `verify` can't tell "metadata changed" from "image changed".
 
@@ -274,4 +276,91 @@ The old file is not needed later. Only the new file is decoded.
 | red square drawn, then rotated 90 | image changed (max diff 168) |
 
 6000×4000 JPEG: storing the fingerprint took 0.32 s and checking a 90° rotation 1.07 s (Python prototype).
+
+## 15. Logging (Rob, 26 Oct 2026)
+
+unswiper-hash mostly runs unattended (cron, systemd timers, launchd), so it needs a log file and Python-like log levels, while stdout stays clean for results.
+
+### 15.1 stdout and stderr
+- **stdout carries only results**: the human-readable report, or the `--json` document. Nothing else is ever printed there, so `unswiper-hash scan ~/Pictures --json > report.json` and pipes into `jq` always work.
+- **stderr carries log messages** (and the progress line when stderr is a terminal; it's never printed when not a terminal). cron mails whatever reaches stdout and stderr, so a quiet run (`-q`, or the default `warn`) mails nothing unless something needs attention. systemd's journal and launchd's `StandardErrorPath` capture stderr as they are.
+- Exit codes (§3) are the primary signal for scripts; logs are for people.
+
+### 15.2 Levels and options
+| Option | Meaning |
+|---|---|
+| `--log-level LEVEL` | `error`, `warn`, `info`, `debug`, `trace` (Python's names, `warning` and `critical` accepted as aliases for `warn` and `error`). Default: **`warn` on stderr**; **`info` in the log file** when `--log-file` is given. |
+| `-v` / `-vv` | One or two levels more on stderr (`info`, `debug`). `-q`: errors only. |
+| `--log-file PATH` | Also write log lines to PATH (append, created with mode 0600). stderr keeps its own level, so `--log-file x -q` gives a quiet cron mail and a full file. |
+| `--log-max-size SIZE`, `--log-keep N` | Optional size rotation: when the file is over SIZE (e.g. `10M`) at the start of a run, rename it to `PATH.1` (… `PATH.N`, default N = 5) under the lock. Off by default; logrotate (Linux) or newsyslog (Mac) work too, as the file is opened per run and never kept open between runs. |
+| `UNSWIPER_HASH_LOG` | Same syntax as `RUST_LOG`: a level (`info`) or per-target levels (`warn,unswiper_hash::verify=debug`). Command-line options win. |
+
+Order of precedence: command line, then `UNSWIPER_HASH_LOG`, then the defaults.
+
+### 15.3 Log file format
+One line per message, UTF-8:
+
+```
+2026-10-26T14:10:03.512-07:00 INFO  unswiper_hash::scan  root=Pictures scanned=48211 new=37 edited=2 moved=5 missing=0 damaged=0
+2026-10-26T14:10:03.513-07:00 WARN  unswiper_hash::verify possibly damaged: 2019/IMG_1234.JPG (size and mtime unchanged, content hash differs)
+2026-10-26T14:10:03.520-07:00 INFO  unswiper_hash  run finished: command=verify files=48211 read=48211 GB=212.4 seconds=1830 findings=1 exit=1
+```
+- Timestamp: RFC 3339 in **local time with the offset** (millisecond precision), then the level, the target (module), and the message. `key=value` fields where useful for grep.
+- **Concurrent runs:** the file is opened with `O_APPEND` (each line one `write`, so lines never interleave mid-line), and the store lock (one writer per store) already serialises scans. Rotation takes an advisory file lock (`PATH.lock`) so two runs never rotate at once.
+- Every run starts with a `run started` line at `info` (version, command, root label, store, levels) and **ends with a summary line** at `info`: command, counts (files seen, read, new, edited, moved, missing, metadata-only, rotated, possibly damaged), bytes read, duration and the exit code. The summary is also logged when the run fails or is interrupted (SIGINT/SIGTERM: "interrupted, resumable").
+
+### 15.4 What is logged (privacy)
+- **Never file contents**, hash values only at `debug`, and no EXIF values (dates, GPS) at any level.
+- **Paths:** root-relative paths (never absolute, so no home folder name) of **findings** are logged at their level: possibly damaged (`warn`), edited, moved, rotated, metadata only and missing (`info`). They are needed to act on a finding, and they are the same paths the report prints. Per-file progress ("hashing X") is `debug`, open and skip details `trace`. `--log-redact-paths` replaces paths with their position in the report for logs that will be shared. Log files are created 0600 and live where the user points them; the docs note that a log holds file names.
+- I/O errors (`warn`, path included) do not stop a scan; store errors (`error`) do.
+
+### 15.5 Crates
+- **Decided:** the **`log`** facade (0.4.34, MIT/Apache-2.0, MSRV 1.71) with a small own logger in `src/logging.rs` (~150 lines): level filters per sink, the RFC 3339 local timestamp via the existing `chrono`, `O_APPEND` writes, size rotation, the `RUST_LOG`-style env parser. `env_logger` 0.11 (MIT/Apache-2.0) is used only for its filter syntax if that's simpler. The advisory lock uses `fs4` 1.1 (MIT/Apache-2.0, MSRV 1.75).
+- **Not chosen:** `tracing` 0.1.44, `tracing-subscriber` 0.3.23 and `tracing-appender` 0.2.5 (MIT). They're excellent for async services and spans, but heavier than a batch CLI needs, and the appender rotates by time, not size.
+- All of these were checked with `cargo +1.92 check` on 26 Oct 2026 and added to THIRD_PARTY_NOTICES.
+
+### 15.6 Scheduling examples
+`schedule --print` (decision 5) prints these, filled in; it never installs them.
+
+cron (Linux or Mac), weekly verify on Sunday at 03:00, mail only on problems:
+```
+0 3 * * 0  /usr/local/bin/unswiper-hash verify "$HOME/Pictures" -q --log-file "$HOME/.local/state/unswiper/hash.log" --log-max-size 10M
+```
+
+systemd user timer (`~/.config/systemd/user/unswiper-hash-verify.service` and `.timer`):
+```
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=idle
+ExecStart=%h/.local/bin/unswiper-hash verify %h/Pictures --log-level info
+# stderr goes to the journal: journalctl --user -u unswiper-hash-verify
+
+[Timer]
+OnCalendar=Sun 03:00
+Persistent=true
+[Install]
+WantedBy=timers.target
+```
+
+launchd (`~/Library/LaunchAgents/io.github.rranslam.unswiper-hash.verify.plist`):
+```
+<key>ProgramArguments</key>
+<array><string>/Applications/Unswiper.app/Contents/MacOS/unswiper-hash</string><string>verify</string>
+  <string>/Users/rob/Pictures</string><string>--log-file</string><string>/Users/rob/Library/Logs/Unswiper/hash.log</string></array>
+<key>StartCalendarInterval</key><dict><key>Weekday</key><integer>0</integer><key>Hour</key><integer>3</integer></dict>
+<key>ProcessType</key><string>Background</string>
+<key>StandardErrorPath</key><string>/Users/rob/Library/Logs/Unswiper/hash.err</string>
+```
+Default log locations when `--log-file` is given without a folder: none; the user always names the file. The docs suggest `~/.local/state/unswiper/` (Linux, XDG state) and `~/Library/Logs/Unswiper/` (Mac, visible in Console.app).
+
+### 15.7 Tests
+- stdout carries only the report or JSON at every level (`-vv` included). stderr carries only log lines. Tested by capturing both streams.
+- Level parsing (names, Python aliases, `-v`/`-vv`/`-q`, env syntax, precedence); invalid levels give exit 2.
+- File format: an RFC 3339 timestamp with offset (parsed back), level and target on every line; appending across runs; mode 0600.
+- Concurrency: two processes logging to one file give whole lines only; rotation under the lock with `--log-keep`.
+- The summary line on success, on findings (exit 1), on an error (exit 3) and on SIGTERM.
+- Privacy: no absolute paths at `info`; no hashes below `debug`; `--log-redact-paths`.
+
+**Effort:** +0.5 day, in **M1** (logger, options, summary line, tests). The schedule examples ship with `schedule --print` in M4.
 

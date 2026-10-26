@@ -562,8 +562,8 @@ Don't build it into v0.4. If wanted later: a **separate hash store in the suppor
 - **Approved design:** a separate **`unswiper-hash`** CLI with **its own hash store**, so hashing stays a separate concern from reviewing: library.json keeps decisions, the hash store keeps hashes, and the review apps never write hashes. The app may later read the store (move/rename carry-over, a "possibly damaged" badge), as in §18.8.
 - **Schedule:** not scheduled; after v0.4. The open questions in §18.7 (BLAKE3 vs SHA-256, support-folder store vs hashes travelling with the photos, automatic vs asked carry-over on moves, verify on request vs scheduled) are decided when it is scheduled.
 
-### 18.10 Design draft (26 Oct 2026)
-The full design of `unswiper-hash` (CLI, BLAKE3, SQLite store, moves, cross-machine manifests, crate layout, milestones M1–M5 and the open choices for Rob) is in [`crates/unswiper-hash/DESIGN.md`](../crates/unswiper-hash/DESIGN.md). Not scheduled.
+### 18.10 Design (approved by Rob, 26 Oct 2026)
+The full design of `unswiper-hash` is in [`crates/unswiper-hash/DESIGN.md`](../crates/unswiper-hash/DESIGN.md): CLI, BLAKE3, SQLite store, moves, cross-machine manifests, content-only fingerprint, rotation detection, logging, crate layout and milestones M1–M5. Rob approved it and decided all its open choices on 26 Oct 2026. Not scheduled; planned for v0.7.
 
 ## 19. Google Photos source: Google Takeout import (plan 15 Oct 2026; v0.5; M1 and M2 built)
 
