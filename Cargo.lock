@@ -2174,6 +2174,7 @@ dependencies = [
  "tempfile",
  "unswiper-blur",
  "unswiper-core",
+ "unswiper-geo",
  "unswiper-takeout",
  "zip",
 ]

@@ -10,13 +10,16 @@ use std::collections::HashSet;
 use std::collections::{BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
 use unswiper_core::commit::{self, CommitResult};
+use unswiper_core::geo::{group_with, GroupSettings};
 use unswiper_core::index::DateReader;
 use unswiper_core::quality::{self, ApplyReport, Sensitivity};
 use unswiper_core::store::{read_manifest, LibraryStore, StoreError};
 use unswiper_core::time::Timestamp;
 use unswiper_core::trash::Trasher;
 use unswiper_core::watch::{Delta, LiveIndex, WatchBatch};
-use unswiper_core::{CommitMode, Decision, LibrarySnapshot, MediaItem, MediaKind, VisitGroup};
+use unswiper_core::{
+    CommitMode, Decision, GroupMode, LibrarySnapshot, MediaItem, MediaKind, VisitGroup,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum Filter {
@@ -38,6 +41,8 @@ pub struct VisitRow {
     pub progress: String,
     /// Every item decided.
     pub done: bool,
+    /// The group is at a known place (plan §20.6: pin icon in the list).
+    pub has_place: bool,
 }
 
 /// What a commit would do, for the confirmation dialog.
@@ -229,6 +234,10 @@ impl AppState {
     }
 
     fn after_items_changed(&mut self) {
+        // The live index and the indexer group by visit; the other modes regroup here (§20.6).
+        if self.group_mode() != GroupMode::Visit {
+            self.regroup();
+        }
         if let Some(v) = &self.visit {
             if !self.snap.groups.iter().any(|g| &g.id == v) {
                 self.close_visit();
@@ -253,6 +262,7 @@ impl AppState {
                     counts: format::counts(g.photo_count, g.video_count),
                     progress: format::progress(p.kept, p.rejected, p.left),
                     done: p.left == 0 && g.item_count() > 0,
+                    has_place: g.place.is_some(),
                 }
             })
             .collect()
@@ -420,6 +430,27 @@ impl AppState {
         } else {
             format!("{kept} of {target} kept")
         }
+    }
+
+    /// The saved grouping mode (missing or unknown = visit).
+    pub fn group_mode(&self) -> GroupMode {
+        self.snap.config.group_mode()
+    }
+
+    /// Changes the grouping mode, saves it in `AppConfig.groupMode` and regroups the library.
+    pub fn set_group_mode(&mut self, m: GroupMode) {
+        if self.snap.config.group_mode.as_deref() == Some(m.as_str()) {
+            return;
+        }
+        self.snap.config.group_mode = Some(m.as_str().to_string());
+        self.regroup();
+        self.after_items_changed();
+    }
+
+    /// Recomputes the groups from the items with the saved grouping settings.
+    fn regroup(&mut self) {
+        let settings = GroupSettings::from_config(&self.snap.config);
+        self.snap.groups = group_with(&self.snap.items, &settings, &unswiper_geo::Geocoder);
     }
 
     pub fn set_commit_mode(&mut self, m: CommitMode) {
@@ -1364,5 +1395,33 @@ mod tests {
         assert!(s2.live_motion());
         s.set_live_motion(false);
         assert!(!s.live_motion());
+    }
+
+    #[test]
+    fn group_mode_picker_regroups_and_persists() {
+        let (t, mut s) = setup(&["a.jpg", "b.jpg", "c.jpg", "d.jpg"]);
+        assert_eq!(s.group_mode(), GroupMode::Visit);
+        let visit_groups = s.snap.groups.clone();
+        // Made-up coordinates (synthetic, plan §20.8).
+        for it in s.snap.items.iter_mut().take(3) {
+            it.location = unswiper_core::model::Location::new(
+                10.0,
+                20.0,
+                unswiper_core::model::LocationSource::Exif,
+            );
+        }
+        s.set_group_mode(GroupMode::Geo);
+        assert_eq!(s.snap.config.group_mode.as_deref(), Some("geo"));
+        assert!(s.needs_save());
+        assert!(s.snap.groups.iter().any(|g| g.parent_visit_id.is_some()));
+        let n: usize = s.snap.groups.iter().map(|g| g.item_count()).sum();
+        assert_eq!(n, 4);
+        s.save().unwrap();
+        let s2 = AppState::new(LibraryStore::new(t.base.join("support")));
+        assert_eq!(s2.group_mode(), GroupMode::Geo);
+        assert_eq!(s2.snap.groups, s.snap.groups);
+        s.set_group_mode(GroupMode::Visit);
+        assert_eq!(s.group_mode(), GroupMode::Visit);
+        assert_eq!(s.snap.groups, visit_groups);
     }
 }

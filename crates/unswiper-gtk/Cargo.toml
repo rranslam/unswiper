@@ -25,6 +25,7 @@ gstreamer = ["dep:gst", "dep:gst-app", "dep:gst-video"]
 unswiper-core = { path = "../unswiper-core" }
 unswiper-blur = { path = "../unswiper-blur", default-features = false }
 unswiper-takeout = { path = "../unswiper-takeout" }
+unswiper-geo = { path = "../unswiper-geo" }
 # GNOME 46 = GTK 4.14 + libadwaita 1.5, the Ubuntu 24.04 LTS baseline.
 relm4 = { version = "0.10.1", default-features = false, features = ["macros", "libadwaita", "gnome_46"] }
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "gif", "webp", "bmp", "tiff"] }

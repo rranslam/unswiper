@@ -23,7 +23,7 @@ use unswiper_core::quality::Sensitivity;
 use unswiper_core::store::{default_support_dir, LibraryStore};
 use unswiper_core::trash::FreedesktopTrash;
 use unswiper_core::watch::{FolderWatcher, WatchBatch, DEFAULT_MAX_WAIT, DEFAULT_QUIET};
-use unswiper_core::{CommitMode, Decision, MediaItem, VisitGroup};
+use unswiper_core::{CommitMode, Decision, GroupMode, MediaItem, VisitGroup};
 
 const THUMB: u32 = 220;
 
@@ -141,6 +141,8 @@ pub enum Msg {
     RestoreLast,
     ResolvePending(bool),
     SetMode(CommitMode),
+    /// Grouping picker (plan §20.6): regroups and saves `groupMode`.
+    SetGroupMode(GroupMode),
     Watch(WatchBatch),
     Thumb(u64, String, ThumbMsg),
     Save,
@@ -208,6 +210,7 @@ pub struct Widgets {
     filter_buttons: Vec<(Filter, gtk::ToggleButton)>,
     restore_action: gio::SimpleAction,
     mode_action: gio::SimpleAction,
+    group_action: gio::SimpleAction,
     blur_action: gio::SimpleAction,
     blur_sens_action: gio::SimpleAction,
     blur_status: gtk::Label,
@@ -356,6 +359,14 @@ impl Component for App {
         );
         modes.append(Some("Dry Run"), Some("win.mode::dry-run"));
         menu.append_section(Some("Commit Mode"), &modes);
+        let grouping = gio::Menu::new();
+        grouping.append(Some("By Visit (Time)"), Some("win.group-mode::visit"));
+        grouping.append(Some("By Place"), Some("win.group-mode::geo"));
+        grouping.append(
+            Some("By Visit and Place"),
+            Some("win.group-mode::visit-geo"),
+        );
+        menu.append_section(Some("Grouping"), &grouping);
         let blur = gio::Menu::new();
         blur.append(Some("Detect Blurry Photos"), Some("win.blur"));
         let sens = gio::Menu::new();
@@ -430,6 +441,25 @@ impl Component for App {
             });
         }
         root.add_action(&mode_action);
+        let group_action = gio::SimpleAction::new_stateful(
+            "group-mode",
+            Some(glib::VariantTy::STRING),
+            &state.group_mode().as_str().to_variant(),
+        );
+        {
+            let s = sender.clone();
+            group_action.connect_activate(move |a, v| {
+                let Some(m) = v
+                    .and_then(|v| v.get::<String>())
+                    .and_then(|n| GroupMode::parse(&n))
+                else {
+                    return;
+                };
+                a.set_state(&m.as_str().to_variant());
+                s.input(Msg::SetGroupMode(m));
+            });
+        }
+        root.add_action(&group_action);
         let blur_action =
             gio::SimpleAction::new_stateful("blur", None, &state.blur_enabled().to_variant());
         {
@@ -931,6 +961,7 @@ impl Component for App {
             filter_buttons,
             restore_action,
             mode_action,
+            group_action,
             blur_action,
             blur_sens_action,
             blur_status,
@@ -1186,6 +1217,7 @@ impl Component for App {
                 }
             }
             Msg::SetMode(m) => self.state.set_commit_mode(m),
+            Msg::SetGroupMode(m) => self.state.set_group_mode(m),
             Msg::Watch(b) => {
                 if self.indexing {
                     changed = false;
@@ -1925,6 +1957,8 @@ impl App {
         w.restore_action.set_enabled(st.can_restore());
         w.mode_action
             .set_state(&mode_name(st.snap.config.commit_mode).to_variant());
+        w.group_action
+            .set_state(&st.group_mode().as_str().to_variant());
         w.blur_action.set_state(&st.blur_enabled().to_variant());
         w.blur_sens_action
             .set_state(&st.blur_sensitivity().as_str().to_variant());
@@ -1941,6 +1975,9 @@ impl App {
                 })
                 .activatable(true)
                 .build();
+            if v.has_place {
+                row.add_prefix(&gtk::Image::from_icon_name("mark-location-symbolic"));
+            }
             let prog = gtk::Label::builder()
                 .label(&v.progress)
                 .css_classes(["caption", "dim-label"])
