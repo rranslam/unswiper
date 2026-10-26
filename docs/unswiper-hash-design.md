@@ -1,6 +1,6 @@
 # unswiper-hash: design (draft, 26 Oct 2026)
 
-Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); a content-only fingerprint (§14, M2b) adds 1.5–2 days; app integration is extra (M5). The numbered **open choices** for Rob are in §12.
+Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The numbered **open choices** for Rob are in §12.
 
 ## 1. Goals and non-goals
 
@@ -147,15 +147,16 @@ Packaging: added to the AppImage and Flatpak as `unswiper-hash` (next to `unswip
 8. **Where it ships.** Inside each release (AppImage, Flatpak, dmg) or as separate downloads / `cargo install`. *Recommend: inside the release bundles plus `cargo install --path crates/unswiper-hash`.*
 9. **Release timing.** With v0.6, v0.7, or on its own tag. *Recommend: after v0.6 is released, as part of v0.7, before the Windows port.*
 10. **`damaged?` handling.** Report only, or also write a list for restore from backup (`--out damaged.txt`). *Recommend: report plus optional list; never touch the file.*
-11. **Content-only fingerprint (§14).** Full-file hash only; full-file plus a container-data content hash (JPEG, PNG, HEIC/AVIF, MP4/MOV), with "metadata changed only" vs "image changed" reports and move matching on content; or plus a decoded-pixel hash. *Recommend: full-file plus container-data content hash (M2b, +1.5–2 days). No pixel decoding.*
+11. **Content-only fingerprint (§14).** Full-file hash only; full-file plus a container-data content hash (JPEG, PNG, HEIC/AVIF, MP4/MOV), with "metadata changed only" vs "image changed" reports and move matching on content; or plus a decoded-pixel hash. *Recommend: full-file plus container-data content hash (M2b, +1.5–2 days), plus rotation detection (§14.5, M2c, +1.5–2 days; approved by Rob 26 Oct 2026). Pixels are decoded only when the content hash changes.*
 
-## 13. Milestones (4–5 days; 5.5–7 with M2b)
+## 13. Milestones (4–5 days; 7–9 with M2b and M2c)
 
 | Milestone | Scope | Estimate |
 |---|---|---|
 | **M1** Store and scan | Crate, SQLite schema v1, walk + incremental BLAKE3 scan, `status`, `--json`, exit codes, store locations, unit tests | 1.5 days |
 | **M2** Verify, moves, duplicates | `verify` (resumable, low priority, throttle), `damaged?`, move and rename matching, `moves`, `dups`, `forget`/`gc`, integration tests | 1–1.5 days |
 | **M2b** Content-only fingerprint (open choice 11) | Content hash for JPEG, PNG, HEIC/AVIF and MP4/MOV, "metadata changed only" and "image changed" reports, move matching on content, tests against exiftool and ffmpeg | 1.5–2 days |
+| **M2c** Rotation detection (§14.5) | Rotation fingerprint at scan time (JPEG, PNG; HEIC with the optional `heif` feature), the 8-orientation matcher with edge tolerance, "rotated" and "rotated (approx)" reports, tests with jpegtran on MCU-aligned and non-aligned files | 1.5–2 days |
 | **M3** Across machines | Manifests, `export` (JSON, B3SUMS, SHA256SUMS), `diff` (manifest or root), `scan --import`, round-trip tests | 1 day |
 | **M4** Ship | AppImage, Flatpak (cargo-sources), dmg; THIRD_PARTY_NOTICES; README, help page and man-style `--help`; CI jobs incl. MSRV; `schedule --print` | 0.5–1 day |
 | **M5** (optional, later) App integration | Read-only store access, move carry-over, "possibly damaged" badge, "Verify Library…" | 2 days |
@@ -221,3 +222,56 @@ About **1.5–2 extra days**, as milestone **M2b** after M2:
 - tests against exiftool `ImageDataHash` and ffmpeg `streamhash` on synthetic files (generated in CI; never personal media), including truncated and malformed files: 0.5 day.
 
 Total with M1–M4: 5.5–7 days.
+
+### 14.5 Rotation detection (approved by Rob, 26 Oct 2026)
+
+When the content hash changes, unswiper-hash checks whether the picture was only **rotated or flipped** (90°, 180°, 270°, or a mirror) and reports `rotated 90` (or `rotated 180`, `rotated 270`, `flipped`, `transposed`) instead of `image changed`. Changing only the EXIF Orientation tag doesn't touch the image data, so it stays **metadata changed only** (§14). Decoders ignore the tag here and use the stored pixel grid.
+
+**What is stored, per still image, at scan time** (decoded once, when the file is new or changed; ~4 KB per photo):
+- `rot_thumb`: a 64×64 thumbnail of the **luma (Y) plane**, box-filtered over the image cropped to whole 16-pixel blocks (the JPEG MCU), 8 bits per cell. Luma is used because JPEG chroma is subsampled and decoders upsample it differently after a rotation.
+- `rot_dims`: the full and cropped width and height.
+- `phash`: a 64-bit DCT perceptual hash. It is only a hint; it never decides alone (in the prototype a small 20×20-pixel edit still gave a distance of 2/64).
+
+The old file is not needed later. Only the new file is decoded.
+
+**Matching**, when the content hash changed and the size or dimensions allow a rotation:
+1. Decode the new file's luma. For each of the 8 orientations (D4: identity, 3 rotations, 4 mirrors), transform it, crop it to the stored cropped size at each corner, thumbnail it and compare with `rot_thumb`.
+   - Max cell difference < 1.5 (rounding only) with the identity: `metadata changed only` (e.g. a re-save that kept the pixels).
+   - With another orientation: **`rotated N`**.
+   - A lossless 90°/270° rotate is not bit-exact after decoding, because the IDCT's row and column rounding swaps. The prototype measured max diff 1.0, so "exact" means within ±1.
+2. **JPEG lossless-rotate caveat.** jpegtran is pixel-exact only when width and height are multiples of the MCU (8 or 16 px).
+   - With `-trim` (and the Windows Photos / macOS Preview equivalents) the partial edge blocks are dropped. Step 1 already matches, because the stored thumbnail covers only whole blocks.
+   - Without `-trim`, the partial edge blocks stay untransformed and the picture is shifted by up to 15 px. If step 1 fails and the dimensions are within one MCU of a rotated original, unswiper-hash searches offsets 0–15 px on each axis (only in this fallback). A match is reported as **`rotated N (approx)`**: the edge strip differs.
+   - `-perfect` refuses to rotate such files at all, so they never reach this case.
+3. Otherwise: `image changed`.
+4. Optional, cheap hint: lossless rotations keep the JPEG quantisation tables, re-encodes usually don't. A stored DQT digest lets the report say `rotated 90 (lossless)` or `rotated 90 (re-encoded)`.
+
+**Moves:** a file that was renamed *and* rotated is matched to a missing file whose rotation fingerprint matches in some orientation (thumbnails are indexed by `phash` of all 8 orientations, so this is a lookup, not a scan). It is reported as "moved, rotated 90".
+
+**Formats and decoders**
+- JPEG: `zune-jpeg` 0.5 (MIT/Apache-2.0/Zlib, MSRV 1.77), which can output the luma plane directly. PNG: `png` 0.18 (MIT/Apache-2.0, MSRV 1.73). Alternatively both through `image` 0.25 (`default-features = false, features = ["jpeg", "png"]`, MIT/Apache-2.0, MSRV 1.88). All three were checked with `cargo +1.92 check` on 26 Oct 2026.
+- HEIC/AVIF: optional Cargo feature `heif` through `libheif-rs` 3.0 (MIT, MSRV 1.82) and the system libheif (LGPL-3.0, dynamically linked; the Flatpak runtime and Homebrew provide it). Without the feature, HEIC gets the content hash only, and a rotation reports `image changed`. On the Mac, ImageIO could decode HEIC instead, but the CLI stays pure Rust plus optional libheif.
+- RAW, TIFF, WebP, GIF: no rotation detection at first. **Video: excluded**: rotating a video normally only changes the track matrix (metadata), and re-encoded rotations are out of scope.
+- THIRD_PARTY_NOTICES: zune-jpeg, png (and its deps), libheif-rs; libheif's LGPL notice only in builds with `heif`.
+
+**Cost:** decoding a 24 MP JPEG takes about 0.3 s (prototype, Python plus Pillow; Rust zune-jpeg is in the same range). It is done once per new or changed photo, at scan time, so a first scan of 50k photos adds roughly 1–4 hours of CPU spread over the cores. `--no-rotation` skips it, and `scan --rotation-later` fills it in a low-priority pass. A check after a change costs one decode plus 8 small transforms (~1 s for 24 MP in the prototype, mostly NumPy), plus the offset search only in the non-aligned fallback.
+
+**Prototype (26 Oct 2026, synthetic files only).** ImageMagick plasma JPEGs at quality 90: one MCU-aligned (640×480), one not (643×479). Edited with jpegtran 2.x, exiftool 13.25 and ImageMagick; matched with a Python prototype of the steps above (stored info from the original only):
+
+| New file | Result |
+|---|---|
+| aligned, `jpegtran -rotate 90` | rotated 90 (max diff 1.0) |
+| aligned, `-rotate 180` | rotated 180 (max diff 0.0) |
+| aligned, `-flip horizontal` | flipped (max diff 0.0) |
+| aligned, `-transpose` | transposed (max diff 1.0) |
+| aligned, only Orientation tag 1 → 6 | metadata changed only (0.0) |
+| non-aligned, `-rotate 90` (no trim) | **rotated 90 (approx)**: edge blocks untransformed, 7 px offset |
+| non-aligned, `-rotate 90 -trim` | rotated 90 (max diff 1.0) |
+| non-aligned, `-rotate 270` | rotated 270 (max diff 1.0) |
+| non-aligned, `-perfect -rotate 90` | refused by jpegtran ("transformation is not perfect") |
+| ImageMagick rotate 90 + re-encode (both) | rotated 90 (max diff 1.0); the DQT hint would add "re-encoded" |
+| 20×20 px red square drawn | image changed (max diff 168) |
+| red square drawn, then rotated 90 | image changed (max diff 168) |
+
+6000×4000 JPEG: storing the fingerprint took 0.32 s and checking a 90° rotation 1.07 s (Python prototype).
+
