@@ -896,3 +896,18 @@ Rob, 25 Oct 2026: By Place should group all photos with one place name, e.g. Wal
 - `geo`: key = reverse-geocoded (name, admin1, country). One group per key, items in time order, no trips (`parentVisitId` empty), newest place first. Keys whose short label collides get the title "name, admin1, country". Located items with no name (> 100 km from any town) go to **Other places**; unlocated items to one **No location** group. Videos still borrow a location within 30 minutes (§20.11). `placeRadiusKm` and `minPlaceItems` no longer apply to `geo`; `dbscan` stays in the code for reference.
 - `visit-geo`: kept. Each visit splits where the place name changes (stray, 30-minute and move-on rules unchanged) instead of at the 2 km radius. Neighbouring towns under 2 km apart now split; spots over 2 km apart with one name stay together. The radius is used only by `joinSamePlace`.
 - `visit`: unchanged.
+
+## 21. Future: Map view (heat map) (idea 25 Oct 2026; not scheduled)
+
+Rob's idea, 25 Oct 2026, in his terms:
+
+- A Google Photos-style map: the Collection shown as dots on a map.
+- Photo density shown as a colour gradient, like the heat or rain intensity on a weather map.
+- Zoom into an area and a separate thumbnail panel shows the photos there, fewer as you zoom in, in time order. Spots visited often then show similar photos, or how the area changes over time.
+
+Notes:
+
+- This needs a true map application: likely a separate app or a later milestone, not part of v0.6.
+- The v0.6 data already supports it: per-item `location` and date, and place groups in library.json schema 2.
+- Open question: map tiles. Online tiles leak the viewed area to the tile provider, which conflicts with the local-only privacy promise. Offline tiles cost disk space.
+- By Place by name (§20.15) is the interim step.
