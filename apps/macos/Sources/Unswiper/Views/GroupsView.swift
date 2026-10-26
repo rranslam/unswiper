@@ -15,7 +15,9 @@ struct GroupsView: View {
             } else {
                 List(state.groups) { group in
                     Button {
-                        state.openGroup(group)
+                        // Deferred: navigating from inside the List's (NSTableView) click
+                        // handler is a reentrant table update and logs an AppKit warning.
+                        Task { @MainActor in state.openGroup(group) }
                     } label: {
                         GroupRow(group: group, items: state.items)
                     }
@@ -71,7 +73,7 @@ struct GroupsView: View {
             }
             Picker("Grouping", selection: Binding(
                 get: { state.config.grouping },
-                set: { state.setGroupMode($0) }
+                set: { mode in Task { @MainActor in state.setGroupMode(mode) } }
             )) {
                 ForEach(GroupMode.allCases) { mode in
                     Text(mode.label).tag(mode)

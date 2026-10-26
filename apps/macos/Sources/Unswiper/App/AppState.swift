@@ -563,6 +563,8 @@ final class AppState: ObservableObject {
     // MARK: - Grouping mode (plan §20.6)
 
     /// Changes the grouping mode, saves it in `AppConfig.groupMode` and regroups the library.
+    /// Views call this from a `Task`, never from inside a Picker/List update, so replacing
+    /// `groups` and the selection is not a reentrant NSTableView change.
     func setGroupMode(_ mode: GroupMode) {
         guard config.groupMode != mode.rawValue else { return }
         config.grouping = mode

@@ -55,7 +55,7 @@ struct UnswiperApp: App {
                 Divider()
                 Picker("Grouping", selection: Binding(
                     get: { state.config.grouping },
-                    set: { state.setGroupMode($0) }
+                    set: { mode in Task { @MainActor in state.setGroupMode(mode) } }
                 )) {
                     ForEach(GroupMode.allCases) { m in Text(m.label).tag(m) }
                 }
