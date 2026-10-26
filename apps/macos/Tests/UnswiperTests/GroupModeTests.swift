@@ -85,3 +85,22 @@ final class AboutPanelTests: XCTestCase {
         XCTAssertTrue(text.contains("CC BY 4.0"))
     }
 }
+
+final class GeoHelpTests: XCTestCase {
+    private func page(_ name: String) throws -> String {
+        try String(contentsOf: TakeoutHelperTests.repoRoot
+            .appendingPathComponent("apps/macos/Sources/Unswiper/Resources/Help/\(name)"), encoding: .utf8)
+    }
+
+    func testHelpCoversGroupingAndLocationPrivacy() throws {
+        let privacy = try page("09-privacy.md")
+        for must in ["only in its own library file on this Mac", "group photos by place", "looked up offline"] {
+            XCTAssertTrue(privacy.contains(must), must)
+        }
+        let visits = try page("02-visits.md")
+        for must in ["View ▸ Grouping", "By Place", "By Visit and Place", "Other places", "No location"] {
+            XCTAssertTrue(visits.contains(must), must)
+        }
+        XCTAssertTrue(try page("11-about.md").contains("GeoNames"))
+    }
+}

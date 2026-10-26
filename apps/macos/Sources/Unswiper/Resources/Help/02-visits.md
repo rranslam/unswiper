@@ -12,6 +12,16 @@ A **visit** is a pile of photos and videos taken close together in time — a tr
 - If none of the files in that folder have dates, they get their own visit named after the folder (for example **Lisbon**).
 - The file's "last changed" date is **not** used, because copying a file changes it.
 
+## Grouping by place
+
+To group by where photos were taken instead of only by time, choose **View ▸ Grouping**, or use the **Grouping** menu above the visits list:
+
+- **By Visit (Time)**: the default, as described above.
+- **By Place**: photos taken within about 1 km of each other form a place, whenever they were taken. Each place is split into its separate trips. Photos far from any other photo go into **Other places**; photos without a location stay in date-based sets marked **No location**.
+- **By Visit and Place**: each visit is split where you moved more than about 2 km, so a road trip becomes one group per town.
+
+Place groups show a pin and the nearest town, looked up offline (no map or internet needed). Your choice is saved with your library. Changing it never changes your Keep and Reject decisions.
+
 ## The visits list
 
 Each row shows the visit's dates, how many photos and videos it has, and your progress, for example `3 kept · 12 reject · 35 left`. Big visits are usually the best place to start.

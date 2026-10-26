@@ -222,9 +222,7 @@ final class HelpLibraryTests: XCTestCase {
 
     /// crates/unswiper-core/tests/fixtures/compat, shared with the Rust tests.
     static func compatFixture(_ name: String) throws -> String {
-        let url = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-            .deletingLastPathComponent().deletingLastPathComponent()
+        let url = TakeoutHelperTests.repoRoot
             .appendingPathComponent("crates/unswiper-core/tests/fixtures/compat/\(name)")
         return try String(contentsOf: url, encoding: .utf8)
     }
