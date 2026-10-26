@@ -8,7 +8,7 @@ Pare down your photos and videos **one visit at a time** (grouped by place and t
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** v0.5.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64), with **guided import from Google Photos** (via Google Takeout), photo info, blurry-photo detection and in-app video playback. **v0.6 (geo grouping: group by place, or by visit and place) is in development and not released yet**; the download steps below are for v0.5.0, the current release. See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
+**Status:** v0.6.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64). New in 0.6: **grouping by place**: choose **By Visit (Time)**, **By Place** (all photos from one town together, e.g. every Walla Walla photo in one group) or **By Visit and Place** (each trip split per town), with offline place names. Photos without a camera date now get one from GPS time or the file name, and visits are listed **oldest first**. Also included: guided import from Google Photos (Takeout), photo info, blurry-photo detection and in-app video playback. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Download & Install (macOS)
 
@@ -18,16 +18,16 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
-3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.5.0.dmg`**. Do *not* click "Source code".
+3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.6.0.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
 
 ### Step 2 — Install
 
 1. Open **Finder** (the blue-and-white smiley face at the left end of the Dock, the row of icons at the bottom of your screen).
 2. In the Finder window's left sidebar, click **Downloads**.
-3. **Double-click** `Unswiper-0.5.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
+3. **Double-click** `Unswiper-0.6.0.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
 4. **Click and hold** on the Unswiper icon, **drag** it on top of the Applications folder icon, and let go. This copies the app into your Applications folder.
-5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.5.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
+5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.6.0** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
 
 ### Step 3 — Open it the first time
 
@@ -178,6 +178,16 @@ Unswiper can find photos that are probably out of focus or shaken and mark them 
 
 Double-click a photo or video in a visit (or click it once and press **Space**) to open it in a large viewer. Videos play right there, **muted** at first; click the speaker icon for sound. **←/→** go to the previous/next item, **K / R / U** still Keep / Reject / Clear, and **Space** or **Esc** goes back to the grid. Video tiles show **▶** and the clip length. Optional: turn on **Play Live Photo Motion** (Linux: main menu **☰** → **Viewer**; Mac: **View** menu) to play the short video part of iPhone Live Photos. If a video can't be played, click **Open in Default App**. Watching never changes your files. In the app, press **F1** (Linux) and open **Watching Videos and Large Previews**.
 
+## Grouping by place (v0.6, Linux and Mac)
+
+Choose how photos are grouped: on Linux in the main menu (**☰**) under **Grouping**, on a Mac under **View ▸ Grouping** or with the picker above the visits list.
+
+- **By Visit (Time)** (default): photos taken close together in time form a visit, as before.
+- **By Place**: all photos with the same place name (town, state or region, country) form one group, whenever they were taken, in time order. Same-named towns in different regions stay apart. Photos without a location go into **No location**; photos far from any town into **Other places**.
+- **By Visit and Place**: each visit is split where the town changes, so a road trip becomes one group per town.
+
+Place groups show a pin and the town name. Locations come from the photo's GPS data (and from videos, or Google Takeout's location data); a video without a location borrows the place of a photo taken within 30 minutes. Place names are looked up **offline** (GeoNames data, CC BY 4.0, see THIRD_PARTY_NOTICES): no map service and no internet. Your choice is saved with the library and never changes your Keep/Reject decisions. To show or hide the location in Photo Info, use **Show Location in Photo Info**.
+
 ## Build from source (macOS)
 
 Requires full **Xcode** (not just Command Line Tools) with the license accepted.
@@ -198,17 +208,31 @@ swift test
 To build the downloadable app and `.dmg` yourself:
 
 ```
-apps/macos/scripts/build-dmg.sh 0.5.0
+apps/macos/scripts/build-dmg.sh 0.6.0
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.5.0.dmg`). Pushing a tag such as `v0.5.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.6.0.dmg`). Pushing a tag such as `v0.6.0` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
+
+## Build from source (Linux)
+
+Requires **Rust 1.92 or newer** (`rustup update stable`) and the GTK 4 / libadwaita / GStreamer development packages (Ubuntu: `sudo apt install libgtk-4-dev libadwaita-1-dev libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev libheif-dev`).
+
+```
+cargo build --release
+cargo run --release -p unswiper-gtk
+cargo test --workspace
+```
+
+The command-line tool: `cargo run --release -p unswiper-cli -- index ~/Pictures/Trip --group-mode geo` (modes `visit`, `geo`, `visit-geo`). The Flatpak and AppImage scripts are in `packaging/flatpak/` and `crates/unswiper-gtk/`.
 
 Try it on a **copy** of a small photo folder first. Re-index after upgrading (new index fields, stable visit IDs).
 
-## MVP features
+## Features
 
-- Pick a local folder; background indexer (EXIF dates for photos, `AVAsset` creation date for videos)
-- Visit groups by time gap, sorted by size; "Undated" group for files with no usable date
+- Pick a local folder; background indexer (EXIF dates for photos, video creation dates; when a photo has no camera date, its GPS time or a date in the file name such as `IMG_20240612_133241` or `PXL_…` is used, then the folder name)
+- Visits by time gap, listed **oldest first**; "Undated" group for files with no usable date
+- **Grouping by place** (v0.6): By Visit (Time), By Place, By Visit and Place, with offline place names (see above)
+- **Blurry photos pre-marked** as Reject with a **Blurry?** badge (never moved until you commit); photo info inspector; in-app video and Live Photo playback
 - Reduce screen with per-visit keep target, keep/reject, side-by-side compare
 - Commit rejects to Trash or a `_Rejected/` quarantine folder, or dry run (nothing moves)
 - Safety: files validated (inside library, unchanged size/mtime) before moving; confirm dialog; Live Photo + sidecar pairing; per-commit manifest with **Restore Last Commit**
@@ -220,8 +244,9 @@ Formerly: `visit-media-reduce` and, before that, `android-visit-media-reduce` (s
 ## Project docs
 
 - [`STATUS.md`](STATUS.md) — current direction
-- [`docs/linux-port-plan.md`](docs/linux-port-plan.md) — Rust core, Linux app, packaging, and the roadmap (blur §15, video playback §16)
-- [`docs/checkout-0.2.0.md`](docs/checkout-0.2.0.md) — manual release checklist per platform
+- [`docs/linux-port-plan.md`](docs/linux-port-plan.md) — Rust core, Linux app, packaging, and the roadmap (blur §15, video playback §16, Google Takeout §19, geo grouping §20, map view §21)
+- [`docs/QA_release_checklist.md`](docs/QA_release_checklist.md) — release checklist
+- [`docs/checkout-0.2.0.md`](docs/checkout-0.2.0.md) — manual checks per platform
 - [`docs/architecture.md`](docs/architecture.md), [`docs/ux-model.md`](docs/ux-model.md), [`docs/sources-and-setup.md`](docs/sources-and-setup.md) — original design notes
 - History: [`docs/architecture-android-mvp.md`](docs/architecture-android-mvp.md), [`docs/architecture-draft-v0.md`](docs/architecture-draft-v0.md)
 
@@ -233,6 +258,9 @@ unswiper/
 ├── crates/
 │   ├── unswiper-core/     ← shared Rust core (index, group, commit, restore)
 │   ├── unswiper-cli/      ← `unswiper-cli` command-line tool
+│   ├── unswiper-blur/     ← blur detection; also the Mac app's helper (`unswiper-blur`)
+│   ├── unswiper-geo/      ← offline place names (GeoNames)
+│   ├── unswiper-takeout/  ← Google Takeout import
 │   └── unswiper-gtk/      ← GTK 4 + libadwaita Linux app (+ AppImage script)
 ├── packaging/flatpak/     ← Flatpak manifest
 ├── docs/                  ← plans and design notes
@@ -241,7 +269,7 @@ unswiper/
 
 ## Roadmap
 
-v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → v0.5: Google Photos import (Takeout) → v0.6: geo grouping (in development) → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–19.
+v0.3: blur detection and video playback → v0.4: photo info → v0.5: Google Photos import (Takeout) → **v0.6: grouping by place (released)** → v0.7: `unswiper-hash`, a separate tool that fingerprints every photo and video to find damaged, edited, rotated, moved and duplicate files (planned; design approved) → later: a map view with a photo heat map (idea, plan §21) → Windows port (deferred). Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md).
 
 ## Contributing
 

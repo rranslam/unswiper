@@ -1,4 +1,9 @@
-# Status — Unswiper — 2026-10-11 (macOS MVP + review fixes)
+# Status — Unswiper — 2026-10-26 (v0.6.0)
+
+**Current direction (26 Oct 2026):** v0.6.0 released: grouping by place on macOS and Linux (By Visit (Time), By Place, By Visit and Place), offline place names, date fallbacks, visits oldest first. Next: **v0.7 `unswiper-hash`**, the separate file-hashing CLI (design approved, `crates/unswiper-hash/DESIGN.md` on branch `design/unswiper-hash`). Later: a map view (plan §21). The Windows port is deferred. History below.
+
+---
+## Earlier status — 2026-10-11 (macOS MVP + review fixes)
 
 *Formerly visit-media-reduce.* MIT licensed.
 

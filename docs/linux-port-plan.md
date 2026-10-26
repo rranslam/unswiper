@@ -760,7 +760,7 @@ Rejected: M4–M6 of the first draft (OAuth + Picker, verification, Picker relea
 - Data Portability API scopes (no Google Photos resource): https://developers.google.com/data-portability/user-guide/scopes
 - Google Takeout help (Deselect all/Next step/Create export, delivery by email link, scheduled Photos exports every 2 months for one year with Photos as the only product, 50 GB size limit, archives expire in about 7 days, 5 downloads per archive, `custom/<products>?frequency=2_months` URL parameters; the frequency parameter is not honoured, Rob 19 Oct 2026): https://support.google.com/accounts/answer/3024190
 
-## 20. Geo grouping (design 25 Oct 2026; v0.6.0; M1–M3 built, see §20.12–20.14)
+## 20. Geo grouping (design 25 Oct 2026; released in v0.6.0 on 26 Oct 2026; see §20.12–20.15)
 
 Rob's order: v0.5 Google Photos (Takeout) → **v0.6 geo grouping** → Windows. Approved scope: group photos by **place**, using the GPS location stored in each file, with Takeout JSON `geoData` as an optional source. Items without a location stay in their **date-based set**, the same way undated items are handled today (§group.rs: they join the visit of their dated folder siblings). Place names come from an **offline, standalone open-source reverse geocoder with bundled data**; no outside API, no network (Rob's tools rule). App ID stays `io.github.rranslam.Unswiper`.
 

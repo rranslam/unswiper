@@ -2,7 +2,9 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
-## [Unreleased]
+## [0.6.0] - 2026-10-26
+
+Highlights: grouping by place in both apps (By Visit (Time), By Place by town name, By Visit and Place), offline place names, date fallbacks (GPS time, file name), visits listed oldest first. The entries below are in the order they were built; where they differ, the later ones win (By Place by name replaced the M1/M3 distance clustering).
 
 ### Added
 - Geo grouping, core (plan §20, M1). Three grouping modes. `visit` is the default and works exactly as in v0.5. `geo` groups by place regardless of time: DBSCAN on great-circle distance, 1 km and at least 3 photos, with each place split into trips. `visit-geo` splits each visit by place: 2 km, after 3 photos or 30 minutes. Locations come from EXIF GPS (photos), QuickTime/MP4 (videos) or, as a fallback, Takeout `geoData`. `0,0` is ignored. Photos without a location take the place of a photo taken within 30 minutes, or else stay in their date-based set. Place names come offline from the new `unswiper-geo` crate (reverse_geocoder 4.1.1, GeoNames CC BY 4.0, see THIRD_PARTY_NOTICES). library.json schema 2 adds optional `location`, `place`, `parentVisitId` and `config.groupMode` (missing or unknown = `visit`). v1 files load unchanged. CLI: `--group-mode`, `--place-radius-km`, `--min-place-items` and `--join-same-place` apply to that run only. Also new: `config set|get group-mode` and `geo <lat> <lon>`. The Mac helper gained `unswiper-blur geo`. The GTK and Mac UI follow in M2.

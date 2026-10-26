@@ -26,7 +26,7 @@ Work through this list for every release, before you push the `vX.Y.Z` tag. The 
 Set `OLD` to the previous version and `NEW` to the new one, then run:
 
 ```sh
-OLD=0.4.0; NEW=0.5.0
+OLD=0.5.0; NEW=0.6.0
 O=${OLD//./\\.}; N=${NEW//./\\.}
 # Anything still naming the previous version (review each hit: history and roadmap lines may stay)
 rg -n "v?$O\b|v${O%\\.*}\b" --glob '!CHANGELOG.md' --glob '!Cargo.lock' --glob '!target/**' .
