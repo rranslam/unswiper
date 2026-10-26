@@ -162,6 +162,8 @@ rm -rf "$notices"; mkdir -p "$notices"
   done
 } > "$notices/THIRD-PARTY-NOTICES.md"
 install -Dm644 "$root/LICENSE" "$appdir/usr/share/doc/unswiper/LICENSE" 2>/dev/null || true
+# GeoNames (CC BY 4.0) and bundled crates (plan §20.3); also shown in About ▸ Legal.
+install -Dm644 "$root/THIRD_PARTY_NOTICES" "$appdir/usr/share/doc/unswiper/THIRD_PARTY_NOTICES"
 
 rm -f "$out"/Unswiper*.AppImage
 VERSION="$version" LDAI_OUTPUT="Unswiper-$ARCH.AppImage" \

@@ -58,6 +58,9 @@ if [ ! -d "$APP/Contents/Resources/${APP_NAME}_${APP_NAME}.bundle" ]; then
   exit 1
 fi
 
+# GeoNames (CC BY 4.0) and bundled crates (plan §20.3): shown in About Unswiper, also on the dmg.
+cp "$PKG_DIR/../../THIRD_PARTY_NOTICES" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt"
+
 # App icon: built from the iconset with Apple's iconutil (Resources/README.md).
 ICONSET="$PKG_DIR/Resources/AppIcon.iconset"
 if [ ! -d "$ICONSET" ]; then
@@ -100,6 +103,7 @@ STAGE="$(mktemp -d)"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 cp "$PKG_DIR/../../LICENSE" "$STAGE/LICENSE.txt" 2>/dev/null || true
+cp "$PKG_DIR/../../THIRD_PARTY_NOTICES" "$STAGE/THIRD_PARTY_NOTICES.txt"
 hdiutil create -volname "$APP_NAME $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG"
 rm -rf "$STAGE"
 
@@ -111,5 +115,7 @@ echo "==> Takeout helper self-test"
 TAKEOUT_TMP="$(mktemp -d)"
 [ "$("$APP/Contents/MacOS/unswiper-blur" takeout dates "$TAKEOUT_TMP")" = "[]" ] || { echo "unswiper-blur takeout dates failed"; exit 1; }
 rmdir "$TAKEOUT_TMP"
+echo "==> Third-party notices"
+grep -q "GeoNames" "$APP/Contents/Resources/THIRD_PARTY_NOTICES.txt" || { echo "THIRD_PARTY_NOTICES missing from the app"; exit 1; }
 echo "==> Help self-test"
 "$APP/Contents/MacOS/$APP_NAME" --help-selftest

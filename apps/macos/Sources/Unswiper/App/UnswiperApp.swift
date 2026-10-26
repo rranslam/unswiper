@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rob Ranslam
 
+import AppKit
 import SwiftUI
 
 @main
@@ -28,6 +29,9 @@ struct UnswiperApp: App {
                 .modifier(OpenHelpOnLaunch())
         }
         .commands {
+            CommandGroup(replacing: .appInfo) {
+                Button("About Unswiper") { AboutPanel.show() }
+            }
             CommandGroup(replacing: .newItem) {}
             CommandMenu("Library") {
                 Button("Choose Folder…") {
@@ -140,5 +144,29 @@ private struct OpenHelpOnLaunch: ViewModifier {
         content.onAppear {
             if CommandLine.arguments.contains("--show-help") { openWindow(id: "help") }
         }
+    }
+}
+
+/// About Unswiper with the third-party notices (GeoNames CC BY 4.0, plan §20.3) as credits.
+enum AboutPanel {
+    /// Short attribution used when the bundled THIRD_PARTY_NOTICES.txt is missing (swift run).
+    static let fallback = "Place names: GeoNames (www.geonames.org), CC BY 4.0. See THIRD_PARTY_NOTICES."
+
+    static func noticesText(bundle: Bundle = .main) -> String {
+        if let url = bundle.url(forResource: "THIRD_PARTY_NOTICES", withExtension: "txt"),
+           let text = try? String(contentsOf: url, encoding: .utf8), !text.isEmpty {
+            return text
+        }
+        return fallback
+    }
+
+    @MainActor static func show() {
+        let credits = NSAttributedString(
+            string: noticesText(),
+            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                         .foregroundColor: NSColor.labelColor]
+        )
+        NSApplication.shared.orderFrontStandardAboutPanel(options: [.credits: credits])
+        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 }

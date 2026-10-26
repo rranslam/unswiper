@@ -94,6 +94,9 @@ fn v2_golden_round_trips_exactly() {
     assert_eq!(snap.config.group_mode(), GroupMode::VisitGeo);
     assert_eq!(snap.items[0].location.unwrap().source, LocationSource::Exif);
     assert_eq!(snap.groups[0].place.as_ref().unwrap().label(), "Lisbon, PT");
-    assert_eq!(snap.groups[0].parent_visit_id.as_deref(), Some("visit-1a2b"));
+    assert_eq!(
+        snap.groups[0].parent_visit_id.as_deref(),
+        Some("visit-1a2b")
+    );
     assert_eq!(snap.to_json(), V2);
 }

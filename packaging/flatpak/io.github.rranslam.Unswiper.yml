@@ -90,6 +90,8 @@ modules:
       - install -Dm755 target/release/unswiper /app/bin/unswiper
       - install -Dm644 crates/unswiper-gtk/data/io.github.rranslam.Unswiper.desktop /app/share/applications/io.github.rranslam.Unswiper.desktop
       - install -Dm644 crates/unswiper-gtk/data/io.github.rranslam.Unswiper.metainfo.xml /app/share/metainfo/io.github.rranslam.Unswiper.metainfo.xml
+      - install -Dm644 LICENSE /app/share/doc/unswiper/LICENSE
+      - install -Dm644 THIRD_PARTY_NOTICES /app/share/doc/unswiper/THIRD_PARTY_NOTICES
       - cd crates/unswiper-gtk/data/icons && find hicolor -type f -exec install -Dm644 {} /app/share/icons/{} \;
     sources:
       - type: dir

@@ -2103,7 +2103,7 @@ fn clear_box(b: &gtk::Box) {
 }
 
 fn about_dialog() -> adw::AboutDialog {
-    adw::AboutDialog::builder()
+    let d = adw::AboutDialog::builder()
         .application_name("Unswiper")
         .application_icon(APP_ID)
         .version(VERSION)
@@ -2113,8 +2113,19 @@ fn about_dialog() -> adw::AboutDialog {
         .website(WEBSITE)
         .issue_url(ISSUES)
         .comments("Sort trip photos into visits, keep the best, set aside the rest.")
-        .build()
+        .build();
+    // Plan §20.3: GeoNames attribution (CC BY 4.0) and the bundled crates.
+    d.add_legal_section(
+        "Third-party notices",
+        None,
+        gtk::License::Custom,
+        Some(&glib::markup_escape_text(THIRD_PARTY_NOTICES)),
+    );
+    d
 }
+
+/// The repository's THIRD_PARTY_NOTICES, also installed under share/doc/unswiper.
+pub const THIRD_PARTY_NOTICES: &str = include_str!("../../../THIRD_PARTY_NOTICES");
 
 fn help_window(parent: &adw::ApplicationWindow) -> adw::Window {
     let topics = help::topics();
@@ -2178,4 +2189,13 @@ fn help_window(parent: &adw::ApplicationWindow) -> adw::Window {
         .transient_for(parent)
         .content(&tv)
         .build()
+}
+
+#[cfg(test)]
+mod notices_tests {
+    #[test]
+    fn about_shows_geonames_attribution() {
+        assert!(super::THIRD_PARTY_NOTICES.contains("GeoNames"));
+        assert!(super::THIRD_PARTY_NOTICES.contains("CC BY 4.0"));
+    }
 }

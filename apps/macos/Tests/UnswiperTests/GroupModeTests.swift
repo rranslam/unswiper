@@ -76,3 +76,12 @@ final class GroupModeTests: StoreIsolatedTestCase {
         }
     }
 }
+
+final class AboutPanelTests: XCTestCase {
+    func testNoticesFallBackToTheGeoNamesAttribution() {
+        // The test bundle has no THIRD_PARTY_NOTICES.txt; the app bundle gets it from build-dmg.sh.
+        let text = AboutPanel.noticesText(bundle: Bundle(for: AboutPanelTests.self))
+        XCTAssertTrue(text.contains("GeoNames"))
+        XCTAssertTrue(text.contains("CC BY 4.0"))
+    }
+}
