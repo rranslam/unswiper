@@ -34,6 +34,10 @@ enum CommitMode: String, Codable, CaseIterable, Identifiable {
 enum DateSource: String, Codable, Hashable {
     /// EXIF / TIFF / QuickTime capture date.
     case capture
+    /// The photo's GPS timestamp (UTC), when it has no EXIF date (schema 2, plan §20.14).
+    case gps
+    /// A date in the file name, e.g. `IMG_20240612_133241` (schema 2, plan §20.14).
+    case fileName = "filename"
     /// A date parsed from the folder path (e.g. `2026/01/01`, `2025-07-04 Beach`).
     case folder
     /// No date of its own; grouping uses the dated files in the same folder, or the folder name.

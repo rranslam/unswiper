@@ -107,10 +107,17 @@ enum LocalTreeIndexer {
                 let folderPath = relativeFolderPath(of: e.url.deletingLastPathComponent(), root: root)
                 // Undated rule (v0.1.2): capture date, else a date in the folder path. File
                 // modification/creation dates are no longer used for grouping (only for commit checks).
+                // M3 (plan §20.14): GPS timestamp (photos), then a date in the file name.
+                let gps = kind == .photo ? gpsInfo(for: e.url) : nil
+                let location = kind == .photo ? gps?.location : videoLocation(for: e.url)
                 let takenAt: Date
                 let source: DateSource
                 if let captured {
                     takenAt = captured; source = .capture
+                } else if let gpsDate = gps?.date {
+                    takenAt = gpsDate; source = .gps
+                } else if let named = FileNameDate.parse(fileName: e.url.lastPathComponent) {
+                    takenAt = named; source = .fileName
                 } else if let folderDate = FolderDate.parse(relativeFolder: folderPath) {
                     takenAt = folderDate.date; source = .folder
                 } else {
@@ -134,7 +141,8 @@ enum LocalTreeIndexer {
                     sidecars: sidecars,
                     isUndated: isUndated,
                     dateSource: source,
-                    folderPath: folderPath
+                    folderPath: folderPath,
+                    location: location
                 ))
             }
         }
@@ -207,6 +215,88 @@ enum LocalTreeIndexer {
             return date
         }
         return nil
+    }
+
+    // MARK: - Location (plan §20.1, M3: the Mac indexer reads GPS itself)
+
+    /// A location rounded to 5 decimals (about 1 m), or nil for `0,0`, NaN or out of range.
+    static func makeLocation(lat: Double, lon: Double, source: String) -> GeoLocation? {
+        guard lat.isFinite, lon.isFinite, abs(lat) <= 90, abs(lon) <= 180, !(lat == 0 && lon == 0) else { return nil }
+        let r = { (v: Double) in (v * 1e5).rounded() / 1e5 }
+        return GeoLocation(lat: r(lat), lon: r(lon), source: source)
+    }
+
+    /// EXIF GPS of a photo: the location and the GPS timestamp (UTC), each optional.
+    static func gpsInfo(for url: URL) -> (location: GeoLocation?, date: Date?)? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [CFString: Any],
+              let gps = props[kCGImagePropertyGPSDictionary] as? [CFString: Any]
+        else { return nil }
+        return gpsInfo(fromGPSDictionary: gps)
+    }
+
+    /// Split out for tests: reads ImageIO's GPS dictionary.
+    static func gpsInfo(fromGPSDictionary gps: [CFString: Any]) -> (location: GeoLocation?, date: Date?) {
+        var location: GeoLocation?
+        if let lat = (gps[kCGImagePropertyGPSLatitude] as? NSNumber)?.doubleValue,
+           let lon = (gps[kCGImagePropertyGPSLongitude] as? NSNumber)?.doubleValue {
+            let ns = (gps[kCGImagePropertyGPSLatitudeRef] as? String)?.uppercased() == "S" ? -1.0 : 1.0
+            let ew = (gps[kCGImagePropertyGPSLongitudeRef] as? String)?.uppercased() == "W" ? -1.0 : 1.0
+            location = makeLocation(lat: lat * ns, lon: lon * ew, source: "exif")
+        }
+        var date: Date?
+        if let day = gps[kCGImagePropertyGPSDateStamp] as? String,
+           let time = gps[kCGImagePropertyGPSTimeStamp] as? String {
+            date = gpsDate(day: day, time: time)
+        }
+        return (location, date)
+    }
+
+    /// `"YYYY:MM:DD"` + `"HH:MM:SS(.ss)"` in UTC (ImageIO's GPS strings).
+    static func gpsDate(day: String, time: String) -> Date? {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "UTC")
+        f.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        let t = time.split(separator: ".").first.map(String.init) ?? time
+        return usable(f.date(from: "\(day.trimmingCharacters(in: .whitespacesAndNewlines)) \(t)"))
+    }
+
+    /// QuickTime/MP4 location (ISO 6709, e.g. `+37.5000-122.2500+010.000/`).
+    static func videoLocation(for url: URL) -> GeoLocation? {
+        let asset = AVURLAsset(url: url)
+        let sem = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var result: String?
+        Task.detached {
+            defer { sem.signal() }
+            guard let meta = try? await asset.load(.metadata) else { return }
+            let ids: [AVMetadataIdentifier] = [.quickTimeMetadataLocationISO6709, .commonIdentifierLocation]
+            for id in ids {
+                for item in AVMetadataItem.metadataItems(from: meta, filteredByIdentifier: id) {
+                    if let s = try? await item.load(.stringValue) { result = s; return }
+                }
+            }
+        }
+        sem.wait()
+        return result.flatMap(parseISO6709)
+    }
+
+    /// `±DD.DDDD±DDD.DDDD[±AAA.AAA]/` → location (source "quicktime").
+    static func parseISO6709(_ s: String) -> GeoLocation? {
+        var parts: [Double] = []
+        var cur = ""
+        for ch in s {
+            if ch == "+" || ch == "-" || ch == "/" {
+                if let v = Double(cur) { parts.append(v) }
+                cur = ch == "/" ? "" : String(ch)
+                if ch == "/" { break }
+            } else {
+                cur.append(ch)
+            }
+        }
+        if let v = Double(cur) { parts.append(v) }
+        guard parts.count >= 2 else { return nil }
+        return makeLocation(lat: parts[0], lon: parts[1], source: "quicktime")
     }
 
     enum IndexError: LocalizedError {
