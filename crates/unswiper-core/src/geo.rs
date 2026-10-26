@@ -27,6 +27,12 @@ pub const PLACE_CHANGE_MIN: i64 = 30;
 /// `visit-geo` cross-day join: adjacent visits at the same place closer than this.
 pub const JOIN_GAP_HOURS: f64 = 36.0;
 pub const DEFAULT_MIN_PLACE_ITEMS: usize = 3;
+/// `geo`: places with the same town name whose centres are this close are one place (M3: the
+/// 1 km radius split towns into several places). Fixed, not scaled with the radius.
+pub const TOWN_MERGE_KM: f64 = 5.0;
+/// `geo`: loose photos (DBSCAN noise) in one town form a place only when each is within this
+/// many radii of another (M3: grouping noise by town name alone chained points 19 km apart).
+pub const TOWN_NOISE_RADII: f64 = 2.0;
 /// `parentVisitId` of the date-based sets of items without a location in `geo` mode.
 pub const NO_LOCATION_ID: &str = "no-location";
 /// ID of the `geo` group of located items that belong to no place.
@@ -348,13 +354,22 @@ fn group_geo(items: &[MediaItem], s: &GroupSettings, namer: &dyn PlaceNamer) -> 
             None => other.push(k),
         }
     }
+    // Loose photos in one town: only those close to each other (single link) form a place.
     for (_, v) in towns {
-        if v.len() >= 2 {
-            places.push(v);
-        } else {
-            other.extend(v);
+        let town_pts: Vec<(f64, f64)> = v.iter().map(|&k| pts[k]).collect();
+        let mut by_cluster: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for (j, l) in dbscan(&town_pts, s.radius_km * TOWN_NOISE_RADII, 2)
+            .into_iter()
+            .enumerate()
+        {
+            match l {
+                Some(c) => by_cluster.entry(c).or_default().push(v[j]),
+                None => other.push(v[j]),
+            }
         }
+        places.extend(by_cluster.into_values());
     }
+    merge_same_town(&mut places, &pts, namer);
 
     struct PlaceOut {
         newest: Timestamp,
@@ -429,6 +444,38 @@ fn group_geo(items: &[MediaItem], s: &GroupSettings, namer: &dyn PlaceNamer) -> 
     result
 }
 
+/// Merges places with the same town name whose centres are within [`TOWN_MERGE_KM`].
+fn merge_same_town(places: &mut Vec<Vec<usize>>, pts: &[(f64, f64)], namer: &dyn PlaceNamer) {
+    let centre = |v: &[usize]| centroid(&v.iter().map(|&k| pts[k]).collect::<Vec<_>>()).unwrap();
+    let label = |v: &[usize]| {
+        let c = centre(v);
+        namer.place(c.0, c.1).map(|p| p.label())
+    };
+    loop {
+        let labels: Vec<Option<String>> = places.iter().map(|v| label(v)).collect();
+        let mut best: Option<(f64, usize, usize)> = None;
+        for a in 0..places.len() {
+            for b in a + 1..places.len() {
+                if labels[a].is_none() || labels[a] != labels[b] {
+                    continue;
+                }
+                let d = haversine_km(centre(&places[a]), centre(&places[b]));
+                if d <= TOWN_MERGE_KM && best.is_none_or(|(bd, _, _)| d < bd) {
+                    best = Some((d, a, b));
+                }
+            }
+        }
+        let Some((_, a, b)) = best else { break };
+        let mut moved = places.remove(b);
+        places[a].append(&mut moved);
+        places[a].sort_unstable();
+    }
+}
+
+/// `visit-geo`: a detour with this many items that never returns to the current place is a
+/// place of its own, even when it is shorter than `min_items` items or [`PLACE_CHANGE_MIN`].
+pub const MOVE_ON_ITEMS: usize = 2;
+
 /// `visit-geo` split of one visit's dated, located members (time order): indices into `pts`
 /// per place. A change of place needs `min_items` items or [`PLACE_CHANGE_MIN`] minutes far from
 /// the current place; shorter detours (stray fixes) stay in the current place.
@@ -451,8 +498,14 @@ fn split_by_place(
         }
         if let Some(pc) = centre(&pending) {
             if haversine_km(pc, pts[k].1) > radius_km {
-                // A different detour: the earlier one was a stray.
-                cur.append(&mut pending);
+                if pending.len() >= MOVE_ON_ITEMS {
+                    // Moved on without coming back: the detour was a place of its own (M3).
+                    parts.push(std::mem::take(&mut cur));
+                    cur = std::mem::take(&mut pending);
+                } else {
+                    // A different detour: the earlier one was a stray.
+                    cur.append(&mut pending);
+                }
             }
         }
         pending.push(k);
@@ -461,6 +514,11 @@ fn split_by_place(
             parts.push(std::mem::take(&mut cur));
             cur = std::mem::take(&mut pending);
         }
+    }
+    // The visit ended away from the current place: 2+ items there are a place of their own
+    // (M3; before, they were treated as strays and the visit was not split).
+    if pending.len() >= MOVE_ON_ITEMS && !cur.is_empty() {
+        parts.push(std::mem::take(&mut cur));
     }
     cur.append(&mut pending);
     if !cur.is_empty() {

@@ -227,15 +227,44 @@ fn geo_no_location_falls_back_to_date_sets_and_noise_to_other_places() {
 }
 
 #[test]
-fn geo_noise_in_the_same_town_forms_a_place() {
-    // Two photos 5 km apart in the same town: noise for DBSCAN (min 3), but one town.
+fn geo_noise_in_the_same_town_forms_a_place_only_when_close() {
+    // Two loose photos 1.1 km apart in one town: noise for DBSCAN (min 3), but one place.
+    let near = (A.0 + 0.01, A.1);
+    let items = vec![
+        item("/lib/x1.jpg", "2021-01-01T10:00:00Z", Some(A)),
+        item("/lib/x2.jpg", "2021-01-02T10:00:00Z", Some(near)),
+    ];
+    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
+    assert_eq!(g.len(), 1);
+    assert_eq!(g[0].place.as_ref().unwrap().name, "Alphaville");
+    // M3: 5.6 km apart is too far for loose photos (town name alone used to chain them).
     let items = vec![
         item("/lib/x1.jpg", "2021-01-01T10:00:00Z", Some(A)),
         item("/lib/x2.jpg", "2021-01-02T10:00:00Z", Some(A2)),
     ];
     let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
     assert_eq!(g.len(), 1);
-    assert_eq!(g[0].place.as_ref().unwrap().name, "Alphaville");
+    assert_eq!(g[0].id, OTHER_PLACES_ID);
+}
+
+#[test]
+fn geo_merges_places_of_one_town_within_5_km() {
+    // Two dense spots 2.2 km apart in one town: DBSCAN (1 km) finds two clusters, one place.
+    let a_east = (A.0, A.1 + 0.028);
+    let mut items = burst("a", "2021-01-01T10:00:00Z", 4, A);
+    items.extend(burst("b", "2021-01-01T12:00:00Z", 4, a_east));
+    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
+    let parents: std::collections::BTreeSet<_> =
+        g.iter().filter_map(|x| x.parent_visit_id.clone()).collect();
+    assert_eq!(parents.len(), 1, "{g:#?}");
+    assert_eq!(g.iter().map(|x| x.item_count()).sum::<usize>(), 8);
+    // Same town name but 5.6 km apart: two places.
+    let mut items = burst("a", "2021-01-01T10:00:00Z", 4, A);
+    items.extend(burst("b", "2021-01-01T12:00:00Z", 4, A2));
+    let g = group_with(&items, &settings(GroupMode::Geo), &Towns);
+    let parents: std::collections::BTreeSet<_> =
+        g.iter().filter_map(|x| x.parent_visit_id.clone()).collect();
+    assert_eq!(parents.len(), 2);
 }
 
 #[test]
@@ -350,6 +379,28 @@ fn visit_geo_change_counts_after_30_minutes_even_with_few_items() {
     let g = group_with(&items, &settings(GroupMode::VisitGeo), &Towns);
     assert_eq!(g.len(), 2);
     assert_eq!(g[1].item_count(), 2);
+}
+
+#[test]
+fn visit_geo_splits_when_two_items_move_on_and_never_return() {
+    // M3: two photos at the end of a visit, 5.6 km away within 30 minutes, used to count as
+    // strays, so the visit was not split.
+    let mut items = burst("a", "2021-01-01T10:00:00Z", 5, A);
+    items.push(item("/lib/x1.jpg", "2021-01-01T10:10:00Z", Some(A2)));
+    items.push(item("/lib/x2.jpg", "2021-01-01T10:12:00Z", Some(A2)));
+    let g = group_with(&items, &settings(GroupMode::VisitGeo), &Towns);
+    assert_eq!(g.len(), 2);
+    assert_eq!(g[1].item_count(), 2);
+    // Two photos at B, then moving on to C: B is a place of its own.
+    let mut items = burst("a", "2021-01-01T10:00:00Z", 5, A);
+    items.push(item("/lib/b1.jpg", "2021-01-01T10:10:00Z", Some(A2)));
+    items.push(item("/lib/b2.jpg", "2021-01-01T10:11:00Z", Some(A2)));
+    items.extend(burst("c", "2021-01-01T10:20:00Z", 5, (A.0 - 0.1, A.1)));
+    let g = group_with(&items, &settings(GroupMode::VisitGeo), &Towns);
+    assert_eq!(
+        g.iter().map(|x| x.item_count()).collect::<Vec<_>>(),
+        vec![5, 2, 5]
+    );
 }
 
 #[test]
