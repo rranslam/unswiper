@@ -51,6 +51,10 @@ pub enum IndexError {
 pub trait DateReader {
     fn photo_date(&self, path: &Path) -> Option<Timestamp>;
     fn video_date(&self, path: &Path) -> Option<Timestamp>;
+    /// GPS timestamp of a photo without a capture date (plan §20.14). Default: none.
+    fn gps_date(&self, _path: &Path) -> Option<Timestamp> {
+        None
+    }
     /// Capture location (plan §20.1). Readers without location support return `None`.
     fn location(&self, _path: &Path, _kind: MediaKind) -> Option<Location> {
         None
@@ -66,6 +70,9 @@ impl DateReader for MetadataDates {
     }
     fn video_date(&self, path: &Path) -> Option<Timestamp> {
         video_date(path)
+    }
+    fn gps_date(&self, path: &Path) -> Option<Timestamp> {
+        crate::meta::exif::gps_date(path)
     }
     fn location(&self, path: &Path, kind: MediaKind) -> Option<Location> {
         file_location(path, kind)
@@ -267,8 +274,21 @@ pub(crate) fn items_for_set(
             MediaKind::Video => dates.video_date(&e.path),
         };
         let folder_path = relative_folder_path(e.path.parent().unwrap_or(root), root);
+        // Fallbacks (plan §20.14): GPS timestamp (photos), then the file name, then the folder.
+        let gps = match kind {
+            MediaKind::Photo if captured.is_none() => dates.gps_date(&e.path),
+            _ => None,
+        };
+        let named = e
+            .path
+            .file_name()
+            .and_then(|n| crate::meta::file_name_date::parse(&n.to_string_lossy()));
         let (taken_at, source) = if let Some(c) = captured {
             (c, DateSource::Capture)
+        } else if let Some(g) = gps {
+            (g, DateSource::Gps)
+        } else if let Some(n) = named {
+            (n, DateSource::FileName)
         } else if let Some(m) = folder_date::parse(&folder_path) {
             (m.date(), DateSource::Folder)
         } else {

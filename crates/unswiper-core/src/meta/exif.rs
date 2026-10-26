@@ -42,9 +42,51 @@ pub fn exif_date(path: &Path) -> Option<Timestamp> {
     None
 }
 
+/// The GPS timestamp of an image (`GPSDateStamp` + `GPSTimeStamp`, always UTC), or `None`.
+/// The fallback for photos without `DateTimeOriginal`/`DateTime` (plan §20.14).
+pub fn gps_date(path: &Path) -> Option<Timestamp> {
+    let file = std::fs::File::open(path).ok()?;
+    let mut reader = BufReader::new(file);
+    let data = exif::Reader::new().read_from_container(&mut reader).ok()?;
+    let day = data
+        .get_field(Tag::GPSDateStamp, In::PRIMARY)
+        .and_then(ascii)?;
+    let hms = match data
+        .get_field(Tag::GPSTimeStamp, In::PRIMARY)
+        .map(|f| &f.value)
+    {
+        Some(Value::Rational(v)) if v.len() == 3 => [v[0].to_f64(), v[1].to_f64(), v[2].to_f64()],
+        _ => return None,
+    };
+    parse_gps_datetime(&day, hms)
+}
+
+/// `"YYYY:MM:DD"` plus `[h, m, s]` (UTC) → timestamp. Fractions of a second are dropped.
+pub fn parse_gps_datetime(day: &str, hms: [f64; 3]) -> Option<Timestamp> {
+    use chrono::{NaiveDate, TimeZone, Utc};
+    let day = day.trim_end_matches(['\0', ' ']);
+    let d = NaiveDate::parse_from_str(day, "%Y:%m:%d").ok()?;
+    if hms.iter().any(|x| !x.is_finite() || *x < 0.0) {
+        return None;
+    }
+    let t = d.and_hms_opt(hms[0] as u32, hms[1] as u32, hms[2] as u32)?;
+    crate::meta::usable(Some(Utc.from_utc_datetime(&t)))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gps_formats() {
+        let t = parse_gps_datetime("2024:06:12", [13.0, 32.0, 41.5]).unwrap();
+        assert_eq!(crate::time::format_iso(&t), "2024-06-12T13:32:41Z");
+        assert!(parse_gps_datetime("2024:06:12\0", [0.0, 0.0, 0.0]).is_some());
+        assert!(parse_gps_datetime("0000:00:00", [0.0, 0.0, 0.0]).is_none());
+        assert!(parse_gps_datetime("2024:06:12", [25.0, 0.0, 0.0]).is_none());
+        assert!(parse_gps_datetime("2024:06:12", [f64::NAN, 0.0, 0.0]).is_none());
+        assert!(parse_gps_datetime("1970:01:01", [0.0, 0.0, 0.0]).is_none());
+    }
 
     #[test]
     fn parse_formats() {

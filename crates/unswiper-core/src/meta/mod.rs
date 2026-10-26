@@ -5,6 +5,7 @@
 //! photo info view (plan §17).
 
 pub mod exif;
+pub mod file_name_date;
 pub mod folder_date;
 pub mod info;
 pub mod quicktime;

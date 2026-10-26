@@ -280,3 +280,92 @@ fn sidecar_order_matches_swift_sidecars_then_mov() {
         .collect();
     assert_eq!(side, vec!["IMG_9.xmp", "IMG_9.MOV"]);
 }
+
+/// JPEG with only a GPS timestamp (no DateTimeOriginal/DateTime), like many phone exports.
+fn jpeg_with_gps_time(day: &str, hms: [u32; 3]) -> Vec<u8> {
+    use exif::experimental::Writer;
+    use exif::{Field, In, Rational, Tag, Value};
+    let r = |num| Rational { num, denom: 1 };
+    let fields = [
+        Field {
+            tag: Tag::GPSDateStamp,
+            ifd_num: In::PRIMARY,
+            value: Value::Ascii(vec![day.as_bytes().to_vec()]),
+        },
+        Field {
+            tag: Tag::GPSTimeStamp,
+            ifd_num: In::PRIMARY,
+            value: Value::Rational(hms.iter().map(|x| r(*x)).collect()),
+        },
+    ];
+    let mut w = Writer::new();
+    for f in &fields {
+        w.push_field(f);
+    }
+    let mut tiff = std::io::Cursor::new(vec![]);
+    w.write(&mut tiff, false).unwrap();
+    let tiff = tiff.into_inner();
+    let mut j = vec![0xFF, 0xD8, 0xFF, 0xE1];
+    j.extend_from_slice(&((tiff.len() + 8) as u16).to_be_bytes());
+    j.extend_from_slice(b"Exif\0\0");
+    j.extend_from_slice(&tiff);
+    j.extend_from_slice(&[0xFF, 0xD9]);
+    j
+}
+
+/// Plan §20.14: capture date, then GPS time, then the file name, then the folder.
+#[test]
+fn date_fallbacks_gps_then_file_name_then_folder() {
+    let d = tempfile::tempdir().unwrap();
+    let root = canon(d.path());
+    write(
+        &root,
+        "Trip/a.jpg",
+        &jpeg_with_gps_time("2024:06:12", [13, 32, 41]),
+    );
+    write(&root, "Trip/IMG_20240613_101500.jpg", b"x");
+    // A GPS time wins over the name.
+    write(
+        &root,
+        "Trip/IMG_20200101_000000.jpg",
+        &jpeg_with_gps_time("2024:06:14", [8, 0, 0]),
+    );
+    // A capture date wins over everything.
+    write(
+        &root,
+        "2023-01-01 Old/PXL_20240615_120000000.jpg",
+        &jpeg_with_exif(Some("2024:06:16 09:00:00"), None),
+    );
+    write(&root, "2023-01-01 Old/PXL_20240617_120000000.jpg", b"x");
+    write(&root, "2023-01-01 Old/IMG_1234.jpg", b"x");
+    let (items, _) = run(&root);
+    let by = |n: &str| items.iter().find(|i| i.path.ends_with(n)).unwrap();
+    let iso = |n: &str| unswiper_core::time::format_iso(&by(n).taken_at);
+    assert_eq!(by("a.jpg").date_source, Some(DateSource::Gps));
+    assert_eq!(iso("a.jpg"), "2024-06-12T13:32:41Z");
+    assert_eq!(
+        by("IMG_20240613_101500.jpg").date_source,
+        Some(DateSource::FileName)
+    );
+    assert!(!by("IMG_20240613_101500.jpg").is_undated);
+    assert_eq!(
+        by("IMG_20200101_000000.jpg").date_source,
+        Some(DateSource::Gps)
+    );
+    assert_eq!(
+        by("PXL_20240615_120000000.jpg").date_source,
+        Some(DateSource::Capture)
+    );
+    assert_eq!(
+        by("PXL_20240617_120000000.jpg").date_source,
+        Some(DateSource::FileName)
+    );
+    assert_eq!(
+        iso("PXL_20240617_120000000.jpg"),
+        "2024-06-17T12:00:00Z",
+        "Pixel names are UTC"
+    );
+    assert_eq!(by("IMG_1234.jpg").date_source, Some(DateSource::Folder));
+    let json = serde_json::to_string(&by("IMG_20240613_101500.jpg").date_source).unwrap();
+    assert_eq!(json, "\"filename\"");
+}

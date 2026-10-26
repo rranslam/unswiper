@@ -53,6 +53,11 @@ impl CommitMode {
 pub enum DateSource {
     /// EXIF / TIFF / QuickTime capture date.
     Capture,
+    /// The photo's GPS timestamp (UTC), for photos without an EXIF date (schema 2, plan §20.14).
+    Gps,
+    /// Parsed from the file name (`IMG_20240612_133241`, `PXL_…`; schema 2, plan §20.14).
+    #[serde(rename = "filename")]
+    FileName,
     /// Parsed from the folder path (`2026/01/01`, `2025-07-04 Beach`).
     Folder,
     /// No date of its own; grouped via dated siblings or the folder name.
