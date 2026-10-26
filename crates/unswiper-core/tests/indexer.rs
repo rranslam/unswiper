@@ -369,3 +369,101 @@ fn date_fallbacks_gps_then_file_name_then_folder() {
     let json = serde_json::to_string(&by("IMG_20240613_101500.jpg").date_source).unwrap();
     assert_eq!(json, "\"filename\"");
 }
+
+/// Counts metadata reads (to check that re-indexing reuses unchanged files).
+struct Counting(std::sync::atomic::AtomicUsize);
+
+impl unswiper_core::index::DateReader for Counting {
+    fn photo_date(&self, p: &std::path::Path) -> Option<unswiper_core::time::Timestamp> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        MetadataDates.photo_date(p)
+    }
+    fn video_date(&self, p: &std::path::Path) -> Option<unswiper_core::time::Timestamp> {
+        self.0.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        MetadataDates.video_date(p)
+    }
+}
+
+#[test]
+#[cfg_attr(
+    windows,
+    ignore = "known Windows path gap, see .github/workflows/rust.yml windows job"
+)]
+fn index_with_matches_index_reuses_unchanged_and_cancels() {
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use unswiper_core::index::{index_with, IndexOptions};
+    let d = tempfile::tempdir().unwrap();
+    let root = canon(d.path());
+    for i in 0..40 {
+        let date = format!("2026:01:{:02} 10:00:00", 1 + i % 20);
+        write(
+            &root,
+            &format!("t/{i:03}.jpg"),
+            &jpeg_with_exif(Some(&date), None),
+        );
+    }
+    write(&root, "t/IMG_20250101_120000.jpg", b"");
+    write(&root, "u/clip.mov", b"mov");
+    let none = HashMap::new();
+    let serial = index(&root, 36.0, &none, &MetadataDates, |_| {}).unwrap();
+    let counting = Counting(AtomicUsize::new(0));
+    let mut ticks = vec![];
+    let first = index_with(
+        &root,
+        &IndexOptions {
+            visit_gap_hours: 36.0,
+            decisions: &none,
+            dates: &counting,
+            prior: &[],
+            cancel: None,
+            threads: 4,
+        },
+        |p| ticks.push(p),
+    )
+    .unwrap();
+    assert_eq!(first, serial, "parallel index gives the same result");
+    let reads = counting.0.load(Ordering::Relaxed);
+    assert!(reads >= 42, "{reads}");
+    let last = ticks.last().unwrap();
+    assert_eq!((last.dated, last.to_date, last.media_found), (42, 42, 42));
+
+    // Re-index: unchanged files are not read again; a changed one is.
+    write(
+        &root,
+        "t/000.jpg",
+        &jpeg_with_exif(Some("2026:03:03 10:00:00"), None),
+    );
+    counting.0.store(0, Ordering::Relaxed);
+    let again = index_with(
+        &root,
+        &IndexOptions {
+            visit_gap_hours: 36.0,
+            decisions: &none,
+            dates: &counting,
+            prior: &first.0,
+            cancel: None,
+            threads: 2,
+        },
+        |_| {},
+    )
+    .unwrap();
+    assert_eq!(counting.0.load(Ordering::Relaxed), 1);
+    let fresh = index(&root, 36.0, &none, &MetadataDates, |_| {}).unwrap();
+    assert_eq!(again, fresh);
+
+    let stop = AtomicBool::new(true);
+    let err = index_with(
+        &root,
+        &IndexOptions {
+            visit_gap_hours: 36.0,
+            decisions: &none,
+            dates: &MetadataDates,
+            prior: &[],
+            cancel: Some(&stop),
+            threads: 2,
+        },
+        |_| {},
+    )
+    .unwrap_err();
+    assert!(matches!(err, IndexError::Cancelled));
+}

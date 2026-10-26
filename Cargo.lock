@@ -2141,6 +2141,7 @@ dependencies = [
  "kamadak-exif",
  "notify",
  "proptest",
+ "rayon",
  "serde",
  "serde_json",
  "tempfile",
