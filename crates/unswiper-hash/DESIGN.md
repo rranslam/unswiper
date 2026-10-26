@@ -1,6 +1,6 @@
 # unswiper-hash: design (draft, 26 Oct 2026)
 
-Status: **approved design (Rob, 26 Oct 2026): all open choices 1–11 decided as recommended (§12). Not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](../../docs/linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4.5–5.5 days (M1–M4, including logging, §15); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The decisions are in §12.
+Status: **approved design (Rob, 26 Oct 2026): all open choices 1–11 decided as recommended (§12). Not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](../../docs/linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 5–6 days (M1–M4, including logging, §15, and documentation, §16); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The decisions are in §12.
 
 ## 1. Goals and non-goals
 
@@ -110,7 +110,7 @@ crates/unswiper-hash/          ← new; lib + bin "unswiper-hash"
   src/walk.rs                  ← walks a root (reuses unswiper-core's media-extension list and NFC paths)
   src/hash.rs                  ← BLAKE3 streaming (64 KiB buffers; mmap + rayon for files > 64 MiB), SHA-256 for export
   src/manifest.rs              ← JSON manifest and B3SUMS / SHA256SUMS
-  src/main.rs                  ← CLI (same hand-written argument style as unswiper-cli)
+  src/main.rs, src/cli.rs      ← CLI: clap 4 derive (cli.rs is shared with the man page generator, §16)
   tests/                       ← integration tests on temp folders
 ```
 Dependencies: `unswiper-core` (media types, path normalising), `blake3`, `rusqlite` (`bundled`), `sha2`, plus the existing `serde`, `serde_json`, `chrono`. No async runtime. A worker pool uses `std::thread` (or `rayon` if blake3's `rayon` feature is used for big files).
@@ -151,7 +151,7 @@ Packaging: added to the AppImage and Flatpak as `unswiper-hash` (next to `unswip
 10. **`damaged?` handling.** Report only, or also write a list for restore from backup (`--out damaged.txt`). **Decided (Rob, 26 Oct 2026):** report plus optional list; never touch the file.
 11. **Content-only fingerprint (§14).** Full-file hash only; full-file plus a container-data content hash (JPEG, PNG, HEIC/AVIF, MP4/MOV), with "metadata changed only" vs "image changed" reports and move matching on content; or plus a decoded-pixel hash. **Decided (Rob, 26 Oct 2026):** full-file plus container-data content hash (M2b, +1.5–2 days), plus rotation detection (§14.5, M2c, +1.5–2 days; approved by Rob 26 Oct 2026). Pixels are decoded only when the content hash changes.
 
-## 13. Milestones (4.5–5.5 days; 7.5–9.5 with M2b and M2c)
+## 13. Milestones (5–6 days; 8–10 with M2b and M2c)
 
 | Milestone | Scope | Estimate |
 |---|---|---|
@@ -160,7 +160,7 @@ Packaging: added to the AppImage and Flatpak as `unswiper-hash` (next to `unswip
 | **M2b** Content-only fingerprint (open choice 11) | Content hash for JPEG, PNG, HEIC/AVIF and MP4/MOV, "metadata changed only" and "image changed" reports, move matching on content, tests against exiftool and ffmpeg | 1.5–2 days |
 | **M2c** Rotation detection (§14.5) | Rotation fingerprint at scan time (JPEG, PNG; HEIC with the optional `heif` feature), the 8-orientation matcher with edge tolerance, "rotated" and "rotated (approx)" reports, tests with jpegtran on MCU-aligned and non-aligned files | 1.5–2 days |
 | **M3** Across machines | Manifests, `export` (JSON, B3SUMS, SHA256SUMS), `diff` (manifest or root), `scan --import`, round-trip tests | 1 day |
-| **M4** Ship | AppImage, Flatpak (cargo-sources), dmg; THIRD_PARTY_NOTICES; README, help page and man-style `--help`; CI jobs incl. MSRV; `schedule --print` | 0.5–1 day |
+| **M4** Ship | AppImage, Flatpak (cargo-sources), dmg; THIRD_PARTY_NOTICES; README, help page and man-style `--help`; CI jobs incl. MSRV; `schedule --print`; man pages and the README user guide (§16) | 1–1.5 days |
 | **M5** (optional, later) App integration | Read-only store access, move carry-over, "possibly damaged" badge, "Verify Library…" | 2 days |
 
 ## 14. Content-only fingerprint (approved by Rob, 26 Oct 2026)
@@ -363,4 +363,44 @@ Default log locations when `--log-file` is given without a folder: none; the use
 - Privacy: no absolute paths at `info`; no hashes below `debug`; `--log-redact-paths`.
 
 **Effort:** +0.5 day, in **M1** (logger, options, summary line, tests). The schedule examples ship with `schedule --print` in M4.
+
+## 16. Documentation: man pages and user guide (Rob, 26 Oct 2026)
+
+### 16.1 Man pages
+- The CLI is defined once with **clap 4** (derive) in `src/cli.rs`. The same definition gives `--help`, the man pages and shell completions, so they can't drift apart.
+- An `xtask`-style step generates them: `cargo run -p unswiper-hash --example gen-docs` writes the pages with **`clap_mangen`** (roff), and `clap_complete` writes the completions.
+  - It is not done in `build.rs`: that would need the CLI module at build time and would slow every build.
+  - The output is committed under `crates/unswiper-hash/man/`:
+    - `unswiper-hash.1`: overview, global and logging options, exit codes, files, environment, examples, see also;
+    - one page per command, `unswiper-hash-scan.1`, `-verify.1`, `-status.1`, `-moves.1`, `-dups.1`, `-export.1`, `-diff.1`, `-forget.1`, `-gc.1`, `-schedule.1` (git style);
+    - completions under `crates/unswiper-hash/completions/` (`unswiper-hash.bash`, `_unswiper-hash` for zsh, `unswiper-hash.fish`).
+- The sections clap can't derive (EXIT STATUS, FILES with the store and log locations per OS, ENVIRONMENT, FINDINGS, EXAMPLES, SEE ALSO) come from `man/extra/*.roff` and are appended by the generator.
+- **Kept in sync:** a test runs the generator into a temp folder and fails if the result differs from the committed files ("run gen-docs"). `mandoc -Tlint` checks the pages in CI (Linux job).
+- **Install locations:**
+  - Flatpak: `/app/share/man/man1/` (`flatpak run --command=man …`). Completions in `/app/share/bash-completion/completions/` etc.
+  - AppImage: inside `usr/share/man/man1/`. `unswiper-hash --print-man > ~/.local/share/man/man1/unswiper-hash.1` installs it for `man` (the main page is also embedded in the binary for this).
+  - dmg: `Unswiper.app/Contents/Resources/man/man1/`. Help explains `MANPATH` or a symlink to `/usr/local/share/man/man1/`.
+  - `cargo install`: cargo doesn't install man pages, so the README points to `--print-man` and the `man/` folder.
+- **Crates:** `clap` 4.6.7, `clap_mangen` 0.3.3 (with `roff` 1.1.1) and `clap_complete` 4.6.11. All are MIT OR Apache-2.0 with MSRV 1.85, checked with `cargo +1.92 check` on 26 Oct 2026, and added to THIRD_PARTY_NOTICES. Generator-only crates are dev or example dependencies, so they're not in the shipped binary except `clap`.
+
+### 16.2 README user guide
+- `crates/unswiper-hash/README.md` is the user guide: what it's for, install, the three ways to use it (with the Unswiper apps, by hand, scheduled), reading reports, JSON, exit codes and the log file, and what to do about each finding. The top-level README links to it.
+- **Kept in sync with tests:**
+  - The guide's command examples and sample outputs are fenced as `console` blocks. A test (`tests/readme.rs`) extracts each block marked `<!-- check -->`, runs the command against a synthetic fixture library (generated in the test, never personal media) with a fixed clock and store, and compares the output after masking times and durations.
+  - Option names in the guide are checked against the clap definition, so a renamed flag fails the test.
+  - Until the code exists, the guide is marked **planned — not built yet** at the top, and the checks are switched on in M4.
+
+- **Mac and Linux specifics** (Rob, 26 Oct 2026). Wherever they differ, the guide and the man page's FILES, EXAMPLES and NOTES sections use labelled **Mac** / **Linux** subsections:
+  - install and PATH;
+  - store and log locations;
+  - scheduling: launchd with `launchctl bootstrap`, Full Disk Access, and sleep/wake, vs cron and systemd user timers;
+  - log rotation (newsyslog vs logrotate) and viewing logs (Console.app and `log show`, vs journalctl, `less` and `tail -f`);
+  - `shasum -a 256 -c` vs `sha256sum -c`;
+  - external drives (`/Volumes` vs `/media` and `/run/media`);
+  - case sensitivity (APFS vs ext4).
+
+  Windows is noted as later.
+
+### 16.3 Effort
++0.5 day in **M4**: the generator, extra roff sections, completions, sync tests, the README checks, and packaging of the pages. The README draft already exists. M4 is now 1–1.5 days, and the total is **5–6 days** for M1–M4, **8–10 days** with M2b and M2c.
 
