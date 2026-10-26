@@ -83,3 +83,17 @@ fn newer_than_v2_is_still_refused() {
     .unwrap();
     assert!(st.load().problem.unwrap().contains("format 3"));
 }
+
+/// Golden v2 file shared with the Mac tests (`LibraryStoreTests.testV2GoldenRoundTripsExactly`):
+/// both apps must read it and write it back byte for byte.
+#[test]
+fn v2_golden_round_trips_exactly() {
+    const V2: &str = include_str!("fixtures/compat/library-v2.json");
+    let snap: LibrarySnapshot = serde_json::from_str(V2).unwrap();
+    assert_eq!(snap.schema_version, Some(2));
+    assert_eq!(snap.config.group_mode(), GroupMode::VisitGeo);
+    assert_eq!(snap.items[0].location.unwrap().source, LocationSource::Exif);
+    assert_eq!(snap.groups[0].place.as_ref().unwrap().label(), "Lisbon, PT");
+    assert_eq!(snap.groups[0].parent_visit_id.as_deref(), Some("visit-1a2b"));
+    assert_eq!(snap.to_json(), V2);
+}

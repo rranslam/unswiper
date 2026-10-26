@@ -40,6 +40,42 @@ enum DateSource: String, Codable, Hashable {
     case unknown
 }
 
+/// How the library is grouped (plan §20.2), saved as `AppConfig.groupMode`. Same strings as Rust.
+enum GroupMode: String, Codable, CaseIterable, Identifiable {
+    /// Time-gap visits exactly as in v0.5 (default).
+    case visit
+    /// Places regardless of time, each split into trips.
+    case geo
+    /// Each visit split by place.
+    case visitGeo = "visit-geo"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .visit: return "By Visit (Time)"
+        case .geo: return "By Place"
+        case .visitGeo: return "By Visit and Place"
+        }
+    }
+}
+
+/// A capture location (schema 2), rounded to 5 decimals. `source` is "exif", "quicktime" or "takeout".
+struct GeoLocation: Codable, Hashable {
+    var lat: Double
+    var lon: Double
+    var source: String
+}
+
+/// A place name from the offline geocoder (schema 2), written by the Rust helper.
+struct Place: Codable, Hashable {
+    var name: String
+    var admin1: String?
+    var country: String?
+    var lat: Double
+    var lon: Double
+}
+
 /// A file that travels with a primary item (Live Photo MOV, .AAE/.XMP sidecar).
 struct SidecarFile: Codable, Hashable {
     var path: String
@@ -69,6 +105,8 @@ struct MediaItem: Identifiable, Codable, Hashable {
     var decisionSource: String? = nil
     /// True once the user cleared or kept a blur suggestion; rescans never re-flag it.
     var blurDismissed: Bool? = nil
+    /// Schema 2: where it was taken (nil = unknown). Written only when present.
+    var location: GeoLocation? = nil
 
     var fileURL: URL { URL(fileURLWithPath: path) }
     var fileName: String { fileURL.lastPathComponent }
@@ -77,7 +115,7 @@ struct MediaItem: Identifiable, Codable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case path, kind, sizeBytes, takenAt, relativeFolder, decision, modifiedAt, sidecars, isUndated, dateSource, folderPath
-        case decisionSource, blurDismissed
+        case decisionSource, blurDismissed, location
     }
 }
 
@@ -97,6 +135,7 @@ extension MediaItem {
         folderPath = try c.decodeIfPresent(String.self, forKey: .folderPath)
         decisionSource = try c.decodeIfPresent(String.self, forKey: .decisionSource)
         blurDismissed = try c.decodeIfPresent(Bool.self, forKey: .blurDismissed)
+        location = try c.decodeIfPresent(GeoLocation.self, forKey: .location)
     }
 }
 
@@ -141,6 +180,10 @@ struct VisitGroup: Identifiable, Codable, Hashable {
     var videoCount: Int
     var totalBytes: Int64
     var folderHint: String
+    /// Schema 2: the place of a place group (geo modes).
+    var place: Place? = nil
+    /// Schema 2: the place (`geo`) or visit (`visit-geo`) this group belongs to.
+    var parentVisitId: String? = nil
 
     var itemCount: Int { itemPaths.count }
 
@@ -168,6 +211,19 @@ struct AppConfig: Codable, Equatable {
     var blurSensitivity: String? = nil
     /// "Show Location in Photo Info", shared with Linux: nil = on (the default), false = hidden.
     var infoShowLocation: Bool? = nil
+    /// Schema 2, shared with Linux: "visit" | "geo" | "visit-geo"; nil or unknown = visit.
+    /// Kept as a string so a value from a newer app survives a round trip.
+    var groupMode: String? = nil
+    /// Schema 2 grouping tuning, shared with Linux (nil = the mode's default).
+    var placeRadiusKm: Double? = nil
+    var minPlaceItems: Int? = nil
+    var joinSamePlaceDays: Bool? = nil
+
+    /// The saved grouping mode (missing or unknown = visit).
+    var grouping: GroupMode {
+        get { groupMode.flatMap(GroupMode.init(rawValue:)) ?? .visit }
+        set { groupMode = newValue.rawValue }
+    }
 
     static let `default` = AppConfig(
         rootPath: nil,
@@ -180,8 +236,9 @@ struct AppConfig: Codable, Equatable {
 
 struct LibrarySnapshot: Codable {
     /// Format version of library.json. Missing in files written before v0.1.2 (treated as 1).
-    /// Version 1 = absolute item paths (today's format). See docs/linux-port-plan.md §5.
-    static let currentSchemaVersion = 1
+    /// Version 1 = absolute item paths. Version 2 adds `location`, `place`, `parentVisitId` and
+    /// `config.groupMode` (all optional, so v1 files load unchanged). See docs/linux-port-plan.md §5, §20.5.
+    static let currentSchemaVersion = 2
     var schemaVersion: Int? = LibrarySnapshot.currentSchemaVersion
     var config: AppConfig
     var items: [MediaItem]

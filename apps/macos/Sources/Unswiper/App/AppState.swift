@@ -44,6 +44,13 @@ final class AppState: ObservableObject {
     /// Tests swap in a fake; nil means "use the bundled helper".
     var infoRunner: ((_ files: [String], _ settings: InfoHelper.Settings) async throws -> [InfoHelper.Answer])?
 
+    // Grouping by place (plan §20.6). Tests swap in a fake; nil means "use the bundled helper".
+    var groupRunner: ((_ library: URL, _ mode: GroupMode) async throws -> GroupHelper.Answer)?
+    /// Bumped by every regroup so a slow helper answer never overwrites a newer one.
+    private var regroupGeneration = 0
+    /// Set while the helper groups by place ("Grouping by place…").
+    @Published var groupingProgress: String?
+
     enum AppPath: Hashable {
         case home
         case setup
@@ -239,6 +246,9 @@ final class AppState: ObservableObject {
             groups = result.groups
             lastIndexedAt = Date()
             indexProgress = .init(filesSeen: items.count, mediaFound: items.count)
+            if config.grouping != .visit {
+                await regroup()
+            }
             persist()
             statusMessage = "Indexed \(items.count) items in \(groups.count) visits."
             isIndexing = false
@@ -472,9 +482,12 @@ final class AppState: ObservableObject {
                 let failed = Set(result.failed.map(\.path))
                 let rejectedMoved = Set(members.filter { $0.decision == .reject && !failed.contains($0.path) }.map(\.path))
                 items.removeAll { rejectedMoved.contains($0.path) }
-                // Rebuild groups from remaining items
+                // Rebuild groups from remaining items (in the saved grouping mode).
                 groups = VisitGrouper.group(items: items.sorted { $0.takenAt < $1.takenAt }, gapHours: config.visitGapHours)
                 flush()
+                if config.grouping != .visit {
+                    await regroup()
+                }
             }
             if result.dryRun {
                 statusMessage = "Dry run: would move \(result.wouldMove) items (\(ByteFormat.string(result.bytes))). Nothing was moved."
@@ -546,4 +559,65 @@ final class AppState: ObservableObject {
             statusMessage = "Restore failed: \(error.localizedDescription)"
         }
     }
+
+    // MARK: - Grouping mode (plan §20.6)
+
+    /// Changes the grouping mode, saves it in `AppConfig.groupMode` and regroups the library.
+    func setGroupMode(_ mode: GroupMode) {
+        guard config.groupMode != mode.rawValue else { return }
+        config.grouping = mode
+        persist()
+        Task { await regroup() }
+    }
+
+    /// Recomputes the groups with the saved mode. Visit mode uses the Swift grouper (v0.5
+    /// behaviour); the place modes ask the bundled helper, which shares the Linux code.
+    func regroup() async {
+        regroupGeneration += 1
+        let generation = regroupGeneration
+        let mode = config.grouping
+        if mode == .visit {
+            groups = VisitGrouper.group(items: items.sorted { $0.takenAt < $1.takenAt }, gapHours: config.visitGapHours)
+            groupsChanged()
+            return
+        }
+        // The helper reads the saved library, so write it first.
+        flush()
+        let library = LibraryStore.snapshotURL
+        groupingProgress = "Grouping by place…"
+        defer { if generation == regroupGeneration { groupingProgress = nil } }
+        do {
+            let answer: GroupHelper.Answer
+            if let runner = groupRunner {
+                answer = try await runner(library, mode)
+            } else {
+                guard let helper = BlurHelper.locate() else {
+                    statusMessage = "Grouping by place needs the helper (unswiper-blur), which is missing from Unswiper.app."
+                    return
+                }
+                answer = try await Task.detached(priority: .userInitiated) {
+                    try GroupHelper.run(helper: helper, library: library, mode: mode)
+                }.value
+            }
+            guard generation == regroupGeneration, config.grouping == mode else { return }
+            items = GroupHelper.apply(answer.locations, to: items)
+            groups = answer.groups
+            groupsChanged()
+        } catch {
+            statusMessage = error.localizedDescription
+        }
+    }
+
+    /// After a regroup: drop a selection that no longer exists and save.
+    private func groupsChanged() {
+        if let id = selectedGroupID, !groups.contains(where: { $0.id == id }) {
+            selectedGroupID = nil
+            switch path {
+            case .reduce, .commit, .compare: path = .home
+            default: break
+            }
+        }
+        persist()
+    }
+
 }

@@ -48,6 +48,14 @@ struct UnswiperApp: App {
                     get: { state.showLocation },
                     set: { state.setShowLocation($0) }
                 ))
+                Divider()
+                Picker("Grouping", selection: Binding(
+                    get: { state.config.grouping },
+                    set: { state.setGroupMode($0) }
+                )) {
+                    ForEach(GroupMode.allCases) { m in Text(m.label).tag(m) }
+                }
+                .disabled(state.isBusy)
             }
             CommandMenu("Blurry Photos") {
                 Toggle("Detect Blurry Photos", isOn: Binding(

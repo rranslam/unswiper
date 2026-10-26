@@ -1,0 +1,94 @@
+{
+  "config" : {
+    "bookmarkData" : "Ym9va21hcms=",
+    "commitMode" : "quarantine",
+    "groupMode" : "visit-geo",
+    "joinSamePlaceDays" : true,
+    "keepTargetDefault" : 10,
+    "keepTargets" : {
+      "visit-1a2b" : 5
+    },
+    "minPlaceItems" : 3,
+    "placeRadiusKm" : 2.5,
+    "rootPath" : "\/Users\/rob\/Pictures\/Trips",
+    "visitGapHours" : 36
+  },
+  "groups" : [
+    {
+      "endDate" : "2026-01-02T18:00:00Z",
+      "folderHint" : "Lisbon",
+      "id" : "visit-1a2b",
+      "itemPaths" : [
+        "\/Users\/rob\/Pictures\/Trips\/Lisbon\/IMG_1.HEIC"
+      ],
+      "parentVisitId" : "visit-1a2b",
+      "photoCount" : 1,
+      "place" : {
+        "admin1" : "Lisbon",
+        "country" : "PT",
+        "lat" : 38.71667,
+        "lon" : -9.13333,
+        "name" : "Lisbon"
+      },
+      "startDate" : "2026-01-02T18:00:00Z",
+      "title" : "Jan 2 · Lisbon, PT",
+      "totalBytes" : 3072,
+      "videoCount" : 0
+    },
+    {
+      "endDate" : "0001-01-01T00:00:00Z",
+      "folderHint" : "Trips",
+      "id" : "undated",
+      "itemPaths" : [
+        "\/Users\/rob\/Pictures\/Trips\/scan.png"
+      ],
+      "photoCount" : 1,
+      "startDate" : "0001-01-01T00:00:00Z",
+      "title" : "Undated",
+      "totalBytes" : 10,
+      "videoCount" : 0
+    }
+  ],
+  "items" : [
+    {
+      "dateSource" : "capture",
+      "decision" : "reject",
+      "folderPath" : "Lisbon",
+      "isUndated" : false,
+      "kind" : "photo",
+      "location" : {
+        "lat" : 38.7223,
+        "lon" : -9.1393,
+        "source" : "exif"
+      },
+      "modifiedAt" : "2026-01-02T18:00:01Z",
+      "path" : "\/Users\/rob\/Pictures\/Trips\/Lisbon\/IMG_1.HEIC",
+      "relativeFolder" : "Lisbon",
+      "sidecars" : [
+        {
+          "modifiedAt" : "2026-01-02T18:00:01Z",
+          "path" : "\/Users\/rob\/Pictures\/Trips\/Lisbon\/IMG_1.MOV",
+          "sizeBytes" : 2048
+        }
+      ],
+      "sizeBytes" : 1024,
+      "takenAt" : "2026-01-02T18:00:00Z"
+    },
+    {
+      "dateSource" : "unknown",
+      "decision" : "undecided",
+      "folderPath" : "",
+      "isUndated" : true,
+      "kind" : "photo",
+      "path" : "\/Users\/rob\/Pictures\/Trips\/scan.png",
+      "relativeFolder" : "Trips",
+      "sidecars" : [
+
+      ],
+      "sizeBytes" : 10,
+      "takenAt" : "0001-01-01T00:00:00Z"
+    }
+  ],
+  "lastIndexedAt" : "2026-10-13T20:00:00Z",
+  "schemaVersion" : 2
+}

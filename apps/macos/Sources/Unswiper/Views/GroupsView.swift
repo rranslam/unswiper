@@ -62,6 +62,25 @@ struct GroupsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if let g = state.groupingProgress {
+                ProgressView()
+                    .controlSize(.small)
+                Text(g)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Picker("Grouping", selection: Binding(
+                get: { state.config.grouping },
+                set: { state.setGroupMode($0) }
+            )) {
+                ForEach(GroupMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+            .frame(width: 230)
+            .disabled(state.isBusy)
+            .help("How visits are formed: by time, by place, or by time and then place")
+
             Picker("Commit", selection: $state.config.commitMode) {
                 ForEach(CommitMode.allCases) { mode in
                     Text(mode.label).tag(mode)
@@ -117,8 +136,15 @@ struct GroupRow: View {
         let progress = group.progress(in: items)
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(group.title)
-                    .font(.headline)
+                HStack(spacing: 4) {
+                    if group.place != nil {
+                        Image(systemName: "mappin.and.ellipse")
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel("Place")
+                    }
+                    Text(group.title)
+                        .font(.headline)
+                }
                 Text(dateRange)
                     .font(.caption)
                     .foregroundStyle(.secondary)
