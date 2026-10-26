@@ -563,7 +563,7 @@ Don't build it into v0.4. If wanted later: a **separate hash store in the suppor
 - **Schedule:** not scheduled; after v0.4. The open questions in §18.7 (BLAKE3 vs SHA-256, support-folder store vs hashes travelling with the photos, automatic vs asked carry-over on moves, verify on request vs scheduled) are decided when it is scheduled.
 
 ### 18.10 Design draft (26 Oct 2026)
-The full design of `unswiper-hash` (CLI, BLAKE3, SQLite store, moves, cross-machine manifests, crate layout, milestones M1–M5 and the open choices for Rob) is in [`docs/unswiper-hash-design.md`](unswiper-hash-design.md). Not scheduled.
+The full design of `unswiper-hash` (CLI, BLAKE3, SQLite store, moves, cross-machine manifests, crate layout, milestones M1–M5 and the open choices for Rob) is in [`crates/unswiper-hash/DESIGN.md`](../crates/unswiper-hash/DESIGN.md). Not scheduled.
 
 ## 19. Google Photos source: Google Takeout import (plan 15 Oct 2026; v0.5; M1 and M2 built)
 

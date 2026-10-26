@@ -1,6 +1,6 @@
 # unswiper-hash: design (draft, 26 Oct 2026)
 
-Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The numbered **open choices** for Rob are in §12.
+Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](../../docs/linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); a content-only fingerprint (§14, M2b) adds 1.5–2 days and rotation detection (§14.5, M2c) another 1.5–2 days; app integration is extra (M5). The numbered **open choices** for Rob are in §12.
 
 ## 1. Goals and non-goals
 
