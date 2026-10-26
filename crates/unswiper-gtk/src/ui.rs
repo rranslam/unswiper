@@ -17,14 +17,16 @@ use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use unswiper_blur::decide::Thresholds;
-use unswiper_core::index::index;
+use unswiper_core::index::{index_with, IndexOptions, IndexProgress};
 use unswiper_core::meta::info::{MediaInfo, Row};
 use unswiper_core::quality::Sensitivity;
 use unswiper_core::store::{default_support_dir, LibraryStore};
 use unswiper_core::trash::FreedesktopTrash;
 use unswiper_core::watch::{FolderWatcher, WatchBatch, DEFAULT_MAX_WAIT, DEFAULT_QUIET};
-use unswiper_core::{CommitMode, Decision, GroupMode, MediaItem, VisitGroup};
+use unswiper_core::{CommitMode, Decision, GroupMode, MediaItem};
 
+/// Grid cells built per main-loop turn.
+const GRID_BATCH: usize = 200;
 const THUMB: u32 = 220;
 
 /// Launch options (from the command line).
@@ -119,7 +121,8 @@ impl std::fmt::Debug for ThumbMsg {
     }
 }
 
-type IndexResult = Result<(Vec<MediaItem>, Vec<VisitGroup>), String>;
+/// An index run's outcome: ready to apply, an error to show, or `Err(None)` when cancelled.
+type IndexResult = Result<crate::state::Prepared, Option<String>>;
 
 #[derive(Debug)]
 pub enum Msg {
@@ -128,8 +131,10 @@ pub enum Msg {
     /// Open the "Import from Google Photos" assistant.
     ImportGooglePhotos,
     Reindex,
-    IndexProgress(usize, usize),
-    Indexed(IndexResult),
+    IndexProgress(IndexProgress),
+    /// Index run `gen` finished.
+    Indexed(u64, Box<IndexResult>),
+    CancelIndex,
     OpenVisit(i32),
     Click(String, bool, bool),
     SelectAll,
@@ -145,12 +150,24 @@ pub enum Msg {
     SetGroupMode(GroupMode),
     Watch(WatchBatch),
     Thumb(u64, String, ThumbMsg),
+    /// Build the next batch of grid cells for grid generation `gen`.
+    GridMore(u64),
     Save,
+    /// Save right away (window closing).
+    SaveNow,
+    SaveFailed(String),
     Help,
     About,
     Quit,
     BlurProgress(usize, usize),
-    BlurResult(HashSet<String>, HashSet<String>, bool),
+    BlurResult(
+        HashSet<String>,
+        HashSet<String>,
+        bool,
+        Option<Box<unswiper_blur::cache::QualityCache>>,
+    ),
+    BlurTogglePause,
+    BlurStop,
     BlurSetEnabled(bool),
     BlurSetSensitivity(Sensitivity),
     BlurRescan,
@@ -177,9 +194,24 @@ pub struct App {
     opts: Options,
     watcher: Option<FolderWatcher>,
     thumb_gen: u64,
+    /// `thumb_gen` for the thumbnail thread, so it stops when the grid changes.
+    thumb_gen_shared: Arc<std::sync::atomic::AtomicU64>,
+    /// Grid cells still to build, and thumbnails that arrived before their cell.
+    grid_pending: Vec<MediaItem>,
+    thumb_early: HashMap<String, ThumbMsg>,
     save_scheduled: bool,
+    /// Background library.json writer.
+    saver: crate::saver::Saver,
     indexing: bool,
+    /// Current index run: its number (stale results are dropped) and cancel flag.
+    index_gen: u64,
+    index_cancel: Option<Arc<AtomicBool>>,
+    index_eta: crate::format::Eta,
     blur_cancel: Option<Arc<AtomicBool>>,
+    blur_pause: Arc<AtomicBool>,
+    blur_eta: crate::format::Eta,
+    /// Photos marked blurry during the current scan (for the toast at the end).
+    blur_marked: usize,
     /// Viewer already reported to stdout (--present-viewer).
     viewer_reported: Rc<Cell<bool>>,
     viewer_presented: bool,
@@ -192,16 +224,31 @@ pub struct App {
     info_report: u8,
 }
 
+/// Header-bar progress for the background blur check: text, bar, pause and stop.
+pub struct BlurBar {
+    bx: gtk::Box,
+    label: gtk::Label,
+    bar: gtk::ProgressBar,
+    pause: gtk::Button,
+}
+
 pub struct Widgets {
+    /// What the visits list shows now (mirrors `visit_store`).
+    visit_rows: Vec<crate::state::VisitRow>,
+    visit_store: gio::ListStore,
+    visit_sel: gtk::SingleSelection,
     toasts: adw::ToastOverlay,
     stack: gtk::Stack,
     progress: adw::StatusPage,
-    visits: gtk::ListBox,
+    index_bar: gtk::ProgressBar,
+    index_detail: gtk::Label,
     visit_title: gtk::Label,
     keep_spin: gtk::SpinButton,
     keep_status: gtk::Label,
     grid: gtk::FlowBox,
     cells: HashMap<String, (gtk::Box, gtk::Picture, gtk::Label)>,
+    /// What each cell shows now (selected, badge), so refresh only touches changed cells.
+    cell_looks: HashMap<String, (bool, u8)>,
     durations: HashMap<String, gtk::Label>,
     content: gtk::Stack,
     viewer: ViewerWidgets,
@@ -213,7 +260,7 @@ pub struct Widgets {
     group_action: gio::SimpleAction,
     blur_action: gio::SimpleAction,
     blur_sens_action: gio::SimpleAction,
-    blur_status: gtk::Label,
+    blur: BlurBar,
     live_action: gio::SimpleAction,
     syncing: Rc<Cell<bool>>,
     info: InfoWidgets,
@@ -525,11 +572,42 @@ impl Component for App {
             });
         }
         root.add_action(&info_location_action);
-        let blur_status = gtk::Label::builder()
-            .css_classes(["dim-label", "caption"])
-            .visible(false)
-            .build();
-        header.pack_start(&blur_status);
+        // Background blur check: the library stays usable while it runs.
+        let blur = {
+            let label = gtk::Label::builder()
+                .css_classes(["dim-label", "caption"])
+                .build();
+            let bar = gtk::ProgressBar::builder()
+                .width_request(120)
+                .valign(gtk::Align::Center)
+                .build();
+            let pause = gtk::Button::builder()
+                .icon_name("media-playback-pause-symbolic")
+                .tooltip_text("Pause checking for blurry photos")
+                .css_classes(["flat", "circular"])
+                .build();
+            let stop = gtk::Button::builder()
+                .icon_name("process-stop-symbolic")
+                .tooltip_text("Stop checking for now. Photos already checked are remembered; Check for Blurry Photos Now in the menu carries on.")
+                .css_classes(["flat", "circular"])
+                .build();
+            let s = sender.clone();
+            pause.connect_clicked(move |_| s.input(Msg::BlurTogglePause));
+            let s = sender.clone();
+            stop.connect_clicked(move |_| s.input(Msg::BlurStop));
+            let bx = gtk::Box::builder().spacing(6).visible(false).build();
+            bx.append(&bar);
+            bx.append(&label);
+            bx.append(&pause);
+            bx.append(&stop);
+            header.pack_start(&bx);
+            BlurBar {
+                bx,
+                label,
+                bar,
+                pause,
+            }
+        };
 
         // Shortcuts. Bubble phase, so a focused spin button keeps its own keys.
         let ctl = gtk::ShortcutController::new();
@@ -596,19 +674,53 @@ impl Component for App {
             .width_request(48)
             .height_request(48)
             .build();
+        let index_bar = gtk::ProgressBar::builder()
+            .width_request(360)
+            .halign(gtk::Align::Center)
+            .build();
+        let index_detail = gtk::Label::builder().css_classes(["dim-label"]).build();
+        let index_cancel = gtk::Button::builder()
+            .label("Cancel")
+            .halign(gtk::Align::Center)
+            .css_classes(["pill"])
+            .build();
+        {
+            let s = sender.clone();
+            index_cancel.connect_clicked(move |_| s.input(Msg::CancelIndex));
+        }
+        let index_box = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .spacing(12)
+            .halign(gtk::Align::Center)
+            .build();
+        index_box.append(&spinner);
+        index_box.append(&index_bar);
+        index_box.append(&index_detail);
+        index_box.append(&index_cancel);
         let progress = adw::StatusPage::builder()
             .title("Indexing…")
             .description("Looking for photos and videos")
-            .child(&spinner)
+            .child(&index_box)
             .build();
 
         // Main page: visits on the left, grid on the right.
-        let visits = gtk::ListBox::builder()
+        // A list view only builds rows for what is on screen (thousands of visits on large
+        // libraries); progress changes replace just the changed items in the model.
+        let visit_store = gio::ListStore::new::<glib::BoxedAnyObject>();
+        let visit_sel = gtk::SingleSelection::builder()
+            .model(&visit_store)
+            .autoselect(false)
+            .can_unselect(true)
+            .build();
+        let visits = gtk::ListView::builder()
+            .model(&visit_sel)
+            .factory(&visit_row_factory())
+            .single_click_activate(true)
             .css_classes(["navigation-sidebar", "visits"])
             .build();
         {
             let s = sender.clone();
-            visits.connect_row_activated(move |_, row| s.input(Msg::OpenVisit(row.index())));
+            visits.connect_activate(move |_, pos| s.input(Msg::OpenVisit(pos as i32)));
         }
         let side = gtk::ScrolledWindow::builder()
             .child(&visits)
@@ -912,7 +1024,7 @@ impl Component for App {
         {
             let s = sender.clone();
             root.connect_close_request(move |_| {
-                s.input(Msg::Save);
+                s.input(Msg::SaveNow);
                 glib::Propagation::Proceed
             });
         }
@@ -922,9 +1034,22 @@ impl Component for App {
             opts: opts.clone(),
             watcher: None,
             thumb_gen: 0,
+            thumb_gen_shared: Default::default(),
+            grid_pending: vec![],
+            thumb_early: HashMap::new(),
             save_scheduled: false,
+            saver: {
+                let tx = sender.input_sender().clone();
+                crate::saver::Saver::start(move |e| tx.emit(Msg::SaveFailed(e)))
+            },
             indexing: false,
+            index_gen: 0,
+            index_cancel: None,
+            index_eta: Default::default(),
             blur_cancel: None,
+            blur_pause: Arc::new(AtomicBool::new(false)),
+            blur_eta: Default::default(),
+            blur_marked: 0,
             viewer_reported: Rc::new(Cell::new(false)),
             viewer_presented: false,
             info_cache: Default::default(),
@@ -933,10 +1058,13 @@ impl Component for App {
             info_report: 0,
         };
         let mut widgets = Widgets {
+            visit_rows: Vec::new(),
+            cell_looks: HashMap::new(),
+            visit_store,
+            visit_sel,
             toasts,
             stack,
             progress,
-            visits,
             visit_title,
             keep_spin,
             keep_status,
@@ -964,7 +1092,9 @@ impl Component for App {
             group_action,
             blur_action,
             blur_sens_action,
-            blur_status,
+            blur,
+            index_bar,
+            index_detail,
             live_action,
             syncing,
             info: InfoWidgets {
@@ -1034,6 +1164,7 @@ impl Component for App {
                 _ => s.input(Msg::About),
             });
         }
+        crate::probe::start();
         if let Some(secs) = opts.quit_after {
             let s = sender.clone();
             glib::timeout_add_seconds_local_once(secs, move || s.input(Msg::Quit));
@@ -1048,6 +1179,8 @@ impl Component for App {
         sender: ComponentSender<Self>,
         root: &Self::Root,
     ) {
+        let probe_t0 = std::time::Instant::now();
+        let probe_name = msg_name(&msg);
         let mut changed = true;
         match msg {
             Msg::ChooseFolder => {
@@ -1086,21 +1219,35 @@ impl Component for App {
                     self.start_index(&sender, w);
                 }
             }
-            Msg::IndexProgress(seen, found) => {
+            Msg::IndexProgress(p) => {
                 changed = false;
-                w.progress.set_description(Some(&format!(
-                    "{seen} files checked · {found} photos and videos found"
-                )));
+                self.show_index_progress(w, p);
             }
-            Msg::Indexed(r) => {
+            Msg::CancelIndex => {
+                changed = false;
+                if let Some(c) = self.index_cancel.take() {
+                    c.store(true, Ordering::Relaxed);
+                }
+                w.progress.set_description(Some("Cancelling…"));
+            }
+            Msg::Indexed(gen, r) => {
+                if gen != self.index_gen {
+                    // A cancelled or replaced run.
+                    return;
+                }
+                crate::probe::mark("indexed (result received)");
                 self.indexing = false;
-                match r {
-                    Ok((items, groups)) => {
-                        let n = items.len();
+                self.index_cancel = None;
+                match *r {
+                    Ok(prepared) => {
+                        let n = prepared.len();
+                        self.state.apply_prepared(prepared, chrono::Utc::now());
                         if self.opts.present_takeout.is_some() {
-                            println!("takeout: indexed items={n} visits={}", groups.len());
+                            println!(
+                                "takeout: indexed items={n} visits={}",
+                                self.state.snap.groups.len()
+                            );
                         }
-                        self.state.apply_index(items, groups, chrono::Utc::now());
                         self.start_watcher(&sender);
                         self.start_blur(&sender);
                         w.toasts.add_toast(adw::Toast::new(&format!(
@@ -1112,7 +1259,14 @@ impl Component for App {
                             sender.input(Msg::OpenVisit(0));
                         }
                     }
-                    Err(e) => w.toasts.add_toast(adw::Toast::new(&e)),
+                    Err(Some(e)) => w.toasts.add_toast(adw::Toast::new(&e)),
+                    Err(None) => {
+                        w.toasts
+                            .add_toast(adw::Toast::new("Indexing cancelled. Nothing was changed."));
+                        if self.state.has_library() {
+                            self.start_watcher(&sender);
+                        }
+                    }
                 }
                 self.rebuild_grid(w, &sender);
             }
@@ -1236,29 +1390,48 @@ impl Component for App {
             Msg::Thumb(gen, path, t) => {
                 changed = false;
                 if gen == self.thumb_gen {
-                    if let Some((_, pic, _)) = w.cells.get(&path) {
-                        let t = t.0;
-                        let bytes = glib::Bytes::from_owned(t.rgba);
-                        let tex = gdk::MemoryTexture::new(
-                            t.width as i32,
-                            t.height as i32,
-                            gdk::MemoryFormat::R8g8b8a8,
-                            &bytes,
-                            t.width as usize * 4,
-                        );
-                        pic.set_paintable(Some(&tex));
+                    match w.cells.get(&path) {
+                        Some((_, pic, _)) => set_thumb(pic, t.0),
+                        // Its cell isn't built yet (large visit): use it when it is.
+                        None => {
+                            self.thumb_early.insert(path, t);
+                        }
+                    }
+                }
+            }
+            Msg::GridMore(gen) => {
+                changed = false;
+                if gen == self.thumb_gen && !self.grid_pending.is_empty() {
+                    let n = self.grid_pending.len().min(GRID_BATCH);
+                    let batch: Vec<MediaItem> = self.grid_pending.drain(..n).collect();
+                    self.add_cells(w, &sender, &batch);
+                    if !self.grid_pending.is_empty() {
+                        sender.input(Msg::GridMore(gen));
                     }
                 }
             }
             Msg::Save => {
                 changed = false;
                 self.save_scheduled = false;
+                if let Some((store, snap)) = self.state.take_save() {
+                    self.saver.save(store, snap);
+                }
+            }
+            Msg::SaveNow => {
+                // Window closing: wait for the writer, then write what is left right here.
+                changed = false;
+                self.saver.flush();
                 if self.state.needs_save() {
                     if let Err(e) = self.state.save() {
-                        w.toasts
-                            .add_toast(adw::Toast::new(&format!("Couldn't save: {e}")));
+                        eprintln!("unswiper: couldn't save: {e}");
                     }
                 }
+            }
+            Msg::SaveFailed(e) => {
+                changed = false;
+                self.state.mark_dirty();
+                w.toasts
+                    .add_toast(adw::Toast::new(&format!("Couldn't save: {e}")));
             }
             Msg::Help => {
                 changed = false;
@@ -1270,24 +1443,71 @@ impl Component for App {
             }
             Msg::BlurProgress(done, total) => {
                 changed = false;
-                w.blur_status
-                    .set_label(&format!("Checking sharpness {done}/{total}"));
-                w.blur_status.set_visible(done < total);
+                self.show_blur_progress(w, done, total);
             }
-            Msg::BlurResult(flagged, scored, last) => {
+            Msg::BlurTogglePause => {
+                changed = false;
+                let paused = !self.blur_pause.load(Ordering::Relaxed);
+                self.blur_pause.store(paused, Ordering::Relaxed);
+                self.blur_eta.reset();
+                w.blur.pause.set_icon_name(if paused {
+                    "media-playback-start-symbolic"
+                } else {
+                    "media-playback-pause-symbolic"
+                });
+                w.blur.pause.set_tooltip_text(Some(if paused {
+                    "Carry on checking for blurry photos"
+                } else {
+                    "Pause checking for blurry photos"
+                }));
+                if paused {
+                    w.blur.label.set_label("Paused");
+                }
+            }
+            Msg::BlurStop => {
+                changed = false;
+                self.stop_blur(w);
+                w.toasts.add_toast(adw::Toast::new(
+                    "Stopped checking for blurry photos. Photos already checked are remembered.",
+                ));
+            }
+            Msg::BlurResult(flagged, scored, last, cache) => {
+                if last && crate::probe::enabled() {
+                    crate::probe::mark("blur done");
+                    // Stress scenario: a few decisions in the open visit, then quit.
+                    let s = sender.clone();
+                    glib::timeout_add_local_once(
+                        std::time::Duration::from_millis(300),
+                        move || {
+                            for _ in 0..3 {
+                                s.input(Msg::SelectAll);
+                                s.input(Msg::Decide(Decision::Keep));
+                                s.input(Msg::SelectAll);
+                                s.input(Msg::Decide(Decision::Undecided));
+                            }
+                            s.input(Msg::Quit);
+                        },
+                    );
+                }
                 if last {
-                    w.blur_status.set_visible(false);
+                    w.blur.bx.set_visible(false);
                     self.blur_cancel = None;
-                    self.reload_quality();
+                    if let Some(c) = cache {
+                        self.quality = *c;
+                    }
                     w.info.shown = None;
                 }
                 let r = self.state.apply_blur(&flagged, &scored);
+                self.blur_marked += r.suggested;
                 changed = r.suggested + r.withdrawn > 0;
                 if changed && self.state.filter == Filter::Blurry {
                     self.rebuild_grid(w, &sender);
                 }
-                if last && r.suggested > 0 {
-                    w.toasts.add_toast(adw::Toast::new(&match r.suggested {
+                let marked = std::mem::take(&mut self.blur_marked);
+                if !last {
+                    self.blur_marked = marked;
+                } else if marked > 0 {
+                    w.toasts.add_toast(adw::Toast::new(&match marked {
                         1 => "1 photo looks blurry and was marked Reject. Nothing moves until you commit.".to_string(),
                         n => format!("{n} photos look blurry and were marked Reject. Nothing moves until you commit."),
                     }));
@@ -1427,9 +1647,11 @@ impl Component for App {
             }
             Msg::Quit => {
                 changed = false;
+                crate::probe::finish();
                 if let Some(c) = &self.blur_cancel {
                     c.store(true, Ordering::Relaxed);
                 }
+                self.saver.flush();
                 if self.state.needs_save() {
                     let _ = self.state.save();
                 }
@@ -1446,12 +1668,34 @@ impl Component for App {
             if self.state.needs_save() && !self.save_scheduled {
                 self.save_scheduled = true;
                 let s = sender.clone();
+                // `send`, not `input`: after Quit the component is gone and `input` would panic.
                 glib::timeout_add_local_once(std::time::Duration::from_millis(800), move || {
-                    s.input(Msg::Save)
+                    let _ = s.input_sender().send(Msg::Save);
                 });
             }
         }
         self.render_info(w, &sender, root);
+        crate::probe::update(probe_name, probe_t0.elapsed());
+    }
+}
+
+/// Short message name for the responsiveness probe (no payload, no file names).
+fn msg_name(m: &Msg) -> &'static str {
+    match m {
+        Msg::IndexProgress(..) => "IndexProgress",
+        Msg::Indexed(..) => "Indexed",
+        Msg::OpenVisit(..) => "OpenVisit",
+        Msg::Decide(..) => "Decide",
+        Msg::Watch(..) => "Watch",
+        Msg::Thumb(..) => "Thumb",
+        Msg::Save => "Save",
+        Msg::Quit => "Quit",
+        Msg::BlurProgress(..) => "BlurProgress",
+        Msg::BlurResult(..) => "BlurResult",
+        Msg::SetGroupMode(..) => "SetGroupMode",
+        Msg::SetFilter(..) => "SetFilter",
+        Msg::Click(..) => "Click",
+        _ => "other",
     }
 }
 
@@ -1706,6 +1950,10 @@ impl App {
         }
         let cancel = Arc::new(AtomicBool::new(false));
         self.blur_cancel = Some(cancel.clone());
+        // A fresh flag: a paused earlier scan stays paused until its cancel takes effect.
+        self.blur_pause = Arc::new(AtomicBool::new(false));
+        self.blur_eta = Default::default();
+        self.blur_marked = 0;
         let first = self.state.suggested_scan_first();
         let job = BlurJob {
             items: self.state.blur_scan_order(),
@@ -1713,6 +1961,7 @@ impl App {
             cache_path: unswiper_blur::cache::QualityCache::path_in(self.state.store.support_dir()),
             thresholds: Thresholds::for_sensitivity(self.state.blur_sensitivity()),
             cancel,
+            pause: self.blur_pause.clone(),
         };
         let tx = sender.input_sender().clone();
         std::thread::spawn(move || {
@@ -1720,7 +1969,8 @@ impl App {
             crate::blur::run(job, &|e| match e {
                 BlurEvent::Progress(d, t) => {
                     let mut l = last.lock().unwrap();
-                    if d == t || l.elapsed().as_millis() > 150 {
+                    // At most 10 updates a second reach the main loop.
+                    if d == t || l.elapsed().as_millis() >= 100 {
                         *l = std::time::Instant::now();
                         tx.emit(Msg::BlurProgress(d, t));
                     }
@@ -1729,7 +1979,8 @@ impl App {
                     flagged,
                     scored,
                     last,
-                } => tx.emit(Msg::BlurResult(flagged, scored, last)),
+                    cache,
+                } => tx.emit(Msg::BlurResult(flagged, scored, last, cache)),
             });
         });
     }
@@ -1798,33 +2049,179 @@ impl App {
         if let Some(c) = self.blur_cancel.take() {
             c.store(true, Ordering::Relaxed);
         }
-        w.blur_status.set_visible(false);
+        // Unpause so the cancelled scan can finish.
+        self.blur_pause.store(false, Ordering::Relaxed);
+        w.blur.bx.set_visible(false);
     }
 
     fn start_index(&mut self, sender: &ComponentSender<Self>, w: &mut Widgets) {
         let Some(root) = self.state.root() else {
             return;
         };
+        if let Some(c) = self.index_cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        if let Some(c) = self.blur_cancel.take() {
+            c.store(true, Ordering::Relaxed);
+        }
+        w.blur.bx.set_visible(false);
         self.watcher = None;
         self.indexing = true;
+        self.index_gen += 1;
+        self.index_eta = Default::default();
+        crate::probe::mark("index start");
+        let cancel = Arc::new(AtomicBool::new(false));
+        self.index_cancel = Some(cancel.clone());
         w.progress
             .set_description(Some("Looking for photos and videos"));
+        w.index_bar.set_fraction(0.0);
+        w.index_detail.set_label("");
         w.stack.set_visible_child_name("indexing");
+        let gen = self.index_gen;
         let gap = self.state.snap.config.visit_gap_hours;
         let decisions = self.state.decisions();
+        let input = self.state.index_input();
         let tx = sender.input_sender().clone();
         std::thread::spawn(move || {
             let mut last = std::time::Instant::now();
             // Google Photos (Takeout) libraries also use Google's JSON sidecars (plan §19.5).
             let dates = crate::takeout::dates_for(&root);
-            let r = index(&root, gap, &decisions, dates.as_ref(), |p| {
-                if last.elapsed().as_millis() > 100 {
+            let opts = IndexOptions {
+                visit_gap_hours: gap,
+                decisions: &decisions,
+                dates: dates.as_ref(),
+                prior: &input.old,
+                cancel: Some(&cancel),
+                threads: 0,
+            };
+            let r = index_with(&root, &opts, |p| {
+                // At most 10 updates a second reach the main loop.
+                if last.elapsed().as_millis() >= 100 {
                     last = std::time::Instant::now();
-                    tx.emit(Msg::IndexProgress(p.files_seen, p.media_found));
+                    tx.emit(Msg::IndexProgress(p));
                 }
             });
-            tx.emit(Msg::Indexed(r.map_err(|e| e.to_string())));
+            let r = match r {
+                Ok((items, groups)) => Ok(input.prepare(items, groups)),
+                Err(unswiper_core::index::IndexError::Cancelled) => Err(None),
+                Err(e) => Err(Some(e.to_string())),
+            };
+            tx.emit(Msg::Indexed(gen, Box::new(r)));
         });
+    }
+
+    /// Selection and badges of the grid cells; only cells whose look changed are touched
+    /// (thousands of cells in a large visit).
+    fn update_cells(&self, w: &mut Widgets) {
+        let st = &self.state;
+        for (path, (cell, _, badge)) in &w.cells {
+            let Some(it) = st.item(path) else { continue };
+            let picked = st.selection.contains(path);
+            let look = match it.decision {
+                Decision::Keep => 1,
+                Decision::Reject if unswiper_core::quality::is_suggested(it) => 2,
+                Decision::Reject => 3,
+                Decision::Undecided => 0,
+            };
+            let old = w.cell_looks.insert(path.clone(), (picked, look));
+            if old.map(|o| o.0) != Some(picked) {
+                if picked {
+                    cell.add_css_class("picked");
+                } else {
+                    cell.remove_css_class("picked");
+                }
+            }
+            if old.map(|o| o.1) == Some(look) {
+                continue;
+            }
+            badge.remove_css_class("keep");
+            badge.remove_css_class("reject");
+            badge.remove_css_class("blurry");
+            // Setting a tooltip is costly in GTK; only touch it for the Blurry? badge.
+            if old.map(|o| o.1) == Some(2) {
+                badge.set_tooltip_text(None);
+            }
+            cell.remove_css_class("rejected");
+            match look {
+                1 => {
+                    badge.set_label("Keep");
+                    badge.add_css_class("keep");
+                    badge.set_visible(true);
+                }
+                2 => {
+                    badge.set_label("Blurry?");
+                    badge.add_css_class("blurry");
+                    badge.set_tooltip_text(Some("Unswiper thinks this photo is blurry and marked it Reject. Press K to keep it or U to clear. Nothing moves until you commit."));
+                    cell.add_css_class("rejected");
+                    badge.set_visible(true);
+                }
+                3 => {
+                    badge.set_label("Reject");
+                    badge.add_css_class("reject");
+                    cell.add_css_class("rejected");
+                    badge.set_visible(true);
+                }
+                _ => badge.set_visible(false),
+            }
+        }
+    }
+
+    fn show_index_progress(&mut self, w: &mut Widgets, p: IndexProgress) {
+        use crate::format::{thousands, time_left};
+        if self.index_cancel.is_none() {
+            return; // cancelling
+        }
+        if p.to_date == 0 {
+            w.progress
+                .set_description(Some("Looking for photos and videos"));
+            w.index_bar.pulse();
+            w.index_detail.set_label(&format!(
+                "{} files checked · {} photos and videos found",
+                thousands(p.files_seen),
+                thousands(p.media_found)
+            ));
+        } else {
+            w.progress.set_description(Some("Reading dates and places"));
+            w.index_bar
+                .set_fraction(p.dated as f64 / p.to_date.max(1) as f64);
+            let eta = self
+                .index_eta
+                .update(p.dated, p.to_date, std::time::Instant::now());
+            let mut t = format!(
+                "{} of {} photos and videos",
+                thousands(p.dated),
+                thousands(p.to_date)
+            );
+            if let Some(e) = eta {
+                t.push_str(" · ");
+                t.push_str(&time_left(e));
+            }
+            w.index_detail.set_label(&t);
+        }
+    }
+
+    fn show_blur_progress(&mut self, w: &mut Widgets, done: usize, total: usize) {
+        use crate::format::{thousands, time_left};
+        if self.blur_cancel.is_none() || done >= total {
+            w.blur.bx.set_visible(false);
+            return;
+        }
+        w.blur.bx.set_visible(true);
+        w.blur.bar.set_fraction(done as f64 / total.max(1) as f64);
+        if self.blur_pause.load(Ordering::Relaxed) {
+            w.blur.label.set_label("Paused");
+            return;
+        }
+        let mut t = format!(
+            "Checking sharpness {} of {}",
+            thousands(done),
+            thousands(total)
+        );
+        if let Some(e) = self.blur_eta.update(done, total, std::time::Instant::now()) {
+            t.push_str(" · ");
+            t.push_str(&time_left(e));
+        }
+        w.blur.label.set_label(&t);
     }
 
     fn start_watcher(&mut self, sender: &ComponentSender<Self>) {
@@ -1851,11 +2248,53 @@ impl App {
     /// Rebuilds the thumbnail grid for the open visit and starts loading thumbnails.
     fn rebuild_grid(&mut self, w: &mut Widgets, sender: &ComponentSender<Self>) {
         self.thumb_gen += 1;
+        self.thumb_gen_shared
+            .store(self.thumb_gen, Ordering::Relaxed);
         w.grid.remove_all();
         w.cells.clear();
+        w.cell_looks.clear();
         w.durations.clear();
+        self.thumb_early.clear();
         let items: Vec<MediaItem> = self.state.visible_items().into_iter().cloned().collect();
-        for it in &items {
+        // Large visits: the first cells now, the rest in batches between other events.
+        self.grid_pending = items.iter().skip(GRID_BATCH).cloned().collect();
+        self.add_cells(w, sender, &items[..items.len().min(GRID_BATCH)]);
+        if !self.grid_pending.is_empty() {
+            sender.input(Msg::GridMore(self.thumb_gen));
+        }
+        let gen = self.thumb_gen;
+        let current = self.thumb_gen_shared.clone();
+        let tx = sender.input_sender().clone();
+        let jobs: Vec<(String, unswiper_core::MediaKind)> =
+            items.iter().map(|i| (i.path.clone(), i.kind)).collect();
+        std::thread::spawn(move || {
+            let cache = thumbs::default_cache_dir();
+            for (p, k) in jobs {
+                if current.load(Ordering::Relaxed) != gen {
+                    break; // another visit or filter: stop loading these
+                }
+                if k == unswiper_core::MediaKind::Video {
+                    if let Some(d) = crate::video::duration(std::path::Path::new(&p)) {
+                        if tx
+                            .send(Msg::Duration(gen, p.clone(), d.as_millis() as u64))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+                if let Some(t) = thumbs::load(std::path::Path::new(&p), k, THUMB, Some(&cache)) {
+                    if tx.send(Msg::Thumb(gen, p, ThumbMsg(t))).is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+    }
+
+    /// Creates grid cells for `items` (appended in order).
+    fn add_cells(&mut self, w: &mut Widgets, sender: &ComponentSender<Self>, items: &[MediaItem]) {
+        for it in items {
             let pic = gtk::Picture::builder()
                 .content_fit(gtk::ContentFit::Cover)
                 .width_request(THUMB as i32 * 3 / 4)
@@ -1918,32 +2357,12 @@ impl App {
             menu_click.connect_pressed(move |_, _, _, _| s.input(Msg::InfoPopover(p.clone())));
             cell.add_controller(menu_click);
             w.grid.append(&cell);
+            if let Some(t) = self.thumb_early.remove(&it.path) {
+                set_thumb(&pic, t.0);
+            }
             w.cells.insert(it.path.clone(), (cell, pic, badge));
         }
-        let gen = self.thumb_gen;
-        let tx = sender.input_sender().clone();
-        let jobs: Vec<(String, unswiper_core::MediaKind)> =
-            items.iter().map(|i| (i.path.clone(), i.kind)).collect();
-        std::thread::spawn(move || {
-            let cache = thumbs::default_cache_dir();
-            for (p, k) in jobs {
-                if k == unswiper_core::MediaKind::Video {
-                    if let Some(d) = crate::video::duration(std::path::Path::new(&p)) {
-                        if tx
-                            .send(Msg::Duration(gen, p.clone(), d.as_millis() as u64))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                }
-                if let Some(t) = thumbs::load(std::path::Path::new(&p), k, THUMB, Some(&cache)) {
-                    if tx.send(Msg::Thumb(gen, p, ThumbMsg(t))).is_err() {
-                        break;
-                    }
-                }
-            }
-        });
+        self.update_cells(w);
     }
 
     /// Syncs every cheap widget with the state.
@@ -1963,35 +2382,33 @@ impl App {
         w.blur_sens_action
             .set_state(&st.blur_sensitivity().as_str().to_variant());
 
-        // Visits list (rebuilt; it is small) with the open one selected.
-        w.visits.remove_all();
-        for (i, v) in st.visits().iter().enumerate() {
-            let row = adw::ActionRow::builder()
-                .title(glib::markup_escape_text(&v.title))
-                .subtitle(if v.dates.is_empty() {
-                    v.counts.clone()
-                } else {
-                    format!("{} · {}", v.dates, v.counts)
-                })
-                .activatable(true)
-                .build();
-            if v.has_place {
-                row.add_prefix(&gtk::Image::from_icon_name("mark-location-symbolic"));
-            }
-            let prog = gtk::Label::builder()
-                .label(&v.progress)
-                .css_classes(["caption", "dim-label"])
-                .build();
-            row.add_suffix(&prog);
-            if v.done {
-                row.add_suffix(&gtk::Image::from_icon_name("emblem-ok-symbolic"));
-            }
-            w.visits.append(&row);
-            if st.visit.as_deref() == Some(v.id.as_str()) {
-                w.visits
-                    .select_row(w.visits.row_at_index(i as i32).as_ref());
+        // Visits list: rows are rebuilt only when the visits themselves change; otherwise just
+        // the progress labels are updated (thousands of rows on large libraries).
+        let rows = st.visits();
+        let obj = |v: &crate::state::VisitRow| glib::BoxedAnyObject::new(v.clone());
+        if w.visit_rows.len() != rows.len()
+            || w.visit_rows.iter().zip(&rows).any(|(a, b)| a.id != b.id)
+        {
+            let all: Vec<glib::BoxedAnyObject> = rows.iter().map(obj).collect();
+            w.visit_store.splice(0, w.visit_store.n_items(), &all);
+        } else {
+            let changed: Vec<usize> = (0..rows.len())
+                .filter(|&i| w.visit_rows[i] != rows[i])
+                .collect();
+            if let (Some(&lo), Some(&hi)) = (changed.first(), changed.last()) {
+                let part: Vec<glib::BoxedAnyObject> = rows[lo..=hi].iter().map(obj).collect();
+                w.visit_store.splice(lo as u32, (hi - lo + 1) as u32, &part);
             }
         }
+        let open = rows
+            .iter()
+            .position(|r| st.visit.as_deref() == Some(r.id.as_str()))
+            .map(|i| i as u32)
+            .unwrap_or(gtk::INVALID_LIST_POSITION);
+        if w.visit_sel.selected() != open {
+            w.visit_sel.set_selected(open);
+        }
+        w.visit_rows = rows;
 
         w.live_action.set_state(&st.live_motion().to_variant());
         w.content.set_visible_child_name(if st.viewer.is_some() {
@@ -2045,40 +2462,7 @@ impl App {
         for (f, b) in &w.filter_buttons {
             b.set_active(*f == st.filter);
         }
-        for (path, (cell, _, badge)) in &w.cells {
-            let Some(it) = st.item(path) else { continue };
-            if st.selection.contains(path) {
-                cell.add_css_class("picked");
-            } else {
-                cell.remove_css_class("picked");
-            }
-            badge.remove_css_class("keep");
-            badge.remove_css_class("reject");
-            badge.remove_css_class("blurry");
-            badge.set_tooltip_text(None);
-            cell.remove_css_class("rejected");
-            match it.decision {
-                Decision::Keep => {
-                    badge.set_label("Keep");
-                    badge.add_css_class("keep");
-                    badge.set_visible(true);
-                }
-                Decision::Reject if unswiper_core::quality::is_suggested(it) => {
-                    badge.set_label("Blurry?");
-                    badge.add_css_class("blurry");
-                    badge.set_tooltip_text(Some("Unswiper thinks this photo is blurry and marked it Reject. Press K to keep it or U to clear. Nothing moves until you commit."));
-                    cell.add_css_class("rejected");
-                    badge.set_visible(true);
-                }
-                Decision::Reject => {
-                    badge.set_label("Reject");
-                    badge.add_css_class("reject");
-                    cell.add_css_class("rejected");
-                    badge.set_visible(true);
-                }
-                Decision::Undecided => badge.set_visible(false),
-            }
-        }
+        self.update_cells(w);
         let n = st.selection.len();
         w.selection_label.set_label(&match n {
             0 => "Click to select · Shift/Ctrl to extend".to_string(),
@@ -2094,6 +2478,92 @@ impl App {
         });
         w.syncing.set(false);
     }
+}
+
+/// Sets a grid cell's thumbnail.
+fn set_thumb(pic: &gtk::Picture, t: thumbs::Thumb) {
+    let bytes = glib::Bytes::from_owned(t.rgba);
+    let tex = gdk::MemoryTexture::new(
+        t.width as i32,
+        t.height as i32,
+        gdk::MemoryFormat::R8g8b8a8,
+        &bytes,
+        t.width as usize * 4,
+    );
+    pic.set_paintable(Some(&tex));
+}
+
+/// Rows of the visits list: place icon, title, dates and counts, progress, done tick.
+fn visit_row_factory() -> gtk::SignalListItemFactory {
+    let f = gtk::SignalListItemFactory::new();
+    f.connect_setup(|_, li| {
+        let Some(li) = li.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let place = gtk::Image::from_icon_name("mark-location-symbolic");
+        let title = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["title"])
+            .build();
+        let subtitle = gtk::Label::builder()
+            .xalign(0.0)
+            .wrap(true)
+            .css_classes(["subtitle"])
+            .build();
+        let text = gtk::Box::builder()
+            .orientation(gtk::Orientation::Vertical)
+            .hexpand(true)
+            .build();
+        text.append(&title);
+        text.append(&subtitle);
+        let prog = gtk::Label::builder()
+            .css_classes(["caption", "dim-label"])
+            .build();
+        let done = gtk::Image::from_icon_name("emblem-ok-symbolic");
+        let row = gtk::Box::builder().spacing(8).build();
+        for wdg in [
+            place.upcast_ref::<gtk::Widget>(),
+            text.upcast_ref(),
+            prog.upcast_ref(),
+            done.upcast_ref(),
+        ] {
+            row.append(wdg);
+        }
+        li.set_child(Some(&row));
+    });
+    f.connect_bind(|_, li| {
+        let Some(li) = li.downcast_ref::<gtk::ListItem>() else {
+            return;
+        };
+        let (Some(obj), Some(row)) = (li.item().and_downcast::<glib::BoxedAnyObject>(), li.child())
+        else {
+            return;
+        };
+        let v = obj.borrow::<crate::state::VisitRow>();
+        let kids: Vec<gtk::Widget> =
+            std::iter::successors(row.first_child(), |w| w.next_sibling()).collect();
+        let [place, text, prog, done] = kids.as_slice() else {
+            return;
+        };
+        place.set_visible(v.has_place);
+        if let (Some(t), Some(sub)) = (
+            text.first_child().and_downcast::<gtk::Label>(),
+            text.last_child().and_downcast::<gtk::Label>(),
+        ) {
+            t.set_label(&v.title);
+            sub.set_label(&if v.dates.is_empty() {
+                v.counts.clone()
+            } else {
+                format!("{} · {}", v.dates, v.counts)
+            });
+        }
+        if let Some(p) = prog.downcast_ref::<gtk::Label>() {
+            p.set_label(&v.progress);
+        }
+        done.set_visible(v.done);
+    });
+    f
 }
 
 fn clear_box(b: &gtk::Box) {

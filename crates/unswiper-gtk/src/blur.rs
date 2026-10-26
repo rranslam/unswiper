@@ -10,20 +10,24 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use unswiper_blur::cache::QualityCache;
+use std::time::{Duration, Instant};
+use unswiper_blur::cache::{QualityCache, Stamp};
 use unswiper_blur::decide::Thresholds;
 use unswiper_blur::scan;
 use unswiper_core::MediaItem;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlurEvent {
-    /// `done` of `total` photos scored in the current pass.
+    /// `done` of `total` photos scored in the current pass (cached photos are not counted).
     Progress(usize, usize),
-    /// Suggestions from everything scored so far. `last` is set on the final pass.
+    /// Suggestions from everything scored so far. Sent every few seconds during a pass so
+    /// marks fill in while the scan runs. `last` is set on the final result, which also
+    /// carries the cache (for the info panel's Sharpness row).
     Result {
         flagged: HashSet<String>,
         scored: HashSet<String>,
         last: bool,
+        cache: Option<Box<QualityCache>>,
     },
 }
 
@@ -35,7 +39,15 @@ pub struct BlurJob {
     pub cache_path: PathBuf,
     pub thresholds: Thresholds,
     pub cancel: Arc<AtomicBool>,
+    /// While set, the scan waits between batches.
+    pub pause: Arc<AtomicBool>,
 }
+
+/// Photos scored per batch: the unit of pausing, cancelling and progress.
+const BATCH: usize = 128;
+/// How often partial results are sent and the cache is written during a pass.
+const RESULT_EVERY: Duration = Duration::from_secs(2);
+const SAVE_EVERY: Duration = Duration::from_secs(30);
 
 fn now() -> i64 {
     std::time::SystemTime::now()
@@ -44,7 +56,8 @@ fn now() -> i64 {
         .unwrap_or(0)
 }
 
-/// Runs the scan on the calling thread, reporting through `emit`.
+/// Runs the scan on the calling thread, reporting through `emit`. Scores are written to the
+/// cache as it goes (also when cancelled), so a later run skips photos already done.
 pub fn run(job: BlurJob, emit: &(dyn Fn(BlurEvent) + Sync)) {
     let mut cache = QualityCache::load(&job.cache_path);
     let threads = scan::default_threads();
@@ -55,29 +68,77 @@ pub fn run(job: BlurJob, emit: &(dyn Fn(BlurEvent) + Sync)) {
         vec![&job.items[..]]
     };
     let n = passes.len();
-    for (k, pass) in passes.into_iter().enumerate() {
-        if job.cancel.load(Ordering::Relaxed) {
-            return;
-        }
-        let paths = scan::scorable(pass);
-        let scored_now =
-            scan::update_cache(&paths, &mut cache, threads, &job.cancel, now(), &|d, t| {
-                emit(BlurEvent::Progress(d, t))
-            });
-        if job.cancel.load(Ordering::Relaxed) {
-            return;
-        }
-        if scored_now > 0 {
-            let all: HashSet<String> = job.items.iter().map(|i| i.path.clone()).collect();
-            cache.retain_paths(&all);
-            let _ = cache.save(&job.cache_path);
-        }
-        let s = scan::suggestions(&job.items, &cache, job.thresholds);
+    let cancelled = || job.cancel.load(Ordering::Relaxed);
+    let mut unsaved = false;
+    let mut last_save = Instant::now();
+    let result = |cache: &QualityCache, last: bool| {
+        let s = scan::suggestions(&job.items, cache, job.thresholds);
         emit(BlurEvent::Result {
             flagged: s.flagged_paths(),
             scored: s.scored,
-            last: k + 1 == n,
+            last,
+            cache: last.then(|| Box::new(cache.clone())),
         });
+    };
+    for (k, pass) in passes.into_iter().enumerate() {
+        if cancelled() {
+            break;
+        }
+        let todo: Vec<String> = scan::scorable(pass)
+            .into_iter()
+            .filter(|p| {
+                Stamp::of(std::path::Path::new(p)).is_some_and(|st| cache.get(p, st).is_none())
+            })
+            .collect();
+        let total = todo.len();
+        let mut done = 0;
+        let mut last_result = Instant::now();
+        for batch in todo.chunks(BATCH) {
+            while job.pause.load(Ordering::Relaxed) && !cancelled() {
+                std::thread::sleep(Duration::from_millis(100));
+            }
+            if cancelled() {
+                break;
+            }
+            let base = done;
+            let scored =
+                scan::update_cache(batch, &mut cache, threads, &job.cancel, now(), &|d, _| {
+                    emit(BlurEvent::Progress(base + d, total))
+                });
+            done += batch.len();
+            unsaved |= scored > 0;
+            if unsaved && last_save.elapsed() >= SAVE_EVERY {
+                let _ = cache.save(&job.cache_path);
+                unsaved = false;
+                last_save = Instant::now();
+            }
+            if done < total && last_result.elapsed() >= RESULT_EVERY {
+                result(&cache, false);
+                last_result = Instant::now();
+            }
+        }
+        if cancelled() {
+            break;
+        }
+        if total > 0 {
+            emit(BlurEvent::Progress(total, total));
+        }
+        if k + 1 == n {
+            let all: HashSet<String> = job.items.iter().map(|i| i.path.clone()).collect();
+            let before = cache.entries.len();
+            cache.retain_paths(&all);
+            unsaved |= cache.entries.len() != before;
+        }
+        if unsaved {
+            let _ = cache.save(&job.cache_path);
+            unsaved = false;
+            last_save = Instant::now();
+        }
+        result(&cache, k + 1 == n);
+    }
+    if unsaved {
+        // Cancelled: keep what was scored so the next run skips it.
+        let _ = cache.save(&job.cache_path);
     }
 }
 
@@ -124,6 +185,7 @@ mod tests {
             cache_path: cache_path.clone(),
             thresholds: Thresholds::for_sensitivity(Sensitivity::Normal),
             cancel: Arc::new(AtomicBool::new(false)),
+            pause: Arc::new(AtomicBool::new(false)),
         };
         let events = Mutex::new(vec![]);
         run(job(), &|e| events.lock().unwrap().push(e));
@@ -135,7 +197,11 @@ mod tests {
                     flagged,
                     scored,
                     last,
-                } => Some((flagged.len(), scored.len(), *last)),
+                    cache,
+                } => {
+                    assert_eq!(cache.is_some(), *last);
+                    Some((flagged.len(), scored.len(), *last))
+                }
                 _ => None,
             })
             .collect();
@@ -155,5 +221,49 @@ mod tests {
         let events = Mutex::new(vec![]);
         run(j, &|e| events.lock().unwrap().push(e));
         assert!(events.into_inner().unwrap().is_empty());
+    }
+
+    #[test]
+    fn cancel_keeps_scores_and_pause_waits() {
+        let d = tempfile::tempdir().unwrap();
+        let s = synth::scene(3, 200, 150);
+        let mut items = vec![];
+        for k in 0..(BATCH + 5) {
+            let p = d.path().join(format!("p{k:03}.jpg"));
+            s.to_rgb8().save(&p).unwrap();
+            items.push(item(&p, 1));
+        }
+        let cache_path = d.path().join("support/quality-cache.json");
+        let cancel = Arc::new(AtomicBool::new(false));
+        let pause = Arc::new(AtomicBool::new(true));
+        let job = BlurJob {
+            items: items.clone(),
+            first: 0,
+            cache_path: cache_path.clone(),
+            thresholds: Thresholds::for_sensitivity(Sensitivity::Normal),
+            cancel: cancel.clone(),
+            pause: pause.clone(),
+        };
+        let events = Arc::new(Mutex::new(vec![]));
+        let ev = events.clone();
+        let h = std::thread::spawn(move || run(job, &move |e| ev.lock().unwrap().push(e)));
+        std::thread::sleep(Duration::from_millis(300));
+        assert!(events.lock().unwrap().is_empty(), "paused: nothing scored");
+        // Unpause; cancel once the first batch is in.
+        pause.store(false, Ordering::Relaxed);
+        let t0 = Instant::now();
+        while !events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| matches!(e, BlurEvent::Progress(d, _) if *d >= BATCH))
+            && t0.elapsed() < Duration::from_secs(60)
+        {
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        cancel.store(true, Ordering::Relaxed);
+        h.join().unwrap();
+        let saved = QualityCache::load(&cache_path).entries.len();
+        assert!(saved >= BATCH, "scores kept after cancel: {saved}");
     }
 }

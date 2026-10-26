@@ -14,7 +14,7 @@ Your photos are in **Google Photos**? Choose **Import from Google Photos…** in
 
 ## Step 2 — Let it index
 
-Unswiper now **indexes** the folder. That means it looks at every photo and video, reads the date it was taken, and groups them into visits. A spinner and a count such as `120 media / 300 files` show progress. Large folders can take a few minutes.
+Unswiper now **indexes** the folder. That means it looks at every photo and video, reads the date it was taken, and groups them into visits. First it finds the files, then it reads their dates; a progress bar shows how far it is, with an estimate of the time left. Large folders can take a few minutes. **Cancel** stops without changing anything. Next time, only new or changed files are read again, so re-indexing is much faster.
 
 Your photos are **not moved or changed** during indexing. While Unswiper is open it also **watches the folder**: photos you add, rename or delete show up in the visits list by themselves.
 

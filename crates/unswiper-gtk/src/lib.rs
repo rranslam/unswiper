@@ -10,6 +10,8 @@ pub mod help;
 pub mod icons;
 pub mod info;
 pub mod player;
+pub mod probe;
+pub mod saver;
 pub mod state;
 pub mod takeout;
 pub mod takeout_ui;

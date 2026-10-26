@@ -133,9 +133,93 @@ pub struct AppState {
     pub muted: bool,
     /// Photo info inspector open (plan §17.2): remembered for this session only, starts closed.
     pub info_open: bool,
+    /// Path → position in `snap.items`, rebuilt lazily when stale (large libraries: §perf).
+    path_index: std::cell::RefCell<HashMap<String, usize>>,
+}
+
+/// The previous index and settings, for preparing a new index result off the main thread.
+pub struct IndexInput {
+    pub old: Vec<MediaItem>,
+    root: Option<PathBuf>,
+    gap_hours: f64,
+    group_mode: GroupMode,
+    settings: GroupSettings,
+}
+
+/// An index result ready to apply: suggestions carried over, the live index built, and
+/// regrouped for the saved grouping mode. Built on the indexing thread (large libraries).
+pub struct Prepared {
+    items: Vec<MediaItem>,
+    groups: Vec<VisitGroup>,
+    live: Option<LiveIndex>,
+}
+
+impl std::fmt::Debug for Prepared {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Prepared({} items, {} groups)",
+            self.items.len(),
+            self.groups.len()
+        )
+    }
+}
+
+impl Prepared {
+    pub fn len(&self) -> usize {
+        self.items.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.items.is_empty()
+    }
+}
+
+impl IndexInput {
+    pub fn prepare(&self, mut items: Vec<MediaItem>, mut groups: Vec<VisitGroup>) -> Prepared {
+        quality::carry_over(&self.old, &mut items);
+        let live = self
+            .root
+            .as_ref()
+            .map(|r| LiveIndex::from_items(r, self.gap_hours, items.clone()));
+        if self.group_mode != GroupMode::Visit {
+            groups = group_with(&items, &self.settings, &unswiper_geo::Geocoder);
+        }
+        Prepared {
+            items,
+            groups,
+            live,
+        }
+    }
 }
 
 impl AppState {
+    /// Position of `path` in `snap.items` (checked; rebuilds the index once when stale).
+    fn position(&self, path: &str) -> Option<usize> {
+        let hit = |ix: &HashMap<String, usize>| {
+            ix.get(path)
+                .copied()
+                .filter(|&i| self.snap.items.get(i).is_some_and(|it| it.path == path))
+        };
+        {
+            let ix = self.path_index.borrow();
+            if ix.len() == self.snap.items.len() {
+                if let Some(i) = hit(&ix) {
+                    return Some(i);
+                }
+            }
+        }
+        let mut ix = self.path_index.borrow_mut();
+        *ix = self
+            .snap
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, it)| (it.path.clone(), i))
+            .collect();
+        hit(&ix)
+    }
+
     /// Loads library.json from `store` (backing up a damaged file, like the Mac app).
     pub fn new(mut store: LibraryStore) -> Self {
         let r = store.load();
@@ -152,6 +236,7 @@ impl AppState {
             viewer: None,
             muted: true,
             info_open: false,
+            path_index: Default::default(),
         };
         if let Some(root) = s.root() {
             if root.is_dir() {
@@ -196,24 +281,31 @@ impl AppState {
     }
 
     /// Takes the result of an index run.
-    pub fn apply_index(
-        &mut self,
-        mut items: Vec<MediaItem>,
-        groups: Vec<VisitGroup>,
-        now: Timestamp,
-    ) {
-        quality::carry_over(&self.snap.items, &mut items);
-        if let Some(root) = self.root() {
-            self.live = Some(LiveIndex::from_items(
-                &root,
-                self.snap.config.visit_gap_hours,
-                items.clone(),
-            ));
+    pub fn apply_index(&mut self, items: Vec<MediaItem>, groups: Vec<VisitGroup>, now: Timestamp) {
+        let p = self.index_input().prepare(items, groups);
+        self.apply_prepared(p, now);
+    }
+
+    /// What [`IndexInput::prepare`] needs, taken on the main thread before indexing.
+    pub fn index_input(&self) -> IndexInput {
+        IndexInput {
+            old: self.snap.items.clone(),
+            root: self.root(),
+            gap_hours: self.snap.config.visit_gap_hours,
+            group_mode: self.group_mode(),
+            settings: GroupSettings::from_config(&self.snap.config),
         }
-        self.snap.items = items;
-        self.snap.groups = groups;
+    }
+
+    /// Takes an index result prepared off the main thread.
+    pub fn apply_prepared(&mut self, p: Prepared, now: Timestamp) {
+        if p.live.is_some() {
+            self.live = p.live;
+        }
+        self.snap.items = p.items;
+        self.snap.groups = p.groups;
         self.snap.last_indexed_at = Some(now);
-        self.after_items_changed();
+        self.after_items_changed_grouped();
     }
 
     /// Applies a debounced folder-watch batch.
@@ -238,6 +330,11 @@ impl AppState {
         if self.group_mode() != GroupMode::Visit {
             self.regroup();
         }
+        self.after_items_changed_grouped();
+    }
+
+    /// [`Self::after_items_changed`] once `snap.groups` is already right for the mode.
+    fn after_items_changed_grouped(&mut self) {
         if let Some(v) = &self.visit {
             if !self.snap.groups.iter().any(|g| &g.id == v) {
                 self.close_visit();
@@ -250,11 +347,29 @@ impl AppState {
     }
 
     pub fn visits(&self) -> Vec<VisitRow> {
+        // One pass over the items, not one per visit (78k items × thousands of visits froze the UI).
+        let decision: HashMap<&str, Decision> = self
+            .snap
+            .items
+            .iter()
+            .map(|i| (i.path.as_str(), i.decision))
+            .collect();
         self.snap
             .groups
             .iter()
             .map(|g| {
-                let p = g.progress(&self.snap.items);
+                let mut p = unswiper_core::model::Progress {
+                    kept: 0,
+                    rejected: 0,
+                    left: 0,
+                };
+                for d in g.item_paths.iter().filter_map(|x| decision.get(x.as_str())) {
+                    match d {
+                        Decision::Keep => p.kept += 1,
+                        Decision::Reject => p.rejected += 1,
+                        Decision::Undecided => p.left += 1,
+                    }
+                }
                 VisitRow {
                     id: g.id.clone(),
                     title: g.title.clone(),
@@ -291,7 +406,7 @@ impl AppState {
     }
 
     pub fn item(&self, path: &str) -> Option<&MediaItem> {
-        self.snap.items.iter().find(|i| i.path == path)
+        self.position(path).map(|i| &self.snap.items[i])
     }
 
     /// Items of the open visit in visit order, after the filter.
@@ -299,15 +414,9 @@ impl AppState {
         let Some(g) = self.current_group() else {
             return vec![];
         };
-        let by_path: HashMap<&str, &MediaItem> = self
-            .snap
-            .items
-            .iter()
-            .map(|i| (i.path.as_str(), i))
-            .collect();
         g.item_paths
             .iter()
-            .filter_map(|p| by_path.get(p.as_str()).copied())
+            .filter_map(|p| self.item(p))
             .filter(|i| match self.filter {
                 Filter::All => true,
                 Filter::Photos => i.kind == MediaKind::Photo,
@@ -423,7 +532,12 @@ impl AppState {
         let Some(g) = self.snap.groups.iter().find(|g| g.id == id) else {
             return String::new();
         };
-        let kept = g.progress(&self.snap.items).kept as i64;
+        let kept = g
+            .item_paths
+            .iter()
+            .filter_map(|p| self.item(p))
+            .filter(|i| i.decision == Decision::Keep)
+            .count() as i64;
         let target = self.keep_target(id);
         if kept >= target && target > 0 {
             "Keep target reached".into()
@@ -834,6 +948,20 @@ impl AppState {
         self.dirty
     }
 
+    /// What to write when there are unsaved changes (for the background writer); clears the
+    /// flag. Call [`Self::mark_dirty`] if the write then fails.
+    pub fn take_save(&mut self) -> Option<(LibraryStore, LibrarySnapshot)> {
+        if !self.dirty {
+            return None;
+        }
+        self.dirty = false;
+        Some((self.store.clone(), self.snap.clone()))
+    }
+
+    pub fn mark_dirty(&mut self) {
+        self.dirty = true;
+    }
+
     pub fn save(&mut self) -> Result<(), StoreError> {
         self.store.save(&self.snap)?;
         self.dirty = false;
@@ -966,6 +1094,43 @@ mod tests {
         s.set_keep_target(&id, 5);
         assert_eq!(s.keep_status(&id), "2 of 5 kept");
         assert_eq!(s.keep_target(&id), 5);
+    }
+
+    #[test]
+    fn visit_progress_and_lookup_survive_item_changes() {
+        let (t, mut s) = setup(&["a.jpg", "b.jpg", "c.jpg"]);
+        open_first(&mut s);
+        let p = |n: &str| t.root.join(n).to_string_lossy().into_owned();
+        assert_eq!(s.item(&p("b.jpg")).unwrap().path, p("b.jpg"));
+        assert_eq!(s.decide(&[p("a.jpg")], Decision::Reject), 1);
+        assert_eq!(s.visits()[0].progress, "0 kept · 1 reject · 2 left");
+        // Items replaced and reordered: the lookup notices and rebuilds.
+        s.snap.items.reverse();
+        assert_eq!(s.item(&p("a.jpg")).unwrap().decision, Decision::Reject);
+        s.snap.items.retain(|i| i.path != p("c.jpg"));
+        assert!(s.item(&p("c.jpg")).is_none());
+        assert_eq!(s.item(&p("b.jpg")).unwrap().path, p("b.jpg"));
+        assert_eq!(s.visible_items().len(), 2);
+    }
+
+    #[test]
+    fn prepared_index_matches_apply_index() {
+        let (t, mut s) = setup(&["a.jpg", "b.jpg"]);
+        let (items, groups) = index(&t.root, 36.0, &s.decisions(), &MetadataDates, |_| {}).unwrap();
+        let mut direct = AppState::new(LibraryStore::new(t.base.join("other")));
+        direct.set_root(&t.root);
+        direct.apply_index(items.clone(), groups.clone(), chrono::Utc::now());
+        let prepared = s.index_input().prepare(items, groups);
+        assert_eq!(prepared.len(), 2);
+        s.apply_prepared(prepared, chrono::Utc::now());
+        assert_eq!(s.snap.items, direct.snap.items);
+        assert_eq!(s.snap.groups, direct.snap.groups);
+        assert!(s.needs_save());
+        let (_, snap) = s.take_save().unwrap();
+        assert_eq!(snap.items.len(), 2);
+        assert!(!s.needs_save() && s.take_save().is_none());
+        s.mark_dirty();
+        assert!(s.needs_save());
     }
 
     #[test]

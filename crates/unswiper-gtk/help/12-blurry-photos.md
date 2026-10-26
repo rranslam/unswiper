@@ -6,7 +6,7 @@ Unswiper can spot photos that are probably out of focus or shaken, and mark them
 
 ## How you see them
 
-- After indexing, Unswiper quietly checks each photo. The visit you have open is checked first. While it works, the title bar says **Checking sharpness 120/900**. You can keep working.
+- After indexing, Unswiper quietly checks each photo. The visit you have open is checked first. While it works, the title bar shows a progress bar and **Checking sharpness 120 of 900** with the time left. You can keep working: marks appear as results come in. The pause button waits, the stop button stops for now. Photos already checked are remembered, so the next check (or **Check for Blurry Photos Now** in the menu) only looks at the rest.
 - A photo it thinks is blurry gets an orange **Blurry?** badge and is dimmed, like a rejected photo.
 - A short message at the bottom tells you how many photos were marked.
 - To see only those photos, click **Blurry** in the row of buttons at the top right (next to **All**, **Photos**, **Videos**).
