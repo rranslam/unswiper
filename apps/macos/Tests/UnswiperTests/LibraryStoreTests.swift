@@ -117,6 +117,61 @@ final class LibraryStoreTests: StoreIsolatedTestCase {
         XCTAssertThrowsError(try LibraryStore.save(LibraryStore.emptySnapshot))
         XCTAssertEqual(try String(contentsOf: LibraryStore.snapshotURL, encoding: .utf8), "keep me")
     }
+
+    // MARK: - Schema 2 (plan §20.5)
+
+    /// crates/unswiper-core/tests/fixtures/compat, shared with the Rust tests.
+    static func compatFixture(_ name: String) throws -> String {
+        let url = TakeoutHelperTests.repoRoot
+            .appendingPathComponent("crates/unswiper-core/tests/fixtures/compat/\(name)")
+        return try String(contentsOf: url, encoding: .utf8)
+    }
+
+    func testV1FileLoadsAndSavesAsV2WithoutGeoKeys() throws {
+        let v1 = try Self.compatFixture("library-v1.json")
+        try writeLibrary(v1)
+        let loaded = LibraryStore.load()
+        XCTAssertNil(loaded.problem)
+        XCTAssertEqual(loaded.snapshot.schemaVersion, 1)
+        XCTAssertEqual(loaded.snapshot.config.grouping, .visit)
+        XCTAssertNil(loaded.snapshot.config.groupMode)
+        try LibraryStore.save(loaded.snapshot)
+        let saved = try String(contentsOf: LibraryStore.snapshotURL, encoding: .utf8)
+        // Same as Rust: only the version number changes.
+        XCTAssertEqual(saved, v1.replacingOccurrences(of: "\"schemaVersion\" : 1", with: "\"schemaVersion\" : 2"))
+    }
+
+    func testV2GoldenRoundTripsExactly() throws {
+        let v2 = try Self.compatFixture("library-v2.json")
+        try writeLibrary(v2)
+        let loaded = LibraryStore.load()
+        XCTAssertNil(loaded.problem)
+        let snap = loaded.snapshot
+        XCTAssertEqual(snap.schemaVersion, 2)
+        XCTAssertEqual(snap.config.grouping, .visitGeo)
+        XCTAssertEqual(snap.config.placeRadiusKm, 2.5)
+        XCTAssertEqual(snap.config.minPlaceItems, 3)
+        XCTAssertEqual(snap.config.joinSamePlaceDays, true)
+        XCTAssertEqual(snap.items[0].location, GeoLocation(lat: 38.7223, lon: -9.1393, source: "exif"))
+        XCTAssertNil(snap.items[1].location)
+        XCTAssertEqual(snap.groups[0].place?.name, "Lisbon")
+        XCTAssertEqual(snap.groups[0].parentVisitId, "visit-1a2b")
+        XCTAssertNil(snap.groups[1].place)
+        try LibraryStore.save(snap)
+        let saved = try String(contentsOf: LibraryStore.snapshotURL, encoding: .utf8)
+        XCTAssertEqual(saved, v2, "Swift writes the Rust golden file byte for byte")
+    }
+
+    func testUnknownGroupModeReadsAsVisitAndSurvives() throws {
+        var config = AppConfig.default
+        config.groupMode = "from-the-future"
+        XCTAssertEqual(config.grouping, .visit)
+        let data = try JSONEncoder().encode(config)
+        XCTAssertEqual(try JSONDecoder().decode(AppConfig.self, from: data).groupMode, "from-the-future")
+        config.grouping = .geo
+        XCTAssertEqual(config.groupMode, "geo")
+    }
+
 }
 
 final class PersistenceTests: StoreIsolatedTestCase {
@@ -216,60 +271,6 @@ final class HelpLibraryTests: XCTestCase {
             XCTAssertTrue(md.contains(must), must)
         }
         XCTAssertFalse(md.contains("flatpak"), "Linux-only advice on the Mac")
-    }
-
-    // MARK: - Schema 2 (plan §20.5)
-
-    /// crates/unswiper-core/tests/fixtures/compat, shared with the Rust tests.
-    static func compatFixture(_ name: String) throws -> String {
-        let url = TakeoutHelperTests.repoRoot
-            .appendingPathComponent("crates/unswiper-core/tests/fixtures/compat/\(name)")
-        return try String(contentsOf: url, encoding: .utf8)
-    }
-
-    func testV1FileLoadsAndSavesAsV2WithoutGeoKeys() throws {
-        let v1 = try Self.compatFixture("library-v1.json")
-        try writeLibrary(v1)
-        let loaded = LibraryStore.load()
-        XCTAssertNil(loaded.problem)
-        XCTAssertEqual(loaded.snapshot.schemaVersion, 1)
-        XCTAssertEqual(loaded.snapshot.config.grouping, .visit)
-        XCTAssertNil(loaded.snapshot.config.groupMode)
-        try LibraryStore.save(loaded.snapshot)
-        let saved = try String(contentsOf: LibraryStore.snapshotURL, encoding: .utf8)
-        // Same as Rust: only the version number changes.
-        XCTAssertEqual(saved, v1.replacingOccurrences(of: "\"schemaVersion\" : 1", with: "\"schemaVersion\" : 2"))
-    }
-
-    func testV2GoldenRoundTripsExactly() throws {
-        let v2 = try Self.compatFixture("library-v2.json")
-        try writeLibrary(v2)
-        let loaded = LibraryStore.load()
-        XCTAssertNil(loaded.problem)
-        let snap = loaded.snapshot
-        XCTAssertEqual(snap.schemaVersion, 2)
-        XCTAssertEqual(snap.config.grouping, .visitGeo)
-        XCTAssertEqual(snap.config.placeRadiusKm, 2.5)
-        XCTAssertEqual(snap.config.minPlaceItems, 3)
-        XCTAssertEqual(snap.config.joinSamePlaceDays, true)
-        XCTAssertEqual(snap.items[0].location, GeoLocation(lat: 38.7223, lon: -9.1393, source: "exif"))
-        XCTAssertNil(snap.items[1].location)
-        XCTAssertEqual(snap.groups[0].place?.name, "Lisbon")
-        XCTAssertEqual(snap.groups[0].parentVisitId, "visit-1a2b")
-        XCTAssertNil(snap.groups[1].place)
-        try LibraryStore.save(snap)
-        let saved = try String(contentsOf: LibraryStore.snapshotURL, encoding: .utf8)
-        XCTAssertEqual(saved, v2, "Swift writes the Rust golden file byte for byte")
-    }
-
-    func testUnknownGroupModeReadsAsVisitAndSurvives() throws {
-        var config = AppConfig.default
-        config.groupMode = "from-the-future"
-        XCTAssertEqual(config.grouping, .visit)
-        let data = try JSONEncoder().encode(config)
-        XCTAssertEqual(try JSONDecoder().decode(AppConfig.self, from: data).groupMode, "from-the-future")
-        config.grouping = .geo
-        XCTAssertEqual(config.groupMode, "geo")
     }
 
 }
