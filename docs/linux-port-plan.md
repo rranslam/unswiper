@@ -760,7 +760,7 @@ Rejected: M4–M6 of the first draft (OAuth + Picker, verification, Picker relea
 - Data Portability API scopes (no Google Photos resource): https://developers.google.com/data-portability/user-guide/scopes
 - Google Takeout help (Deselect all/Next step/Create export, delivery by email link, scheduled Photos exports every 2 months for one year with Photos as the only product, 50 GB size limit, archives expire in about 7 days, 5 downloads per archive, `custom/<products>?frequency=2_months` URL parameters; the frequency parameter is not honoured, Rob 19 Oct 2026): https://support.google.com/accounts/answer/3024190
 
-## 20. Geo grouping (design 25 Oct 2026; v0.6.0; M1 built, see §20.12)
+## 20. Geo grouping (design 25 Oct 2026; v0.6.0; M1 and M2 built, see §20.12–20.13)
 
 Rob's order: v0.5 Google Photos (Takeout) → **v0.6 geo grouping** → Windows. Approved scope: group photos by **place**, using the GPS location stored in each file, with Takeout JSON `geoData` as an optional source. Items without a location stay in their **date-based set**, the same way undated items are handled today (§group.rs: they join the visit of their dated folder siblings). Place names come from an **offline, standalone open-source reverse geocoder with bundled data**; no outside API, no network (Rob's tools rule). App ID stays `io.github.rranslam.Unswiper`.
 
@@ -873,3 +873,9 @@ Location never leaves the machine: no network calls, the geocoder data is bundle
 - Helper: `unswiper-blur geo` reads one JSON request on stdin and writes the places as JSON. It is a new subcommand; `scan`, `info` and `takeout` are unchanged.
 - The indexer (and so the GTK app) fills `location`, but still groups by visit until M2 adds the mode picker.
 
+### 20.13 M2 as built (25 Oct 2026)
+- **GTK**: there is no preferences window, so the picker is a **Grouping** section in the main menu (radio items like Commit Mode). It saves `AppConfig.groupMode` and regroups at once. In `geo` and `visit-geo` the view-model regroups with `group_with` after every index, folder-watch batch and commit; `visit` keeps the v0.5 grouper and the live index unchanged. Place groups get a pin icon.
+- **Mac**: `Models.swift` is schema 2 (`currentSchemaVersion` = 2; reads v1, writes v2) with `location`, `place`, `parentVisitId`, `groupMode` (string; missing or unknown = visit), `placeRadiusKm`, `minPlaceItems` and `joinSamePlaceDays`. A golden `library-v2.json` is written back byte for byte by both Rust and Swift. The picker sits in View ▸ Grouping and above the visits list. Place modes call the helper: `unswiper-blur group --library library.json [--mode M]` reads the saved library, reads GPS for items without a location, groups with the Linux code and prints `{groups, locations}`; it never writes library.json. Visit mode stays in Swift.
+- **Attribution**: THIRD_PARTY_NOTICES is installed in the Flatpak and AppImage (`share/doc/unswiper`) and in the dmg (`Contents/Resources` and next to the app); GTK About ▸ Legal and Mac About Unswiper show it.
+- **Help**: both Visits pages explain the three modes; the Mac Privacy page matches Linux on stored locations.
+- Not in M2: the Swift indexer still does not read GPS itself (the helper fills it on the first place-mode regroup), and the Takeout `geoData` fallback is Linux-only until M3.
