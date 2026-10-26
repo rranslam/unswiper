@@ -7,6 +7,8 @@ A **visit** is a pile of photos and videos taken close together in time — a tr
 - Unswiper sorts everything by the date it was taken.
 - Whenever there is a gap of more than **36 hours** with no photos, a new visit starts.
 - Photos use the date stored inside the photo by the camera. Videos use their own recorded date.
+- A photo without that date uses the time saved with its **GPS location**, if it has one.
+- Next comes a date in the **file name**, as phones and cameras write it, for example `IMG_20240612_133241.jpg` or `PXL_20240612_133241123.jpg`.
 - If a file has no recorded date, Unswiper looks at its **folder names** for a date, for example `2026/01/01`, `2026-01`, `2025-07-04 Beach` or `1999 Photos`.
 - If the folder name has no date either, the file joins the visit of the other photos **in the same folder** that do have dates.
 - If none of the files in that folder have dates, they get their own visit named after the folder (for example **Lisbon**).
