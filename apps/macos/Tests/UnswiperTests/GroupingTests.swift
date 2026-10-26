@@ -37,10 +37,10 @@ final class GroupingTests: XCTestCase {
         XCTAssertEqual(first.endDate, Date(timeIntervalSince1970: t0 + h))
     }
 
-    func testVisitsSortedLargestFirst() {
-        let items = [item("/l/small", t0, bytes: 1), item("/l/big", t0 + 100 * h, bytes: 1000), item("/l/mid", t0 + 200 * h, bytes: 50)]
+    func testVisitsSortedOldestFirstNotBySize() {
+        let items = [item("/l/mid", t0 + 200 * h, bytes: 50), item("/l/small", t0, bytes: 1), item("/l/big", t0 + 100 * h, bytes: 1000)]
         let groups = VisitGrouper.group(items: items, gapHours: 36)
-        XCTAssertEqual(groups.map(\.totalBytes), [1000, 50, 1])
+        XCTAssertEqual(groups.map(\.itemPaths), [["/l/small"], ["/l/big"], ["/l/mid"]])
     }
 
     func testStableIDPinnedValue() {

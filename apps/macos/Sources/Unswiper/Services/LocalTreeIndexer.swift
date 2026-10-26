@@ -307,7 +307,7 @@ enum LocalTreeIndexer {
 
 enum VisitGrouper {
     /// Groups items into visits:
-    /// 1. Items with a capture or folder date are clustered by time gap (largest visits first).
+    /// 1. Items with a capture or folder date are clustered by time gap (oldest visit first).
     /// 2. Items without a date in a sub-folder join the visit holding most of the dated files
     ///    in the same folder; if that folder has no dated files they form a visit named after
     ///    the folder (sorted by folder name).
@@ -340,7 +340,10 @@ enum VisitGrouper {
         }
         for (ci, extra) in joined { clusters[ci].append(contentsOf: extra) }
 
-        var result = clusters.map(makeVisit).sorted { $0.totalBytes > $1.totalBytes }
+        var result = clusters.map(makeVisit).sorted {
+            // Visit order: oldest first (Rob, 26 Oct 2026; was largest first). Same as Rust.
+            $0.startDate != $1.startDate ? $0.startDate < $1.startDate : $0.id < $1.id
+        }
 
         for folder in namedFolders.keys.sorted(by: { $0.localizedStandardCompare($1) == .orderedAscending }) {
             let members = namedFolders[folder]!

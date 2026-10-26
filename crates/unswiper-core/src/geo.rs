@@ -646,7 +646,11 @@ fn join_same_place(
             make_visit(&m)
         })
         .collect();
-    result.sort_by_key(|g| std::cmp::Reverse(g.total_bytes));
+    result.sort_by(|a, b| {
+        a.start_date
+            .cmp(&b.start_date)
+            .then_with(|| a.id.cmp(&b.id))
+    });
     result.extend(rest);
     result
 }

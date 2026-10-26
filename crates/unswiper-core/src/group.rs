@@ -3,7 +3,7 @@
 
 //! Port of `VisitGrouper` (LocalTreeIndexer.swift).
 //!
-//! 1. Items with a capture or folder date are clustered by time gap (largest visits first).
+//! 1. Items with a capture or folder date are clustered by time gap (oldest visit first).
 //! 2. Undated items in a sub-folder join the visit holding most of the dated files in the same
 //!    folder; if that folder has no dated files they form a visit named after the folder.
 //! 3. Only undated items directly in the library root (or from pre-0.1.2 indexes) go to "Undated".
@@ -117,7 +117,12 @@ pub fn group(items: &[MediaItem], gap_hours: f64) -> Vec<VisitGroup> {
     }
 
     let mut result: Vec<VisitGroup> = clusters.iter().map(|c| make_visit(c)).collect();
-    result.sort_by_key(|g| std::cmp::Reverse(g.total_bytes));
+    // Visit order: oldest first by first dated capture (Rob, 26 Oct 2026; was largest first).
+    result.sort_by(|a, b| {
+        a.start_date
+            .cmp(&b.start_date)
+            .then_with(|| a.id.cmp(&b.id))
+    });
 
     let mut folders: Vec<String> = named.keys().cloned().collect();
     folders.sort_by(|a, b| natural_cmp(a, b));
@@ -345,19 +350,21 @@ mod tests {
     }
 
     #[test]
-    fn ordering_by_bytes_and_undated_last() {
+    fn ordering_oldest_first_not_by_bytes_and_undated_last() {
         let items = vec![
-            it("/r/a/1.jpg", Some(t0()), "a", 1),
             it("/r/b/2.jpg", Some(t0() + Duration::days(10)), "b", 100),
+            it("/r/c/3.jpg", Some(t0() + Duration::days(5)), "c", 5000),
+            it("/r/a/1.jpg", Some(t0()), "a", 1),
             it("/r/x.jpg", None, "", 1000),
         ];
         let g = group(&items, 36.0);
-        assert_eq!(g.len(), 3);
-        assert_eq!(g[0].item_paths, vec!["/r/b/2.jpg"]);
-        assert_eq!(g[1].item_paths, vec!["/r/a/1.jpg"]);
-        assert_eq!(g[2].id, UNDATED_ID);
-        assert_eq!(g[2].title, "Undated");
-        assert_eq!(g[2].start_date, distant_past());
+        assert_eq!(g.len(), 4);
+        assert_eq!(g[0].item_paths, vec!["/r/a/1.jpg"]);
+        assert_eq!(g[1].item_paths, vec!["/r/c/3.jpg"]);
+        assert_eq!(g[2].item_paths, vec!["/r/b/2.jpg"]);
+        assert_eq!(g[3].id, UNDATED_ID);
+        assert_eq!(g[3].title, "Undated");
+        assert_eq!(g[3].start_date, distant_past());
     }
 
     #[test]
