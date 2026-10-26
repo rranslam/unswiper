@@ -26,6 +26,7 @@ pub const USAGE: &str = "usage:
                              the open visit); results still cover every photo with a score
   unswiper-blur info [options] FILE...      photo info rows as JSON (see `info` below)
   unswiper-blur geo < request.json          place names: {\"cmd\":\"geo\",\"points\":[[lat,lon],...]}
+  unswiper-blur group --library library.json [--mode M]   groups by place (JSON, read-only)
   unswiper-blur --version
 Nothing is moved or deleted.";
 

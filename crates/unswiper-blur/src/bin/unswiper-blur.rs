@@ -37,6 +37,21 @@ fn main() -> ExitCode {
             }
         };
     }
+    // Grouping by place for the Mac app (plan §20.6): reads library.json, prints groups.
+    if args.first().map(String::as_str) == Some("group") {
+        return match unswiper_blur::geo::parse_group(&args)
+            .and_then(|(lib, mode)| unswiper_blur::geo::group(std::path::Path::new(&lib), mode))
+        {
+            Ok(out) => {
+                println!("{out}");
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("{e}");
+                ExitCode::FAILURE
+            }
+        };
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
