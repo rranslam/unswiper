@@ -1,10 +1,14 @@
+<p align="center">
+  <img src="crates/unswiper-gtk/data/icons/hicolor/scalable/apps/io.github.rranslam.Unswiper.svg" alt="Unswiper logo: photos go into a funnel, one keeper comes out" width="128" height="128">
+</p>
+
 # Unswiper
 
 Pare down your photos and videos **one visit at a time** (grouped by place and time), instead of swiping left/right through everything. A local **desktop** app for macOS and Linux; mobile later.
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** v0.5.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64), with **guided import from Google Photos** (via Google Takeout), photo info, blurry-photo detection and in-app video playback. Next: geo grouping. See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
+**Status:** v0.5.0 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64), with **guided import from Google Photos** (via Google Takeout), photo info, blurry-photo detection and in-app video playback. **v0.6 (geo grouping: group by place, or by visit and place) is in development and not released yet**; the download steps below are for v0.5.0, the current release. See [CHANGELOG.md](CHANGELOG.md) and [docs/linux-port-plan.md](docs/linux-port-plan.md).
 
 ## Download & Install (macOS)
 
@@ -237,7 +241,7 @@ unswiper/
 
 ## Roadmap
 
-v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → v0.5: Google Photos import (Takeout) → v0.6: geo grouping → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–19.
+v0.3: blur detection and video playback (Linux and Mac) → v0.4: photo info → v0.5: Google Photos import (Takeout) → v0.6: geo grouping (in development) → Windows port. Details in [`docs/linux-port-plan.md`](docs/linux-port-plan.md) §13–19.
 
 ## Contributing
 
