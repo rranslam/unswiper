@@ -1,6 +1,6 @@
 # unswiper-hash: design (draft, 26 Oct 2026)
 
-Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); app integration is extra (M5). The numbered **open choices** for Rob are in §12.
+Status: **design for review, not scheduled, nothing built.** It implements the approach Rob approved on 15 Oct 2026 in [plan §18.9](linux-port-plan.md#189-decision-rob-15-oct-2026): a separate file-hashing CLI with its own hash store. It recognises moved files, works across machines and adds no files to photo folders. Estimate: 4–5 days (M1–M4); a content-only fingerprint (§14, M2b) adds 1.5–2 days; app integration is extra (M5). The numbered **open choices** for Rob are in §12.
 
 ## 1. Goals and non-goals
 
@@ -54,7 +54,7 @@ Exit codes: 0 all good; 1 differences found that need attention (`damaged?` file
 
 **Recommendation: BLAKE3 stored, SHA-256 on export only.** Reading a photo library is limited by the disk (100–500 MB/s for HDDs, NAS and USB; a few GB/s for NVMe), so xxh3's extra CPU speed buys almost nothing. Its weaker guarantee does matter here, though: content identity across machines and backups (moves, duplicates, diff) should not be fooled by crafted or unlucky collisions. BLAKE3 is as fast as the disk, pure Rust, and has a clear licence. SHA-256 stays available for archives that must be checkable with built-in OS tools. Every stored hash is tagged (`"b3:<64 hex>"`), so a later switch keeps old entries readable.
 
-Whole-file bytes are hashed: an edit to EXIF metadata counts as a change. A "pixel-only" hash is out of scope.
+Whole-file bytes are hashed: an edit to EXIF metadata counts as a change. An optional second, **content-only** fingerprint that ignores metadata is proposed in §14 (open choice 11).
 
 ## 5. Store: format and location
 
@@ -147,13 +147,77 @@ Packaging: added to the AppImage and Flatpak as `unswiper-hash` (next to `unswip
 8. **Where it ships.** Inside each release (AppImage, Flatpak, dmg) or as separate downloads / `cargo install`. *Recommend: inside the release bundles plus `cargo install --path crates/unswiper-hash`.*
 9. **Release timing.** With v0.6, v0.7, or on its own tag. *Recommend: after v0.6 is released, as part of v0.7, before the Windows port.*
 10. **`damaged?` handling.** Report only, or also write a list for restore from backup (`--out damaged.txt`). *Recommend: report plus optional list; never touch the file.*
+11. **Content-only fingerprint (§14).** Full-file hash only; full-file plus a container-data content hash (JPEG, PNG, HEIC/AVIF, MP4/MOV), with "metadata changed only" vs "image changed" reports and move matching on content; or plus a decoded-pixel hash. *Recommend: full-file plus container-data content hash (M2b, +1.5–2 days). No pixel decoding.*
 
-## 13. Milestones (4–5 days)
+## 13. Milestones (4–5 days; 5.5–7 with M2b)
 
 | Milestone | Scope | Estimate |
 |---|---|---|
 | **M1** Store and scan | Crate, SQLite schema v1, walk + incremental BLAKE3 scan, `status`, `--json`, exit codes, store locations, unit tests | 1.5 days |
 | **M2** Verify, moves, duplicates | `verify` (resumable, low priority, throttle), `damaged?`, move and rename matching, `moves`, `dups`, `forget`/`gc`, integration tests | 1–1.5 days |
+| **M2b** Content-only fingerprint (open choice 11) | Content hash for JPEG, PNG, HEIC/AVIF and MP4/MOV, "metadata changed only" and "image changed" reports, move matching on content, tests against exiftool and ffmpeg | 1.5–2 days |
 | **M3** Across machines | Manifests, `export` (JSON, B3SUMS, SHA256SUMS), `diff` (manifest or root), `scan --import`, round-trip tests | 1 day |
 | **M4** Ship | AppImage, Flatpak (cargo-sources), dmg; THIRD_PARTY_NOTICES; README, help page and man-style `--help`; CI jobs incl. MSRV; `schedule --print` | 0.5–1 day |
 | **M5** (optional, later) App integration | Read-only store access, move carry-over, "possibly damaged" badge, "Verify Library…" | 2 days |
+
+## 14. Content-only fingerprint (proposal, 26 Oct 2026)
+
+Rob asked (26 Oct 2026) whether the image can be checked separately from its EXIF data: some tools (he recalls a Windows app) rewrite EXIF when they rename a file or change its date. Then the full-file hash changes although the picture did not, and `verify` can't tell "metadata changed" from "image changed".
+
+**Proposal:** store a second hash per file, `content_hash` (`"b3c:<hex>"`), next to the full-file hash. It is BLAKE3 over the **encoded image or media data only**, read from the container without decoding:
+- **JPEG:** the bytes from the first SOS marker to EOI. APPn (EXIF, XMP, ICC, maker notes) and COM segments before the scan are skipped. Covers progressive JPEGs, whose later scans also follow the first SOS.
+- **PNG:** the concatenated IDAT chunk data. tEXt, iTXt, zTXt, eXIf, tIME and the like are skipped.
+- **HEIC, AVIF and other ISOBMFF stills:** the byte ranges of the primary image item and its grid tiles (from `iloc`). Exif and XMP items are skipped.
+- **MP4 and MOV:** the sample data ranges of the audio and video tracks (from `stco`/`co64` + `stsz`), i.e. the `mdat` payload. `moov/udta`, `meta`, `©xyz` and timestamps are skipped.
+- **Other formats** (RAW/TIFF, WebP, GIF…): no content hash at first (`content_hash` empty), so they fall back to the full-file hash.
+
+It is filled whenever the full-file hash is computed: one read of the file, about +5–10% CPU.
+
+**What `scan` and `verify` then report**, when the full-file hash changed:
+
+| Full-file hash | Content hash | Size/mtime | Report |
+|---|---|---|---|
+| changed | same | changed | **metadata changed only** (e.g. a new date or a tag edit); exit 0 |
+| changed | changed | changed | **image changed** (an edit or a re-save) |
+| changed | same | same | **metadata changed, mtime unchanged** (a tool that kept the mtime), flagged |
+| changed | changed | same | **possibly damaged** (exit 1) |
+
+Moves also match on the content hash, so a file that was renamed *and* had its EXIF rewritten (Rob's Windows case) is still recognised as the same photo, reported as "moved, metadata changed". Duplicates can optionally be grouped by content hash: "same picture, different metadata".
+
+### 14.1 Prototype (26 Oct 2026, synthetic files only)
+
+A 640×480 generated JPEG, edited with exiftool 13.25, jpegtran and ImageMagick. "Content" is the BLAKE3 of SOS→EOI (a Python prototype of the rule above).
+
+| Change | Full-file BLAKE3 | Content hash (SOS→EOI) | exiftool `ImageDataHash` | ImageMagick `%#` (decoded pixels) |
+|---|---|---|---|---|
+| EXIF dates changed (`-AllDates`) | changed | **same** | same | same |
+| Orientation tag 1 → 6 | changed | **same** | same | same |
+| Lossless rotate 90° (`jpegtran -rotate 90`) | changed | changed | changed | changed |
+| One pixel drawn, re-encoded | changed | changed | — | changed |
+| One bit flipped inside the scan data | changed | changed | changed | — |
+| PNG: XMP and text chunk added | changed | **same** (IDAT) | same | same |
+| MP4: `creation_time`/location rewritten (ffmpeg `-c copy`, exiftool) | changed | — | **same** | ffmpeg `streamhash`: **same** |
+
+On a 6000×4000 JPEG (7.8 MB): full-file BLAKE3 took under 0.01 s; SOS→EOI hashing (Python) 0.02 s; exiftool `ImageDataHash` 0.15 s; decoding all pixels (ImageMagick `%#`) 1.7 s. HEIC could not be tested here (no HEIF encoder on the test box); exiftool documents `ImageDataHash` for HEIC and AVIF.
+
+### 14.2 Options and trade-offs
+
+- **Container-data hash (proposed).** Fast: no decoding, so it runs at disk speed. Exact, and pure Rust. Ignores every metadata edit, including the orientation tag. Changes on a lossless rotate or re-encode, both of which really do rewrite the image data. Needs a small parser per format.
+- **Decoded-pixel hash** (ImageMagick `%#`, or the `image` crate). Also ignores metadata, and a lossless rotate is still a change. It is 50–100× slower (full decode), and it depends on the decoder version (JPEG and HEIC decoders may round differently between releases), so stored values can drift on upgrades. HEIC needs libheif (C, LGPL) and video needs ffmpeg. Not recommended for a store meant to stay valid for years.
+- **exiftool `ImageDataHash`.** The same idea as the proposal. It supports JPEG, TIFF, PNG, CR3/CRW and other RAW formats, JP2, JXL, HEIC, AVIF, MOV/MP4 (video *and* audio data), AVI, WAV and WebP. MD5 by default, SHA-256 or SHA-512 with `-api ImageHashType=SHA256`. It can't be used inside our binary (Perl, ~10× slower per file), but it is a ready **reference** to test our parser against, and lets Rob check a file by hand: `exiftool -ImageDataHash -api ImageHashType=SHA256 photo.jpg`.
+- **ffmpeg `-f streamhash` / `-f framemd5`.** A per-stream (or per-frame) hash of the packets, ignoring container metadata. A good reference for MP4/MOV tests; `framemd5` with decoding gives a decoded-frames hash. Not a dependency.
+
+### 14.3 Crates (MSRV 1.92, licences)
+
+- JPEG and PNG need no crate: walking JPEG markers and PNG chunks is ~100 lines with exact bounds checks. `img-parts` 0.4.1 (MIT/Apache-2.0, MSRV 1.63) is an option for JPEG, PNG and WebP segments.
+- ISOBMFF (HEIC, AVIF, MP4, MOV): `mp4-atom` 0.16 (MIT/Apache-2.0) or `re_mp4` 0.5 (MIT, MSRV 1.92) parse boxes and sample tables. Alternatively, a small own box reader for `meta/iloc/iinf` and `moov/trak/stbl`; unswiper-core already reads MP4 `udta`/`©xyz` boxes for locations, so one reader could serve both. To be decided in M2b, with `cargo +1.92 check` in CI.
+- Licences: all MIT or Apache-2.0; add them to THIRD_PARTY_NOTICES if used.
+
+### 14.4 Effort
+
+About **1.5–2 extra days**, as milestone **M2b** after M2:
+- JPEG and PNG plus the store column and reports: 0.5 day;
+- HEIC/AVIF items and MP4/MOV sample ranges: 0.5–1 day;
+- tests against exiftool `ImageDataHash` and ffmpeg `streamhash` on synthetic files (generated in CI; never personal media), including truncated and malformed files: 0.5 day.
+
+Total with M1–M4: 5.5–7 days.
