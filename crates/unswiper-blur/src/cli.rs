@@ -24,6 +24,9 @@ pub const USAGE: &str = "usage:
                              library.json, or ~/.local/share/unswiper for a folder)
       --only FILE            score only the photos listed in FILE (one path per line, e.g.
                              the open visit); results still cover every photo with a score
+      --progress             print `progress DONE TOTAL` lines on stderr while scoring (at
+                             most 10 a second); with --write-cache, scores are also saved
+                             every 30 s so a stopped scan resumes where it was
   unswiper-blur info [options] FILE...      photo info rows as JSON (see `info` below)
   unswiper-blur geo < request.json          place names: {\"cmd\":\"geo\",\"points\":[[lat,lon],...]}
   unswiper-blur group --library library.json [--mode M]   groups by place (JSON, read-only)
@@ -38,6 +41,8 @@ pub struct Options {
     pub write_cache: Option<Option<PathBuf>>,
     /// `--only`: a file listing the paths to score (others are only read from the cache).
     pub only: Option<PathBuf>,
+    /// `--progress`: progress lines on stderr, periodic cache saves.
+    pub progress: bool,
 }
 
 pub fn parse(args: &[String]) -> Result<Options, String> {
@@ -50,10 +55,12 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     let mut abs = None;
     let mut write_cache = None;
     let mut only = None;
+    let mut progress = false;
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
             "--json" => json = true,
+            "--progress" => progress = true,
             "--sensitivity" => {
                 sens = args
                     .get(i + 1)
@@ -105,6 +112,7 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
         thresholds,
         write_cache,
         only,
+        progress,
     })
 }
 
@@ -130,6 +138,53 @@ fn load_target(target: &Path) -> Result<(Vec<MediaItem>, PathBuf), String> {
     }
 }
 
+/// Scores `todo` in batches, printing `progress DONE TOTAL` on stderr (at most 10 a second,
+/// and once at the end) and saving the cache every 30 s when `save` is set.
+fn score_with_progress(todo: &[String], cache: &mut QualityCache, save: Option<&Path>, now: i64) {
+    use std::io::Write;
+    use std::time::{Duration, Instant};
+    let todo: Vec<String> = todo
+        .iter()
+        .filter(|p| {
+            crate::cache::Stamp::of(Path::new(p)).is_some_and(|st| cache.get(p, st).is_none())
+        })
+        .cloned()
+        .collect();
+    let total = todo.len();
+    let last = std::sync::Mutex::new(Instant::now() - Duration::from_secs(1));
+    let say = |done: usize| {
+        let mut l = last.lock().unwrap_or_else(|e| e.into_inner());
+        if done == total || l.elapsed() >= Duration::from_millis(100) {
+            *l = Instant::now();
+            let mut e = std::io::stderr().lock();
+            let _ = writeln!(e, "progress {done} {total}");
+            let _ = e.flush();
+        }
+    };
+    say(0);
+    let mut done = 0;
+    let mut saved = Instant::now();
+    for batch in todo.chunks(128) {
+        let base = done;
+        scan::update_cache(
+            batch,
+            cache,
+            scan::default_threads(),
+            &AtomicBool::new(false),
+            now,
+            &|d, _| say(base + d),
+        );
+        done += batch.len();
+        if let Some(p) = save {
+            if saved.elapsed() >= Duration::from_secs(30) {
+                let _ = cache.save(p);
+                saved = Instant::now();
+            }
+        }
+    }
+    say(total);
+}
+
 /// Runs the command; returns the text to print.
 pub fn run(o: &Options, now: i64) -> Result<String, String> {
     let (items, default_cache) = load_target(&o.target)?;
@@ -151,14 +206,23 @@ pub fn run(o: &Options, now: i64) -> Result<String, String> {
         }
         None => paths.clone(),
     };
-    scan::update_cache(
-        &todo,
-        &mut cache,
-        scan::default_threads(),
-        &AtomicBool::new(false),
-        now,
-        &|_, _| {},
-    );
+    if o.progress {
+        score_with_progress(
+            &todo,
+            &mut cache,
+            o.write_cache.is_some().then_some(&cache_path),
+            now,
+        );
+    } else {
+        scan::update_cache(
+            &todo,
+            &mut cache,
+            scan::default_threads(),
+            &AtomicBool::new(false),
+            now,
+            &|_, _| {},
+        );
+    }
     let s = scan::suggestions(&items, &cache, o.thresholds);
     if o.write_cache.is_some() {
         cache
@@ -262,6 +326,8 @@ mod tests {
         let o = parse(&a(&["scan", "--write-cache", "/c.json", "/x"])).unwrap();
         assert_eq!(o.write_cache, Some(Some(PathBuf::from("/c.json"))));
         assert_eq!(o.only, None);
+        assert!(!o.progress);
+        assert!(parse(&a(&["scan", "/x", "--progress"])).unwrap().progress);
         let o = parse(&a(&["scan", "/x", "--only", "/list.txt"])).unwrap();
         assert_eq!(o.only, Some(PathBuf::from("/list.txt")));
         assert_eq!(o.target, PathBuf::from("/x"));
