@@ -8,11 +8,24 @@ import Combine
 @MainActor
 final class AppState: ObservableObject {
     @Published var config: AppConfig
-    @Published var items: [MediaItem] = []
-    @Published var groups: [VisitGroup] = []
+    @Published var items: [MediaItem] = [] {
+        didSet { if !incrementalChange { rebuildCaches() } }
+    }
+    @Published var groups: [VisitGroup] = [] {
+        didSet { if !incrementalChange { rebuildCaches() } }
+    }
+    /// Kept / rejected / left per visit, kept up to date (one pass after a big change, then
+    /// per decision), so the visits list doesn't count the whole library for every row.
+    private(set) var visitCounts = VisitCounts()
+    /// Path → position in `items`.
+    private var itemIndex: [String: Int] = [:]
+    private var incrementalChange = false
     @Published var lastIndexedAt: Date?
     @Published var isIndexing = false
     @Published var indexProgress: LocalTreeIndexer.Progress?
+    /// When the date-reading phase of the running index began (for the time left).
+    @Published var indexDatingStartedAt: Date?
+    private var indexJob: Task<(items: [MediaItem], groups: [VisitGroup]), Error>?
     @Published var statusMessage: String?
     @Published var selectedGroupID: VisitGroup.ID?
     @Published var path: AppPath = .home
@@ -25,9 +38,20 @@ final class AppState: ObservableObject {
     /// A commit manifest left `pending` by an interrupted commit; the UI offers to restore it.
     @Published var interruptedCommitURL: URL?
     /// Delay for debounced saves (tests shorten it).
-    var saveDelay: Duration = .seconds(1)
+    var saveDelay: Duration = .seconds(1) {
+        didSet { saver.delay = Self.seconds(saveDelay) }
+    }
+    /// Writes library.json on a background queue (newest state wins; `flush()` waits).
+    private let saver = CoalescedSaver(delay: 1)
     /// Set while the blur checker runs ("Checking sharpness…").
     @Published var blurProgress: String?
+    /// Share of the running blur pass that is done (nil when the helper doesn't say).
+    @Published var blurFraction: Double?
+    @Published var blurPaused = false
+    private var blurControl: BlurHelper.Control?
+    private var blurClock: (start: Date, done: Int) = (Date(), 0)
+    private var blurLast: (done: Int, total: Int) = (0, 0)
+    private var blurPassLabel = ""
     /// Tests swap in a fake checker; nil means "find the bundled helper".
     var blurRunner: ((_ library: URL, _ sensitivity: BlurRules.Sensitivity, _ only: [String]?) async throws -> BlurHelper.Verdict)?
     private var blurTask: Task<Void, Never>?
@@ -62,7 +86,6 @@ final class AppState: ObservableObject {
     private var bookmarkURL: URL?
     /// The URL we currently hold security-scoped access to (started once, stopped on root change/quit).
     private var accessedURL: URL?
-    private var saveTask: Task<Void, Never>?
     private var terminateObserver: NSObjectProtocol?
 
     init() {
@@ -74,6 +97,7 @@ final class AppState: ObservableObject {
         self.items = snap.items
         self.groups = snap.groups
         self.lastIndexedAt = snap.lastIndexedAt
+        rebuildCaches() // didSet doesn't run in init
         if let data = snap.config.bookmarkData {
             restoreBookmark(data)
         }
@@ -100,31 +124,68 @@ final class AppState: ObservableObject {
         return groups.first { $0.id == id }
     }
 
-    /// Debounced save (~1s). Use `flush()` to write immediately.
-    func persist() {
-        saveTask?.cancel()
-        saveTask = Task { [weak self] in
-            guard let delay = self?.saveDelay else { return }
-            try? await Task.sleep(for: delay)
-            guard !Task.isCancelled else { return }
-            self?.flush()
-        }
+    private static func seconds(_ d: Duration) -> TimeInterval {
+        Double(d.components.seconds) + Double(d.components.attoseconds) / 1e18
     }
 
-    func flush() {
-        saveTask?.cancel()
-        saveTask = nil
+    private func rebuildCaches() {
+        var index: [String: Int] = [:]
+        index.reserveCapacity(items.count)
+        for (i, item) in items.enumerated() where index[item.path] == nil {
+            index[item.path] = i
+        }
+        itemIndex = index
+        visitCounts = VisitCounts(items: items, groups: groups)
+    }
+
+    private func snapshotSaveJob() -> () -> Void {
         let snap = LibrarySnapshot(
             config: config,
             items: items,
             groups: groups,
             lastIndexedAt: lastIndexedAt
         )
-        do {
-            try LibraryStore.save(snap)
-        } catch {
-            statusMessage = "Save failed: \(error.localizedDescription)"
+        let url = LibraryStore.snapshotURL
+        let blocked = LibraryStore.saveBlockedReason
+        return {
+            do {
+                try LibraryStore.save(snap, to: url, blockedReason: blocked)
+            } catch {
+                let msg = "Save failed: \(error.localizedDescription)"
+                DispatchQueue.main.async { [weak self] in
+                    MainActor.assumeIsolated { self?.statusMessage = msg }
+                }
+            }
         }
+    }
+
+    /// Debounced save (~1s), written off the main thread. Use `flush()` to write now.
+    func persist() {
+        saver.schedule(snapshotSaveJob())
+    }
+
+    /// Writes library.json now and waits (quit, tests).
+    func flush() {
+        let snap = LibrarySnapshot(
+            config: config,
+            items: items,
+            groups: groups,
+            lastIndexedAt: lastIndexedAt
+        )
+        let url = LibraryStore.snapshotURL
+        let blocked = LibraryStore.saveBlockedReason
+        var failure: Error?
+        saver.runNow {
+            do { try LibraryStore.save(snap, to: url, blockedReason: blocked) } catch { failure = error }
+        }
+        if let failure {
+            statusMessage = "Save failed: \(failure.localizedDescription)"
+        }
+    }
+
+    /// Writes library.json now without blocking the window (before a helper reads it).
+    func flushInBackground() async {
+        await saver.runNowAsync(snapshotSaveJob())
     }
 
     func pickFolder() {
@@ -220,13 +281,19 @@ final class AppState: ObservableObject {
         isIndexing = true
         resetInfo()
         indexProgress = .init(filesSeen: 0, mediaFound: 0)
+        indexDatingStartedAt = nil
         statusMessage = "Indexing…"
         let gap = config.visitGapHours
         let decisions = Dictionary(uniqueKeysWithValues: items.map { ($0.path, $0.decision) })
         let before = items
 
         do {
-            let result = try await Task.detached(priority: .userInitiated) { () throws -> (items: [MediaItem], groups: [VisitGroup]) in
+            let throttle = ProgressThrottle()
+            let report: @Sendable (LocalTreeIndexer.Progress) -> Void = { p in
+                guard throttle.ready(final: p.toDate > 0 && p.dated == p.toDate) else { return }
+                Task { @MainActor [weak self] in self?.noteIndexProgress(p) }
+            }
+            let job = Task.detached(priority: .userInitiated) { () throws -> (items: [MediaItem], groups: [VisitGroup]) in
                 // Google Photos (Takeout) library: Google's dates for files without their own.
                 var fallback: [String: Date] = [:]
                 if TakeoutHelper.isTakeoutLibrary(root), let helper = BlurHelper.locate() {
@@ -237,9 +304,13 @@ final class AppState: ObservableObject {
                     visitGapHours: gap,
                     existingDecisions: decisions,
                     fallbackDates: fallback,
-                    onProgress: { _ in }
+                    isCancelled: { Task.isCancelled },
+                    onProgress: report
                 )
-            }.value
+            }
+            indexJob = job
+            defer { indexJob = nil }
+            let result = try await job.value
             var fresh = result.items
             BlurRules.carryOver(from: before, to: &fresh)
             items = fresh
@@ -254,10 +325,23 @@ final class AppState: ObservableObject {
             isIndexing = false
             checkBlur(visitFirst: selectedGroupID)
             return
+        } catch is CancellationError {
+            statusMessage = "Indexing cancelled. The library is as it was."
         } catch {
             statusMessage = "Index failed: \(error.localizedDescription)"
         }
         isIndexing = false
+    }
+
+    /// Stops a running index; the library stays as it was.
+    func cancelIndexing() {
+        indexJob?.cancel()
+    }
+
+    private func noteIndexProgress(_ p: LocalTreeIndexer.Progress) {
+        guard isIndexing else { return }
+        if p.toDate > 0, indexDatingStartedAt == nil { indexDatingStartedAt = Date() }
+        indexProgress = p
     }
 
     func openGroup(_ group: VisitGroup) {
@@ -267,16 +351,30 @@ final class AppState: ObservableObject {
     }
 
     func items(in group: VisitGroup) -> [MediaItem] {
-        let set = Set(group.itemPaths)
-        return items.filter { set.contains($0.path) }.sorted { $0.takenAt < $1.takenAt }
+        // Library order first, then by time (as before, without scanning the whole library).
+        let positions = Set(group.itemPaths.compactMap { itemIndex[$0] }).sorted()
+        return positions.map { items[$0] }.sorted { $0.takenAt < $1.takenAt }
     }
 
     func updateDecision(paths: [String], decision: Decision) {
         let targets = Set(paths)
+        var changed: [(path: String, from: Decision, to: Decision)] = []
+        var copy = items
         // Mutate in place so order is preserved and duplicate paths can't trap.
-        for index in items.indices where targets.contains(items[index].path) {
+        for index in copy.indices where targets.contains(copy[index].path) {
+            let old = copy[index].decision
             // The user's choice always wins over a blur suggestion (and is remembered).
-            BlurRules.setManualDecision(&items[index], decision)
+            BlurRules.setManualDecision(&copy[index], decision)
+            if itemIndex[copy[index].path] == index, copy[index].decision != old {
+                changed.append((copy[index].path, old, copy[index].decision))
+            }
+        }
+        // One assignment (one redraw), and the counts move by the changed photos only.
+        incrementalChange = true
+        items = copy
+        incrementalChange = false
+        for c in changed {
+            visitCounts.update(path: c.path, from: c.from, to: c.to)
         }
         persist()
     }
@@ -291,7 +389,7 @@ final class AppState: ObservableObject {
     }
 
     func isBlurSuggested(_ path: String) -> Bool {
-        items.first { $0.path == path }.map(BlurRules.isSuggested) ?? false
+        itemIndex[path].map { BlurRules.isSuggested(items[$0]) } ?? false
     }
 
     func setBlurEnabled(_ on: Bool) {
@@ -300,8 +398,7 @@ final class AppState: ObservableObject {
             persist()
             checkBlur(visitFirst: selectedGroupID)
         } else {
-            blurTask?.cancel()
-            blurProgress = nil
+            stopBlur()
             let n = BlurRules.withdrawAll(&items)
             persist()
             statusMessage = n > 0 ? "Blurry-photo detection is off. \(n) suggestion\(n == 1 ? "" : "s") removed." : "Blurry-photo detection is off."
@@ -336,12 +433,13 @@ final class AppState: ObservableObject {
     /// checks stay quiet so a development build without the helper works as before.
     func checkBlur(visitFirst groupID: VisitGroup.ID?, visitOnly: Bool = false, userAsked: Bool = false) {
         guard blurEnabled, !items.isEmpty else { return }
-        let runner = blurRunner ?? Self.helperRunner()
-        guard let runner else {
+        let custom = blurRunner
+        let helper = custom == nil ? BlurHelper.locate() : nil
+        guard custom != nil || helper != nil else {
             if userAsked { statusMessage = BlurHelper.HelperError.notFound.localizedDescription }
             return
         }
-        blurTask?.cancel()
+        stopBlur()
         let visitPaths = groupID.flatMap { id in groups.first { $0.id == id } }.map { $0.itemPaths }
         let sensitivity = blurSensitivity
         blurTask = Task { [weak self] in
@@ -352,20 +450,54 @@ final class AppState: ObservableObject {
             var suggested = 0
             for only in passes {
                 guard !Task.isCancelled else { break }
+                self.blurPassLabel = only == nil ? "" : " in this visit"
                 self.blurProgress = only == nil ? "Checking sharpness…" : "Checking sharpness in this visit…"
-                self.flush() // the helper reads library.json
+                self.blurFraction = nil
+                self.blurPaused = false
+                self.blurClock = (Date(), 0)
+                self.blurLast = (0, 0)
+                await self.flushInBackground() // the helper reads library.json
+                guard !Task.isCancelled else { break }
                 do {
-                    let v = try await runner(LibraryStore.snapshotURL, sensitivity, only)
+                    let library = LibraryStore.snapshotURL
+                    let v: BlurHelper.Verdict
+                    if let custom {
+                        v = try await custom(library, sensitivity, only)
+                    } else if let helper {
+                        let control = BlurHelper.Control()
+                        self.blurControl = control
+                        let note: @Sendable (Int, Int) -> Void = { done, total in
+                            Task { @MainActor [weak self] in self?.noteBlurProgress(done, total) }
+                        }
+                        v = try await withTaskCancellationHandler {
+                            try await Task.detached(priority: .utility) {
+                                try BlurHelper.run(helper: helper, library: library, sensitivity: sensitivity,
+                                                   only: only, control: control, onProgress: note)
+                            }.value
+                        } onCancel: {
+                            control.stop()
+                        }
+                        self.blurControl = nil
+                    } else {
+                        break
+                    }
                     guard !Task.isCancelled, self.blurEnabled else { break }
                     let r = BlurRules.apply(&self.items, flagged: v.flagged, scored: v.scored, enabled: true)
                     suggested += r.suggested
                     if r != BlurRules.ApplyReport() { self.persist() }
+                } catch is CancellationError {
+                    break
                 } catch {
                     self.statusMessage = error.localizedDescription
                     break
                 }
             }
-            self.blurProgress = nil
+            if !Task.isCancelled { // a newer check (or Stop) already reset these
+                self.blurControl = nil
+                self.blurProgress = nil
+                self.blurFraction = nil
+                self.blurPaused = false
+            }
             self.resetInfo() // new scores change the Sharpness row
             if suggested > 0, !Task.isCancelled {
                 self.statusMessage = suggested == 1
@@ -375,13 +507,43 @@ final class AppState: ObservableObject {
         }
     }
 
-    private static func helperRunner() -> ((URL, BlurRules.Sensitivity, [String]?) async throws -> BlurHelper.Verdict)? {
-        guard let helper = BlurHelper.locate() else { return nil }
-        return { library, sensitivity, only in
-            try await Task.detached(priority: .utility) {
-                try BlurHelper.run(helper: helper, library: library, sensitivity: sensitivity, only: only)
-            }.value
-        }
+    private func noteBlurProgress(_ done: Int, _ total: Int) {
+        guard blurProgress != nil, total > 0 else { return }
+        blurLast = (done, total)
+        let (frac, text) = ProgressText.blur(
+            done: done, total: total, sinceDone: blurClock.done,
+            elapsed: Date().timeIntervalSince(blurClock.start), paused: blurPaused, label: blurPassLabel
+        )
+        blurFraction = frac
+        blurProgress = text
+    }
+
+    /// True while the blur check can be paused (the real helper is running).
+    var canPauseBlur: Bool { blurControl != nil }
+
+    func pauseBlur() {
+        guard let blurControl, !blurPaused else { return }
+        blurControl.pause()
+        blurPaused = true
+        noteBlurProgress(blurLast.done, blurLast.total)
+    }
+
+    func resumeBlur() {
+        guard let blurControl, blurPaused else { return }
+        blurControl.resume()
+        blurPaused = false
+        blurClock = (Date(), blurLast.done) // time left from the rate after the pause
+        noteBlurProgress(blurLast.done, blurLast.total)
+    }
+
+    /// Stops the blur check. Scores the helper already saved are kept.
+    func stopBlur() {
+        blurControl?.stop()
+        blurControl = nil
+        blurTask?.cancel()
+        blurProgress = nil
+        blurFraction = nil
+        blurPaused = false
     }
 
     // MARK: Photo info

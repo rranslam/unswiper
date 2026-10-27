@@ -17,9 +17,13 @@ enum LocalTreeIndexer {
     /// Stills that can be the photo half of a Live Photo (paired with a same-name .mov).
     private static let livePhotoStillExts: Set<String> = ["heic", "heif", "jpg", "jpeg"]
 
-    struct Progress {
+    struct Progress: Equatable {
         var filesSeen: Int
         var mediaFound: Int
+        /// Second phase: photo/video sets read for dates and places so far, of `toDate`.
+        /// Both 0 while files are still being found.
+        var dated = 0
+        var toDate = 0
     }
 
     static func index(
@@ -27,6 +31,7 @@ enum LocalTreeIndexer {
         visitGapHours: Double,
         existingDecisions: [String: Decision],
         fallbackDates: [String: Date] = [:],
+        isCancelled: () -> Bool = { false },
         onProgress: @escaping (Progress) -> Void
     ) throws -> (items: [MediaItem], groups: [VisitGroup]) {
         var items: [MediaItem] = []
@@ -52,6 +57,7 @@ enum LocalTreeIndexer {
         for case let fileURL as URL in enumerator {
             seen += 1
             if seen % 50 == 0 {
+                if isCancelled() { throw CancellationError() }
                 onProgress(Progress(filesSeen: seen, mediaFound: entries.count))
             }
 
@@ -83,7 +89,15 @@ enum LocalTreeIndexer {
             sets[key, default: []].append(e)
         }
 
+        let toDate = sets.count
+        var dated = 0
+        onProgress(Progress(filesSeen: seen, mediaFound: entries.count, dated: 0, toDate: toDate))
         for (_, set) in sets {
+            dated += 1
+            if dated % 50 == 0 {
+                if isCancelled() { throw CancellationError() }
+                onProgress(Progress(filesSeen: seen, mediaFound: entries.count, dated: dated, toDate: toDate))
+            }
             let photos = set.filter { photoExts.contains($0.ext) }
             let videos = set.filter { videoExts.contains($0.ext) }
             var attached = set.filter { sidecarExts.contains($0.ext) }
@@ -147,7 +161,7 @@ enum LocalTreeIndexer {
             }
         }
 
-        onProgress(Progress(filesSeen: seen, mediaFound: items.count))
+        onProgress(Progress(filesSeen: seen, mediaFound: items.count, dated: toDate, toDate: toDate))
         items.sort { $0.takenAt < $1.takenAt }
         let groups = VisitGrouper.group(items: items, gapHours: visitGapHours)
         return (items, groups)

@@ -61,8 +61,104 @@ pub fn date_range(start: &Timestamp, end: &Timestamp) -> String {
     }
 }
 
+/// `1,234` (thousands separators, for large counts in progress text).
+pub fn thousands(n: usize) -> String {
+    let s = n.to_string();
+    let mut out = String::new();
+    for (i, c) in s.chars().enumerate() {
+        if i > 0 && (s.len() - i).is_multiple_of(3) {
+            out.push(',');
+        }
+        out.push(c);
+    }
+    out
+}
+
+/// Time left: `less than a minute left`, `about 8 min left`, `about 2 h 5 min left`.
+pub fn time_left(d: std::time::Duration) -> String {
+    let m = (d.as_secs() + 30) / 60;
+    match m {
+        0 => "less than a minute left".into(),
+        1..=59 => format!("about {m} min left"),
+        _ => format!("about {} h {} min left", m / 60, m % 60),
+    }
+}
+
+/// Estimates time left from the rate since the last reset (start, resume, new pass).
+#[derive(Debug, Clone, Default)]
+pub struct Eta {
+    base: Option<(std::time::Instant, usize)>,
+    total: usize,
+}
+
+impl Eta {
+    /// Starts measuring again from `done` (after a pause, or for a new pass).
+    pub fn reset(&mut self) {
+        self.base = None;
+    }
+
+    /// Time left, once there is enough to go on (2 s and a few items since the reset).
+    pub fn update(
+        &mut self,
+        done: usize,
+        total: usize,
+        now: std::time::Instant,
+    ) -> Option<std::time::Duration> {
+        if total != self.total || self.base.is_some_and(|(_, d0)| done < d0) {
+            self.total = total;
+            self.base = None;
+        }
+        let (t0, d0) = *self.base.get_or_insert((now, done));
+        let n = done.saturating_sub(d0);
+        let el = now.saturating_duration_since(t0);
+        if n < 3 || el < std::time::Duration::from_secs(2) || done >= total {
+            return None;
+        }
+        Some(el.mul_f64((total - done) as f64 / n as f64))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn thousands_time_left_and_eta() {
+        use super::*;
+        use std::time::{Duration, Instant};
+        assert_eq!(thousands(0), "0");
+        assert_eq!(thousands(999), "999");
+        assert_eq!(thousands(78_123), "78,123");
+        assert_eq!(thousands(1_234_567), "1,234,567");
+        assert_eq!(
+            time_left(Duration::from_secs(20)),
+            "less than a minute left"
+        );
+        assert_eq!(time_left(Duration::from_secs(8 * 60)), "about 8 min left");
+        assert_eq!(
+            time_left(Duration::from_secs(125 * 60)),
+            "about 2 h 5 min left"
+        );
+        let t = Instant::now();
+        let mut e = Eta::default();
+        assert_eq!(e.update(0, 100, t), None);
+        assert_eq!(
+            e.update(2, 100, t + Duration::from_secs(10)),
+            None,
+            "too few"
+        );
+        assert_eq!(
+            e.update(10, 100, t + Duration::from_secs(1)),
+            None,
+            "too soon"
+        );
+        assert_eq!(
+            e.update(10, 100, t + Duration::from_secs(10)),
+            Some(Duration::from_secs(90))
+        );
+        assert_eq!(e.update(100, 100, t + Duration::from_secs(20)), None);
+        // A new pass (different total) starts over.
+        assert_eq!(e.update(5, 50, t + Duration::from_secs(30)), None);
+    }
+
     use super::*;
     use chrono::{TimeZone, Utc};
 

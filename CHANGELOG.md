@@ -2,6 +2,18 @@
 
 All notable changes to Unswiper are listed here. Downloads: https://github.com/rranslam/unswiper/releases
 
+## [Unreleased]
+
+### Fixed
+- Linux app: large libraries no longer freeze the window ("Unswiper is not responding"). Measured on a synthetic library of 20,000 photos: the longest main-loop stall went from 2.1 s to 0.14 s, and each Keep/Reject went from about 0.8 s to well under 0.05 s. The visits list was rebuilt and every visit's progress recounted over all items on every change (time grew with visits × items); it is now a list view that only builds visible rows and updates just the changed ones. library.json is written on a background thread. The live index, carried-over blur marks and regrouping are prepared on the indexing thread. In a large visit, grid cells are built in batches, refresh only touches cells whose badge changed, and the thumbnail loader stops when you switch visits. Fixed a crash on quit when a save was still scheduled.
+
+### Changed
+- Linux app, indexing: dates and places are read on several threads, with a progress bar, counts, the time left and **Cancel**. Re-indexing reuses what was read before for files whose size and modified time haven't changed, so only new or changed files are opened again (`unswiper_core::index::index_with`).
+- Linux app: the photo grid is a virtual grid (GtkGridView). Only the cells on screen are built and recycled while scrolling; thumbnails are loaded when a cell appears and dropped from the queue when it scrolls away (newest first, three threads, about 600 kept in memory). Opening a visit of 6,000 photos takes under 50 ms (was 2 s plus a freeze). Enter selects the focused photo; tooltips are filled in when shown.
+- Linux app, blur check: a progress bar with the time left, **pause** and **stop** in the title bar; marks appear every few seconds while it runs instead of only at the end; scores are saved every 30 s and when stopped, so the next run only checks the rest.
+- `unswiper-blur scan --progress` prints `progress DONE TOTAL` lines on stderr (about ten a second) and, with `--write-cache`, saves scores every 30 s, so a stopped scan keeps what it did.
+- Mac app, large libraries: kept / rejected / left per visit is counted once and then updated per decision (before, every visit row counted the whole library on every redraw); a visit's photos and blur marks are looked up by path instead of scanning the library. library.json is written on a background queue (coalesced; written right away on quit). Indexing shows a progress bar with counts, the time left and **Cancel** (the library stays as it was). The blur check shows a progress bar with the time left, **Pause** and **Stop**.
+
 ## [0.6.0] - 2026-10-26
 
 Highlights: grouping by place in both apps (By Visit (Time), By Place by town name, By Visit and Place), offline place names, date fallbacks (GPS time, file name), visits listed oldest first. The entries below are in the order they were built; where they differ, the later ones win (By Place by name replaced the M1/M3 distance clustering).

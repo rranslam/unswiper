@@ -13,6 +13,7 @@ use crate::time::{distant_past, Timestamp};
 use serde_json::Map;
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::AtomicBool;
 
 pub const PHOTO_EXTS: &[&str] = &[
     "jpg", "jpeg", "png", "heic", "heif", "webp", "gif", "tif", "tiff", "bmp", "raw", "dng",
@@ -39,12 +40,18 @@ const PACKAGE_EXTS: &[&str] = &[
 pub struct IndexProgress {
     pub files_seen: usize,
     pub media_found: usize,
+    /// Second phase ([`index_with`] only): media read for dates so far, of `to_date`.
+    /// Both 0 while files are still being found.
+    pub dated: usize,
+    pub to_date: usize,
 }
 
 #[derive(Debug, thiserror::Error)]
 pub enum IndexError {
     #[error("Could not read the selected folder.")]
     UnreadableRoot(#[source] std::io::Error),
+    #[error("Cancelled.")]
+    Cancelled,
 }
 
 /// Pluggable date readers so tests and the CLI can stub them.
@@ -169,6 +176,8 @@ pub(crate) fn walk(
             progress(IndexProgress {
                 files_seen: *seen,
                 media_found: out.len(),
+                dated: 0,
+                to_date: 0,
             });
         }
         let path = child.path();
@@ -364,8 +373,183 @@ pub fn index(
     on_progress(IndexProgress {
         files_seen: seen,
         media_found: items.len(),
+        dated: 0,
+        to_date: 0,
     });
     sort_items(&mut items);
     let groups = group::group(&items, visit_gap_hours);
+    Ok((items, groups))
+}
+
+/// Options for [`index_with`].
+pub struct IndexOptions<'a> {
+    pub visit_gap_hours: f64,
+    pub decisions: &'a HashMap<String, Decision>,
+    pub dates: &'a (dyn DateReader + Sync),
+    /// Items from the previous index. A file with the same path, size and modified time keeps
+    /// its date and location without being read again (re-indexing a large library).
+    pub prior: &'a [MediaItem],
+    /// Set to stop early ([`IndexError::Cancelled`]).
+    pub cancel: Option<&'a AtomicBool>,
+    /// Threads for reading dates (0 = a sensible default).
+    pub threads: usize,
+}
+
+/// Default thread count for reading metadata: all cores, at most 8 (disks don't gain beyond).
+pub fn default_threads() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .clamp(1, 8)
+}
+
+/// Dates and location of an unchanged file, from the previous index.
+struct Known {
+    taken_at: Timestamp,
+    source: DateSource,
+    location: Option<Location>,
+}
+
+/// Answers from the previous index for unchanged files, else asks `inner`.
+struct Reuse<'a> {
+    inner: &'a (dyn DateReader + Sync),
+    known: HashMap<PathBuf, Known>,
+}
+
+impl DateReader for Reuse<'_> {
+    fn photo_date(&self, path: &Path) -> Option<Timestamp> {
+        match self.known.get(path) {
+            Some(k) => (k.source == DateSource::Capture).then_some(k.taken_at),
+            None => self.inner.photo_date(path),
+        }
+    }
+    fn video_date(&self, path: &Path) -> Option<Timestamp> {
+        match self.known.get(path) {
+            Some(k) => (k.source == DateSource::Capture).then_some(k.taken_at),
+            None => self.inner.video_date(path),
+        }
+    }
+    fn gps_date(&self, path: &Path) -> Option<Timestamp> {
+        match self.known.get(path) {
+            Some(k) => (k.source == DateSource::Gps).then_some(k.taken_at),
+            None => self.inner.gps_date(path),
+        }
+    }
+    fn location(&self, path: &Path, kind: MediaKind) -> Option<Location> {
+        match self.known.get(path) {
+            Some(k) => k.location,
+            None => self.inner.location(path, kind),
+        }
+    }
+}
+
+/// Like [`index`], but reads dates on several threads, reports progress while doing so,
+/// reuses what the previous index read for unchanged files, and can be cancelled.
+/// The result is the same as [`index`] for the same files.
+pub fn index_with(
+    root: &Path,
+    o: &IndexOptions,
+    mut on_progress: impl FnMut(IndexProgress),
+) -> Result<(Vec<MediaItem>, Vec<VisitGroup>), IndexError> {
+    use rayon::prelude::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let cancelled = || o.cancel.is_some_and(|c| c.load(Ordering::Relaxed));
+    let mut entries = vec![];
+    let mut seen = 0usize;
+    std::fs::read_dir(root).map_err(IndexError::UnreadableRoot)?;
+    let mut stop = false;
+    walk(root, root, &mut seen, &mut entries, &mut |p| {
+        if !stop && cancelled() {
+            stop = true;
+        }
+        if !stop {
+            on_progress(p);
+        }
+    })
+    .map_err(IndexError::UnreadableRoot)?;
+    if cancelled() {
+        return Err(IndexError::Cancelled);
+    }
+    let prior: HashMap<&str, &MediaItem> = o.prior.iter().map(|i| (i.path.as_str(), i)).collect();
+    let known: HashMap<PathBuf, Known> = entries
+        .iter()
+        .filter_map(|e| {
+            let p = prior.get(path_str(&e.path).as_str())?;
+            let source = p.date_source?;
+            (p.size_bytes == e.size && p.modified_at.is_some() && p.modified_at == e.modified_at)
+                .then(|| {
+                    (
+                        e.path.clone(),
+                        Known {
+                            taken_at: p.taken_at,
+                            source,
+                            location: p.location,
+                        },
+                    )
+                })
+        })
+        .collect();
+    let reader = Reuse {
+        inner: o.dates,
+        known,
+    };
+    let media_found = entries
+        .iter()
+        .filter(|e| !SIDECAR_EXTS.contains(&e.ext.as_str()))
+        .count();
+    let sets: Vec<Vec<Entry>> = into_sets(entries).into_values().collect();
+    let total = sets.len();
+    let done = AtomicUsize::new(0);
+    let lookup = |p: &str| o.decisions.get(p).copied();
+    let threads = if o.threads == 0 {
+        default_threads()
+    } else {
+        o.threads
+    };
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(threads)
+        .build()
+        .map_err(|e| IndexError::UnreadableRoot(std::io::Error::other(e)))?;
+    let mut items: Vec<MediaItem> = std::thread::scope(|scope| {
+        let job = scope.spawn(|| {
+            pool.install(|| {
+                sets.par_iter()
+                    .map(|set| {
+                        if cancelled() {
+                            return vec![];
+                        }
+                        let v = items_for_set(set, root, &lookup, &reader);
+                        done.fetch_add(1, Ordering::Relaxed);
+                        v
+                    })
+                    .collect::<Vec<_>>()
+            })
+        });
+        while !job.is_finished() {
+            on_progress(IndexProgress {
+                files_seen: seen,
+                media_found,
+                dated: done.load(Ordering::Relaxed),
+                to_date: total,
+            });
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        job.join()
+            .unwrap_or_default()
+            .into_iter()
+            .flatten()
+            .collect()
+    });
+    if cancelled() {
+        return Err(IndexError::Cancelled);
+    }
+    on_progress(IndexProgress {
+        files_seen: seen,
+        media_found: items.len(),
+        dated: total,
+        to_date: total,
+    });
+    sort_items(&mut items);
+    let groups = group::group(&items, o.visit_gap_hours);
     Ok((items, groups))
 }

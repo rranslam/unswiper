@@ -9,6 +9,28 @@ final class IndexerTests: StoreIsolatedTestCase {
         try LocalTreeIndexer.index(root: root, visitGapHours: 36, existingDecisions: [:], onProgress: { _ in })
     }
 
+    // MARK: Progress and cancel
+
+    func testProgressHasBothPhasesAndEndsComplete() throws {
+        let root = try makeRoot()
+        for i in 0..<120 { _ = try Fixture.file(root.appendingPathComponent("p\(i).jpg")) }
+        var seen: [LocalTreeIndexer.Progress] = []
+        _ = try LocalTreeIndexer.index(root: root, visitGapHours: 36, existingDecisions: [:], onProgress: { seen.append($0) })
+        XCTAssertTrue(seen.contains { $0.toDate == 0 && $0.filesSeen > 0 }, "finding files")
+        XCTAssertTrue(seen.contains { $0.toDate == 120 && $0.dated < 120 }, "reading dates")
+        XCTAssertEqual(seen.last?.dated, 120)
+        XCTAssertEqual(seen.last?.toDate, 120)
+    }
+
+    func testCancelStopsTheIndex() throws {
+        let root = try makeRoot()
+        for i in 0..<120 { _ = try Fixture.file(root.appendingPathComponent("p\(i).jpg")) }
+        XCTAssertThrowsError(try LocalTreeIndexer.index(root: root, visitGapHours: 36, existingDecisions: [:],
+                                                        isCancelled: { true }, onProgress: { _ in })) {
+            XCTAssertTrue($0 is CancellationError)
+        }
+    }
+
     // MARK: Dates
 
     func testExifDateOriginal() throws {
