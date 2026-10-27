@@ -4,6 +4,8 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-26
+
 ### Fixed
 - Linux app: large libraries no longer freeze the window ("Unswiper is not responding"). Measured on a synthetic library of 20,000 photos: the longest main-loop stall went from 2.1 s to 0.14 s, and each Keep/Reject went from about 0.8 s to well under 0.05 s. The visits list was rebuilt and every visit's progress recounted over all items on every change (time grew with visits × items); it is now a list view that only builds visible rows and updates just the changed ones. library.json is written on a background thread. The live index, carried-over blur marks and regrouping are prepared on the indexing thread. In a large visit, grid cells are built in batches, refresh only touches cells whose badge changed, and the thumbnail loader stops when you switch visits. Fixed a crash on quit when a save was still scheduled.
 
