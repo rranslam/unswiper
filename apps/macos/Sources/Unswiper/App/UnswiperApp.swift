@@ -73,6 +73,8 @@ struct UnswiperApp: App {
                     ForEach(BlurRules.Sensitivity.allCases) { s in Text(s.label).tag(s) }
                 }
                 .disabled(!state.blurEnabled)
+                Button("Blur Cutoffs…") { state.cutoffsSheetOpen = true }
+                    .disabled(!state.blurEnabled)
                 Button("Check for Blurry Photos Now") {
                     state.checkBlur(visitFirst: state.selectedGroupID, userAsked: true)
                 }

@@ -31,7 +31,17 @@ All in the **Blurry Photos** menu at the top of the screen:
 
 - **Detect Blurry Photos** — click to turn it off or on (a check mark shows it's on). Turning it off removes every **Blurry?** mark (photos go back to undecided). Your own Keep/Reject choices are never touched.
 - **Blur Sensitivity** — **Low** marks only very blurry photos, **Normal** is the default, **High** marks more photos (and is more likely to be wrong).
+- **Blur Cutoffs…** — the score below which a photo counts as blurry at **Low**, **Normal** and **High** (defaults 7, 13 and 25). Lower numbers mark fewer photos; Low must stay below Normal, and Normal below High. **Reset to Defaults** puts the original numbers back. Saving re-applies the marks right away from the scores already saved; nothing is checked again.
 - **Check for Blurry Photos Now** — checks again, for example after you added photos. New photos are also checked automatically when they appear in your folder.
+
+## The sharpness score
+
+Open a photo in the large view (double-click it) to see its score next to its name: **Sharpness 42.7**, or **Blurry? · 4.2** on a photo marked as blurry. Higher means sharper.
+
+- The score measures how strongly the finest detail changes from pixel to pixel (the "Laplacian variance"), on a copy of the photo at most 1024 pixels wide, so it describes how sharp the photo looks at screen size, not at 100 %.
+- Clearly blurry photos usually score in single digits. Sharp photos usually score in the tens or more, detailed ones in the hundreds or thousands. Very large photos with only fine detail (distant foliage, gravel) can score lower, because that detail disappears in the 1024-pixel copy. Plain subjects (sky, a wall, smooth petals) score low even when they're in focus, which is the usual reason for a wrong **Blurry?**.
+- A photo can also be marked when it looks shaken (streaks in one direction and a score below 4 × the cutoff) or when it's much softer than the best shot of a burst taken within a few seconds. Then the score can be above the cutoff.
+- No number is shown for videos, screenshots, photos not checked yet, and photos too dark or plain to judge.
 
 ## What it never marks
 

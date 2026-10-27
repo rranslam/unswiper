@@ -5,6 +5,7 @@
 //! [`thumbs`], [`format`]) so it can be unit-tested headless; [`ui`] is the thin relm4 layer.
 
 pub mod blur;
+pub mod cutoffs_ui;
 pub mod format;
 pub mod grid;
 pub mod help;

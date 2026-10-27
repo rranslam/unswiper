@@ -756,6 +756,24 @@ impl AppState {
         self.dirty = true;
     }
 
+    /// The blurry-below score for each sensitivity (saved in library.json).
+    pub fn blur_cutoffs(&self) -> quality::Cutoffs {
+        quality::cutoffs(&self.snap.config)
+    }
+
+    /// Saves new cutoffs after checking them (Low < Normal < High, each above 0). The caller
+    /// re-runs the check, which re-applies the marks from cached scores without rescanning.
+    pub fn set_blur_cutoffs(&mut self, c: quality::Cutoffs) -> Result<(), String> {
+        quality::set_cutoffs(&mut self.snap.config, c)?;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// The thresholds in effect (sensitivity and its cutoff).
+    pub fn blur_thresholds(&self) -> unswiper_blur::decide::Thresholds {
+        unswiper_blur::decide::Thresholds::for_level(self.blur_sensitivity(), self.blur_cutoffs())
+    }
+
     /// Applies a scan's verdict (see `unswiper_blur::scan::suggestions`).
     pub fn apply_blur(
         &mut self,
@@ -1433,6 +1451,18 @@ mod tests {
         assert_eq!(s.set_blur_enabled(true), 0);
         s.set_blur_sensitivity(Sensitivity::High);
         assert_eq!(s.blur_sensitivity(), Sensitivity::High);
+        assert_eq!(s.blur_thresholds().abs, 25.0);
+        let c = quality::Cutoffs {
+            low: 4.0,
+            normal: 9.0,
+            high: 18.0,
+        };
+        s.set_blur_cutoffs(c).unwrap();
+        assert_eq!(s.blur_cutoffs(), c);
+        assert_eq!(s.blur_thresholds().abs, 18.0);
+        let bad = quality::Cutoffs { low: 20.0, ..c };
+        assert!(s.set_blur_cutoffs(bad).is_err());
+        assert_eq!(s.blur_cutoffs(), c, "a refused change keeps the old values");
     }
 
     #[test]

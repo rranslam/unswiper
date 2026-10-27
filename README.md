@@ -173,6 +173,10 @@ Unswiper can find photos that are probably out of focus or shaken and mark them 
    `cargo run --release -p unswiper-blur -- scan ~/Pictures/Trip`
 3. It prints one line per photo: the sharpness score, then **BLURRY** or **ok**, then the file name. Lower numbers are blurrier.
 4. Optional: add `--sensitivity low` (fewer photos marked) or `--sensitivity high` (more), or `--json` for machine-readable output. Add `--write-cache` to save the scores so the app doesn't have to check those photos again.
+5. To see the scores the app uses, point it at the app's own library file instead of a folder; it then uses your saved sensitivity and cutoffs and the scores the app already saved, so it's fast:
+   - Linux: `cargo run --release -p unswiper-blur -- scan ~/.local/share/unswiper/library.json`
+   - Mac: `cargo run --release -p unswiper-blur -- scan ~/Library/Application\ Support/Unswiper/library.json`
+   The first line says which cutoff is in use. Try other cutoffs without changing anything with `--cutoffs 5,9,25` (Low, Normal, High) and `--sensitivity normal`. `--json` adds every number per photo (score, shake, brightness, confidence). The scale is explained in [docs/blur-evaluation.md](docs/blur-evaluation.md#reading-the-score).
 
 ## Watching videos while you review (v0.3)
 

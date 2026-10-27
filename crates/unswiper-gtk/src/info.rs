@@ -11,9 +11,9 @@
 use std::collections::HashMap;
 use std::path::Path;
 use unswiper_blur::cache::{QualityCache, Stamp};
+use unswiper_blur::decide::Thresholds;
 use unswiper_core::meta::info::{self, FileFacts, FormatOptions, MediaInfo, Row, Sharpness};
-use unswiper_core::quality::Sensitivity;
-use unswiper_core::MediaItem;
+use unswiper_core::{MediaItem, MediaKind};
 
 fn base_name(p: &str) -> &str {
     p.rsplit('/').next().unwrap_or(p)
@@ -29,10 +29,34 @@ pub fn file_facts(item: &MediaItem) -> FileFacts {
 pub fn sharpness(
     item: &MediaItem,
     cache: &QualityCache,
-    sensitivity: Sensitivity,
+    thresholds: Thresholds,
     blur_enabled: bool,
 ) -> Option<Sharpness> {
-    unswiper_blur::info::sharpness_for(item, cache, sensitivity, blur_enabled)
+    unswiper_blur::info::sharpness_for(item, cache, thresholds, blur_enabled)
+}
+
+/// The photo's sharpness score for the large viewer (higher = sharper), from the cache.
+/// `None` for videos, screenshots, photos not checked yet, photos too dark or plain to judge
+/// (they are never flagged), and when blur detection is off.
+pub fn viewer_score(item: &MediaItem, cache: &QualityCache, blur_enabled: bool) -> Option<f32> {
+    if !blur_enabled
+        || item.kind == MediaKind::Video
+        || !unswiper_blur::decide::is_camera_format(&item.path)
+    {
+        return None;
+    }
+    let sc = cache.get(&item.path, Stamp::of(Path::new(&item.path))?)?;
+    (sc.confidence >= unswiper_blur::decide::MIN_CONFIDENCE).then_some(sc.sharpness)
+}
+
+/// The viewer's flag and score texts: a suggested photo shows `Blurry? · 42.7` in its flag;
+/// any other scored photo shows `Sharpness 42.7` next to it.
+pub fn viewer_flag_texts(flag: &str, suggested: bool, score: Option<f32>) -> (String, String) {
+    match score {
+        Some(v) if suggested => (format!("{flag} · {v:.1}"), String::new()),
+        Some(v) => (flag.to_string(), format!("Sharpness {v:.1}")),
+        None => (flag.to_string(), String::new()),
+    }
 }
 
 /// Rows for `item`.
@@ -163,7 +187,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let mut it = item(d.path(), "a.jpg", MediaKind::Photo);
         let mut cache = QualityCache::default();
-        let n = Sensitivity::Normal;
+        let n = Thresholds::for_sensitivity(unswiper_core::quality::Sensitivity::Normal);
         assert_eq!(sharpness(&it, &cache, n, true), Some(Sharpness::NotChecked));
         assert_eq!(sharpness(&it, &cache, n, false), None, "detection off");
         let st = Stamp::of(Path::new(&it.path)).unwrap();
@@ -186,6 +210,36 @@ mod tests {
         );
         let mov = item(d.path(), "v.mov", MediaKind::Video);
         assert_eq!(sharpness(&mov, &cache, n, true), None);
+    }
+
+    #[test]
+    fn viewer_shows_the_score() {
+        let d = tempfile::tempdir().unwrap();
+        let it = item(d.path(), "a.jpg", MediaKind::Photo);
+        let mut cache = QualityCache::default();
+        assert_eq!(viewer_score(&it, &cache, true), None, "not checked yet");
+        let st = Stamp::of(Path::new(&it.path)).unwrap();
+        cache.put(&it.path, st, score(42.66), 0);
+        assert_eq!(viewer_score(&it, &cache, true), Some(42.66));
+        assert_eq!(viewer_score(&it, &cache, false), None, "detection off");
+        let mut dark = score(3.0);
+        dark.confidence = 0.2;
+        cache.put(&it.path, st, dark, 0);
+        assert_eq!(viewer_score(&it, &cache, true), None, "too dark to judge");
+        let mov = item(d.path(), "v.mov", MediaKind::Video);
+        assert_eq!(viewer_score(&mov, &cache, true), None);
+        assert_eq!(
+            viewer_flag_texts("Blurry?", true, Some(42.66)),
+            ("Blurry? · 42.7".to_string(), String::new())
+        );
+        assert_eq!(
+            viewer_flag_texts("Keep", false, Some(130.0)),
+            ("Keep".to_string(), "Sharpness 130.0".to_string())
+        );
+        assert_eq!(
+            viewer_flag_texts("", false, None),
+            (String::new(), String::new())
+        );
     }
 
     #[test]

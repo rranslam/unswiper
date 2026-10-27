@@ -68,6 +68,7 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 900, minHeight: 620)
+        .sheet(isPresented: $state.cutoffsSheetOpen) { BlurCutoffsSheet() }
         .alert("Saved library couldn't be opened", isPresented: Binding(
             get: { state.libraryLoadProblem != nil },
             set: { if !$0 { state.libraryLoadProblem = nil } }

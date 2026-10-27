@@ -98,6 +98,7 @@ final class AppState: ObservableObject {
         self.groups = snap.groups
         self.lastIndexedAt = snap.lastIndexedAt
         rebuildCaches() // didSet doesn't run in init
+        reloadBlurScores()
         if let data = snap.config.bookmarkData {
             restoreBookmark(data)
         }
@@ -405,6 +406,32 @@ final class AppState: ObservableObject {
         }
     }
 
+    var blurCutoffs: BlurCutoffs { BlurRules.cutoffs(config) }
+    /// Opens the "Blur Cutoffs" sheet (Blurry Photos menu).
+    @Published var cutoffsSheetOpen = false
+    /// Scores from the helper's cache, for the number in the large viewer.
+    @Published private(set) var blurScores = BlurScores()
+
+    /// Saves new cutoffs and re-applies the marks. The helper reads them from library.json and
+    /// reuses its cached scores, so only photos without a score are read. Returns the problem
+    /// when the values can't be used (nothing is saved then).
+    @discardableResult
+    func setBlurCutoffs(_ c: BlurCutoffs) -> String? {
+        if let p = BlurRules.setCutoffs(&config, c) { return p }
+        persist()
+        checkBlur(visitFirst: selectedGroupID)
+        return nil
+    }
+
+    /// Reads the helper's score cache off the main thread (it can be tens of MB).
+    func reloadBlurScores() {
+        let url = BlurScores.url
+        Task { [weak self] in
+            let scores = await Task.detached(priority: .utility) { BlurScores.load(url) }.value
+            self?.blurScores = scores
+        }
+    }
+
     func setBlurSensitivity(_ s: BlurRules.Sensitivity) {
         BlurRules.setSensitivity(&config, s)
         persist()
@@ -499,6 +526,7 @@ final class AppState: ObservableObject {
                 self.blurPaused = false
             }
             self.resetInfo() // new scores change the Sharpness row
+            self.reloadBlurScores() // and the number in the large viewer
             if suggested > 0, !Task.isCancelled {
                 self.statusMessage = suggested == 1
                     ? "1 photo looks blurry and was marked Reject. Nothing moves until you commit."

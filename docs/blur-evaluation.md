@@ -69,3 +69,28 @@ The synthetic accuracy gate (`tests/accuracy.rs`) still passes. The 7 sharp phot
 - The two missed blurry photos are full-frame bokeh of point lights. The bright discs keep the sharpness score at about 31 to 37.
 - Both need content cues, for example a "too little structure to judge" confidence based on edge density, or EXIF/portrait hints, and they're left for later.
 - 85 photos with 4 real blurry ones is too small a set to fit thresholds tightly. Re-run the tool on a larger set (ideally including Rob's rejects) before 1.0.
+
+## Reading the score
+
+(Added 26 Oct 2026, with the user-set cutoffs.)
+
+**What it measures.** The photo is turned to grey, shrunk so its long edge is at most 1024 px (smaller photos aren't enlarged), and smoothed slightly (Gaussian σ 1). It's cut into a 4 × 4 grid; flat tiles (almost no texture) are skipped and faint tiles are boosted as if they had normal contrast. In each tile the **Laplacian variance** is measured: how strongly brightness changes from a pixel to its neighbours, which is high for crisp edges and fine texture and low when they're smeared. The score is the 90th percentile over the tiles, so one sharp area (a subject in front of a soft background) is enough. **Higher = sharper.** It has no upper limit.
+
+**Cutoffs.** A photo is "blurry" when its score is below the cutoff of the chosen sensitivity: **Low 7, Normal 13, High 25** by default (calibrated on 85 real photos, above). Since 26 Oct 2026 they can be changed in the apps (Linux: ☰ ▸ Blurry Photos ▸ Blur Sensitivity ▸ Cutoffs…; Mac: Blurry Photos ▸ Blur Cutoffs…), stored as `config.blurCutoffs` in library.json. Two more rules use the cutoff: **shake** (gradient anisotropy ≥ 0.7 and score below 4 × the cutoff) and **burst** (below 0.25 / 0.35 / 0.45 × the sharpest photo of a burst of 3+ photos within 3 s; this factor does not change with the cutoffs). Photos with confidence below 0.5 (mean brightness under 40/255, or fewer than 2 textured tiles) are never flagged.
+
+**Typical values** (synthetic scenes, `cargo run --release -p unswiper-blur --example scale`, 12 seeds, median and range):
+
+| Scene at 1024 × 768 | Score |
+|---|---|
+| sharp | 1,124 (522 – 3,591) |
+| defocus σ 1 | 43 (22 – 207) |
+| defocus σ 1.5 | 4.6 (3.4 – 5.9) |
+| defocus σ 2 | 2.1 (1.4 – 3.0) |
+| defocus σ 4 | 0.4 (0.3 – 0.5) |
+| shake 9 / 15 / 31 px | 19.5 / 14.6 / 15.5 |
+
+**Size matters through the shrink.** The score describes sharpness at the 1024 px working size, not at 100 %. A 12 MP phone photo (4160 px) is shrunk 4×, so slight softness at full size disappears (σ 2 at 4000 px is σ 0.5 after the shrink), but so does detail that is only a pixel or two wide. In the synthetic scenes, whose texture is pixel-sized noise, the sharp scene scores 1,124 at 1024 px but only 16 (10 – 22) when generated at 2048 or 4000 px and shrunk. Real photos have detail at many scales and keep much more of it, but very large photos whose detail is mostly fine (distant foliage, gravel, fabric) can land near the Normal and High cutoffs. A photo smaller than 1024 px is scored as it is.
+
+**Reading the low end.** From the synthetic and real numbers: below about 5 is clearly defocused; 5 – 15 is soft or shaken *or* a sharp photo of a plain or very fine-textured subject; above 25 is almost always sharp. The false positives in the real-photo calibration (plain sky, petals, a breaker panel) sat in that middle band.
+
+**Printing the scores.** `unswiper-blur scan <folder or library.json>` prints every scored photo, softest first: score, verdict (`ok`, `BLURRY`, `BLURRY (burst)`, `BLURRY (shake)`) and path, with the cutoff in use in the first line. With the app's library.json it uses the saved sensitivity and cutoffs and the scores the app already cached. `--cutoffs L,N,H` and `--sensitivity` try other values without changing anything; `--json` adds shake, brightness and confidence.

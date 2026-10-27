@@ -16,7 +16,6 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use unswiper_blur::decide::Thresholds;
 use unswiper_core::index::{index_with, IndexOptions, IndexProgress};
 use unswiper_core::meta::info::{MediaInfo, Row};
 use unswiper_core::quality::Sensitivity;
@@ -166,6 +165,9 @@ pub enum Msg {
     BlurStop,
     BlurSetEnabled(bool),
     BlurSetSensitivity(Sensitivity),
+    /// "Cutoffs…": edit the blurry-below score of each sensitivity.
+    BlurCutoffsDialog,
+    BlurSetCutoffs(unswiper_core::quality::Cutoffs),
     BlurRescan,
     BlurClearVisit,
     BlurConfirmVisit,
@@ -269,6 +271,8 @@ pub struct ViewerWidgets {
     title: gtk::Label,
     position: gtk::Label,
     badge: gtk::Label,
+    /// "Sharpness 42.7" for a scored photo that isn't flagged.
+    score: gtk::Label,
     media: gtk::Stack,
     picture: gtk::Picture,
     video: gtk::Video,
@@ -409,6 +413,7 @@ impl Component for App {
                 Some(&format!("win.blur-sensitivity::{}", s.as_str())),
             );
         }
+        sens.append(Some("Cutoffs…"), Some("win.blur-cutoffs"));
         blur.append_submenu(Some("Blur Sensitivity"), &sens);
         blur.append(Some("Check for Blurry Photos Now"), Some("win.blur-rescan"));
         blur.append(
@@ -524,6 +529,7 @@ impl Component for App {
         }
         root.add_action(&blur_sens_action);
         action(&root, "blur-rescan", &sender, || Msg::BlurRescan);
+        action(&root, "blur-cutoffs", &sender, || Msg::BlurCutoffsDialog);
         action(&root, "blur-clear", &sender, || Msg::BlurClearVisit);
         action(&root, "blur-confirm", &sender, || Msg::BlurConfirmVisit);
         action(&root, "viewer", &sender, || Msg::ToggleViewer);
@@ -837,6 +843,11 @@ impl Component for App {
             .css_classes(["badge"])
             .visible(false)
             .build();
+        let v_score = gtk::Label::builder()
+            .css_classes(["dim-label", "caption"])
+            .tooltip_text("Blur score: higher is sharper. Menu ▸ Blur Sensitivity ▸ Cutoffs… sets where Blurry starts.")
+            .visible(false)
+            .build();
         let v_ext = gtk::Button::builder()
             .label("Open in Default App")
             .tooltip_text("Open this file in your usual photo or video app")
@@ -855,6 +866,7 @@ impl Component for App {
         v_top.append(&v_back);
         v_top.append(&v_title);
         v_top.append(&v_badge);
+        v_top.append(&v_score);
         v_top.append(&v_pos);
         v_top.append(&v_ext);
         let v_picture = gtk::Picture::builder()
@@ -1077,6 +1089,7 @@ impl Component for App {
                 title: v_title,
                 position: v_pos,
                 badge: v_badge,
+                score: v_score,
                 media: v_media,
                 picture: v_picture,
                 video: v_video,
@@ -1524,6 +1537,24 @@ impl Component for App {
                 self.state.set_blur_sensitivity(sens);
                 self.start_blur(&sender);
             }
+            Msg::BlurCutoffsDialog => {
+                changed = false;
+                let s = sender.clone();
+                crate::cutoffs_ui::present(
+                    root,
+                    self.state.blur_cutoffs(),
+                    self.state.blur_sensitivity(),
+                    move |c| s.input(Msg::BlurSetCutoffs(c)),
+                );
+            }
+            Msg::BlurSetCutoffs(c) => match self.state.set_blur_cutoffs(c) {
+                // Re-applies the marks: cached scores are reused, only new photos are read.
+                Ok(()) => self.start_blur(&sender),
+                Err(e) => {
+                    changed = false;
+                    w.toasts.add_toast(adw::Toast::new(&e));
+                }
+            },
             Msg::BlurRescan => {
                 changed = false;
                 if !self.state.blur_enabled() {
@@ -1697,7 +1728,7 @@ impl App {
             let sharp = crate::info::sharpness(
                 item,
                 &self.quality,
-                self.state.blur_sensitivity(),
+                self.state.blur_thresholds(),
                 self.state.blur_enabled(),
             );
             return Some(crate::info::rows(
@@ -1755,7 +1786,7 @@ impl App {
                 let sharp = crate::info::sharpness(
                     &item,
                     &self.quality,
-                    self.state.blur_sensitivity(),
+                    self.state.blur_thresholds(),
                     self.state.blur_enabled(),
                 );
                 unswiper_core::meta::info::strip(media, sharp)
@@ -1944,7 +1975,7 @@ impl App {
             items: self.state.blur_scan_order(),
             first,
             cache_path: unswiper_blur::cache::QualityCache::path_in(self.state.store.support_dir()),
-            thresholds: Thresholds::for_sensitivity(self.state.blur_sensitivity()),
+            thresholds: self.state.blur_thresholds(),
             cancel,
             pause: self.blur_pause.clone(),
         };
@@ -2293,8 +2324,13 @@ impl App {
                 Decision::Reject => ("Reject", "reject"),
                 Decision::Undecided => ("", ""),
             };
-            v.badge.set_label(label);
+            let score = crate::info::viewer_score(it, &self.quality, st.blur_enabled());
+            let suggested = unswiper_core::quality::is_suggested(it);
+            let (label, score_text) = crate::info::viewer_flag_texts(label, suggested, score);
+            v.badge.set_label(&label);
             v.badge.set_visible(!label.is_empty());
+            v.score.set_label(&score_text);
+            v.score.set_visible(!score_text.is_empty());
             if !class.is_empty() {
                 v.badge.add_css_class(class);
             }
