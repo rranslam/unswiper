@@ -80,6 +80,8 @@ struct ReduceView: View {
             keepTarget = state.keepTarget(for: groupID)
         }
         .onChange(of: members.map(\.path)) { _, paths in viewer.check(paths) }
+        // Another grouping: back to the grid, like switching visits.
+        .onChange(of: state.groupingGeneration) { _, _ in viewer.close() }
     }
 
     private func header(_ group: VisitGroup) -> some View {

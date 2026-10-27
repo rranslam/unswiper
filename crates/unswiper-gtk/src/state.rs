@@ -390,6 +390,8 @@ impl AppState {
         self.visit = Some(id.to_string());
         self.selection.clear();
         self.anchor = None;
+        // Another visit starts on its grid, not on the photo that was open in the last one.
+        self.viewer = None;
         true
     }
 
@@ -559,6 +561,8 @@ impl AppState {
         self.snap.config.group_mode = Some(m.as_str().to_string());
         self.regroup();
         self.after_items_changed();
+        // The groups were rebuilt: back to the grid (of the same visit if it still exists).
+        self.viewer = None;
     }
 
     /// Recomputes the groups from the items with the saved grouping settings.
@@ -1560,6 +1564,33 @@ mod tests {
         assert!(s2.live_motion());
         s.set_live_motion(false);
         assert!(!s.live_motion());
+    }
+
+    #[test]
+    fn switching_visit_or_grouping_returns_to_the_grid() {
+        let (_t, mut s, ids) = two_visits();
+        assert!(s.open_visit(&ids[0]));
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        assert!(s.viewer.is_some());
+        // Another visit: grid, nothing selected.
+        assert!(s.open_visit(&ids[1]));
+        assert_eq!(s.viewer, None);
+        assert!(s.selection.is_empty());
+        // Unknown visit: nothing changes.
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        assert!(!s.open_visit("nope"));
+        assert_eq!(s.viewer.as_deref(), Some(p.as_str()));
+        // Another grouping: grid again.
+        s.set_group_mode(GroupMode::Geo);
+        assert_eq!(s.viewer, None);
+        // The same grouping again changes nothing.
+        s.open_visit(&s.snap.groups[0].id.clone());
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        s.set_group_mode(GroupMode::Geo);
+        assert!(s.viewer.is_some());
     }
 
     #[test]

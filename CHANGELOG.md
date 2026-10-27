@@ -4,6 +4,11 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+### Fixed
+- Linux app: right-clicking a photo no longer prints `Gtk-WARNING: Broken accounting of active state for widget (GtkBox)`. The info popover opened on the button press, so it appeared under the pointer while the button was still down and the release landed on the popover; GTK then cleared the pressed ("active") state on widgets it had never set it on (a GTK bug, fixed upstream in GTK 4.21.6, while the AppImage ships an older GTK). The popover now opens when the button is released, as GTK recommends.
+- Linux app: switching to another visit, or changing the grouping, now returns to the grid instead of leaving the previous visit's large photo on screen (the visit's title changed, but the large photo stayed until you clicked Grid).
+- Mac app: changing the grouping (View ▸ Grouping) while a large photo is open now returns to the visit's grid, and opening a visit always starts on its grid. (Switching visits on the Mac already went through the Visits list, which reset the view.)
+
 ## [0.6.1] - 2026-10-26
 
 ### Fixed

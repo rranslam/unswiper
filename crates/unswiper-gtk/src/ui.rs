@@ -1372,7 +1372,13 @@ impl Component for App {
                 }
             }
             Msg::SetMode(m) => self.state.set_commit_mode(m),
-            Msg::SetGroupMode(m) => self.state.set_group_mode(m),
+            Msg::SetGroupMode(m) => {
+                self.state.set_group_mode(m);
+                // The open visit's members can change with the grouping.
+                if self.state.visit.is_some() {
+                    self.rebuild_grid(w, &sender);
+                }
+            }
             Msg::Watch(b) => {
                 if self.indexing {
                     changed = false;

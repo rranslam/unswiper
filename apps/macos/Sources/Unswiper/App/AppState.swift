@@ -724,6 +724,10 @@ final class AppState: ObservableObject {
 
     // MARK: - Grouping mode (plan §20.6)
 
+    /// Goes up by one each time the visits are regrouped; the visit view closes its large
+    /// photo when it changes.
+    @Published private(set) var groupingGeneration = 0
+
     /// Changes the grouping mode, saves it in `AppConfig.groupMode` and regroups the library.
     /// Views call this from a `Task`, never from inside a Picker/List update, so replacing
     /// `groups` and the selection is not a reentrant NSTableView change.
@@ -774,6 +778,8 @@ final class AppState: ObservableObject {
 
     /// After a regroup: drop a selection that no longer exists and save.
     private func groupsChanged() {
+        // An open large photo closes: the visit view goes back to its grid (or Visits).
+        groupingGeneration += 1
         if let id = selectedGroupID, !groups.contains(where: { $0.id == id }) {
             selectedGroupID = nil
             switch path {

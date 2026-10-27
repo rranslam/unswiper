@@ -51,9 +51,11 @@ final class GroupModeTests: StoreIsolatedTestCase {
             g.place = Place(name: "Town", admin1: "", country: "PT", lat: 1.5, lon: 2.5)
             return GroupHelper.Answer(groups: [g], locations: ["/p/a.jpg": GeoLocation(lat: 1.5, lon: 2.5, source: "exif")])
         }
+        let generation = state.groupingGeneration
         state.setGroupMode(.geo)
         XCTAssertEqual(state.config.groupMode, "geo")
         try await waitUntil { state.groups.first?.parentVisitId == "g-abc" }
+        XCTAssertEqual(state.groupingGeneration, generation + 1, "the visit view closes its large photo")
         XCTAssertEqual(calls, [.geo])
         XCTAssertEqual(state.items[0].location?.lat, 1.5)
         state.flush()

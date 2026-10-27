@@ -15,7 +15,9 @@ struct RootView: View {
                 case .home:
                     GroupsView()
                 case .reduce(let id):
+                    // A different visit is a fresh view: grid, no selection, no large photo.
                     ReduceView(groupID: id)
+                        .id(id)
                 case .commit(let id):
                     CommitView(groupID: id)
                 case .compare(let id, let paths):
