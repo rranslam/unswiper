@@ -549,21 +549,18 @@ fn build_cell(thumb: i32, on_event: Rc<dyn Fn(GridEvent)>) -> gtk::Box {
             .css_classes(["caption"])
             .build(),
     );
+    // Left button: select on the press, open the viewer on the second press of a double-click.
+    // (Switching to the viewer page while the button is down is fine: GTK moves the press to
+    // the page that stays visible when the cell is unmapped.)
     let click = gtk::GestureClick::new();
     {
         let on_event = on_event.clone();
         let r = root.clone();
         click.connect_pressed(move |g, n, _, _| {
-            let p = r.widget_name().to_string();
-            if n == 2 {
-                on_event(GridEvent::Open(p));
-                return;
-            }
-            let m = g.current_event_state();
-            on_event(GridEvent::Click(
-                p,
-                m.contains(gdk::ModifierType::CONTROL_MASK),
-                m.contains(gdk::ModifierType::SHIFT_MASK),
+            on_event(press_event(
+                n,
+                g.current_event_state(),
+                r.widget_name().as_str(),
             ));
         });
     }
@@ -573,12 +570,32 @@ fn build_cell(thumb: i32, on_event: Rc<dyn Fn(GridEvent)>) -> gtk::Box {
         .build();
     {
         let r = root.clone();
-        menu.connect_pressed(move |_, _, _, _| {
+        // Right button: the info popover opens on the RELEASE, not the press. Opened on the
+        // press, the popover appears under the pointer while the button is still down; GTK has
+        // marked the cell and its parents (GtkBox, ...) "active" for that press, and the
+        // release then ends up on the popover's widgets, so GTK un-marks widgets it never
+        // marked: "Broken accounting of active state for widget (GtkBox)" (GTK issue 7932,
+        // fixed in GTK 4.21.6; the AppImage ships the distribution's older GTK).
+        menu.connect_released(move |_, _, _, _| {
             on_event(GridEvent::Menu(r.widget_name().to_string()))
         });
     }
     root.add_controller(menu);
     root
+}
+
+/// What a primary-button press on a cell does: a double-click opens the viewer, any other
+/// press selects (Ctrl/Shift extend).
+fn press_event(n_press: i32, m: gdk::ModifierType, path: &str) -> GridEvent {
+    if n_press == 2 {
+        GridEvent::Open(path.to_string())
+    } else {
+        GridEvent::Click(
+            path.to_string(),
+            m.contains(gdk::ModifierType::CONTROL_MASK),
+            m.contains(gdk::ModifierType::SHIFT_MASK),
+        )
+    }
 }
 
 #[cfg(test)]
@@ -592,6 +609,23 @@ mod tests {
         while !f() && t.elapsed() < Duration::from_secs(10) {
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+
+    #[test]
+    fn press_selects_and_double_click_opens() {
+        let none = gdk::ModifierType::empty();
+        assert_eq!(
+            press_event(1, gdk::ModifierType::CONTROL_MASK, "/a.jpg"),
+            GridEvent::Click("/a.jpg".into(), true, false)
+        );
+        assert_eq!(
+            press_event(1, gdk::ModifierType::SHIFT_MASK, "/a.jpg"),
+            GridEvent::Click("/a.jpg".into(), false, true)
+        );
+        assert_eq!(
+            press_event(2, none, "/a.jpg"),
+            GridEvent::Open("/a.jpg".into())
+        );
     }
 
     #[test]
