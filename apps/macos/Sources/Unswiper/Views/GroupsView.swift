@@ -19,7 +19,7 @@ struct GroupsView: View {
                         // handler is a reentrant table update and logs an AppKit warning.
                         Task { @MainActor in state.openGroup(group) }
                     } label: {
-                        GroupRow(group: group, items: state.items)
+                        GroupRow(group: group, counts: state.visitCounts[group.id])
                     }
                     .buttonStyle(.plain)
                 }
@@ -55,14 +55,9 @@ struct GroupsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            if state.isIndexing {
-                ProgressView()
-                    .controlSize(.small)
-                if let p = state.indexProgress {
-                    Text("\(p.mediaFound) media / \(p.filesSeen) files")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if state.isIndexing, !state.groups.isEmpty {
+                IndexProgressBar(compact: true)
+                    .frame(maxWidth: 360)
             }
             if let g = state.groupingProgress {
                 ProgressView()
@@ -116,10 +111,13 @@ struct GroupsView: View {
             Spacer()
             Text(state.isIndexing ? "Indexing…" : "No visits yet")
                 .font(.title2)
-            Text(state.isIndexing
-                 ? "Scanning your folder for photos and videos."
-                 : "Choose a folder and index to build visit groups.")
-                .foregroundStyle(.secondary)
+            if state.isIndexing {
+                IndexProgressBar(compact: false)
+                    .frame(maxWidth: 480)
+            } else {
+                Text("Choose a folder and index to build visit groups.")
+                    .foregroundStyle(.secondary)
+            }
             if !state.isIndexing {
                 Button("Choose Folder…") { state.path = .setup }
                     .buttonStyle(.borderedProminent)
@@ -132,10 +130,10 @@ struct GroupsView: View {
 
 struct GroupRow: View {
     let group: VisitGroup
-    let items: [MediaItem]
+    let counts: VisitCounts.Count
 
     var body: some View {
-        let progress = group.progress(in: items)
+        let progress = counts
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
@@ -181,5 +179,37 @@ struct GroupRow: View {
             return group.startDate.formatted(f)
         }
         return "\(group.startDate.formatted(f)) – \(group.endDate.formatted(f))"
+    }
+}
+
+/// Indexing progress: a bar (spinning while files are still being found), counts, time left
+/// and Cancel. Refreshes on its own each second so the time left moves between updates.
+struct IndexProgressBar: View {
+    @EnvironmentObject private var state: AppState
+    let compact: Bool
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let p = state.indexProgress ?? .init(filesSeen: 0, mediaFound: 0)
+            let elapsed = state.indexDatingStartedAt.map { context.date.timeIntervalSince($0) } ?? 0
+            let shown = ProgressText.index(p, elapsedDating: elapsed)
+            HStack(spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let fraction = shown.0 {
+                        ProgressView(value: fraction)
+                    } else {
+                        ProgressView().progressViewStyle(.linear)
+                    }
+                    Text(shown.1)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(compact ? 1 : 2)
+                        .truncationMode(.tail)
+                }
+                Button("Cancel") { state.cancelIndexing() }
+                    .controlSize(compact ? .small : .regular)
+                    .help("Stop indexing. The library stays as it was.")
+            }
+        }
     }
 }

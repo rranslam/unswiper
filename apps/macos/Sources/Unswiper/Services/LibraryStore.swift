@@ -172,13 +172,19 @@ enum LibraryStore {
     }
 
     static func save(_ snapshot: LibrarySnapshot) throws {
-        if let reason = saveBlockedReason { throw StoreError.saveBlocked(reason) }
+        try save(snapshot, to: snapshotURL, blockedReason: saveBlockedReason)
+    }
+
+    /// The same, with the file and the block read up front, so the encoding and writing can run
+    /// on a background queue (the app's saver) while the main thread goes on.
+    static func save(_ snapshot: LibrarySnapshot, to url: URL, blockedReason: String?) throws {
+        if let reason = blockedReason { throw StoreError.saveBlocked(reason) }
         var snapshot = snapshot
         snapshot.schemaVersion = LibrarySnapshot.currentSchemaVersion
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(snapshot)
-        try data.write(to: snapshotURL, options: .atomic)
+        try data.write(to: url, options: .atomic)
     }
 }

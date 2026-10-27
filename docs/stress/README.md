@@ -34,7 +34,11 @@ drawn after indexing, with or without a large visit.
 
 ## Mac checks
 
-With the generated library open: the indexing sheet shows a progress bar, counts, the time
-left and Cancel; the window stays responsive while marking photos in the 6,000-photo visit;
+Build first: `cargo build --release -p unswiper-blur` (the app needs the helper's new
+`--progress`), then `cd apps/macos && swift build && swift test`.
+
+With the generated library open: the visits header (or the empty window on first index)
+shows a progress bar, counts, the time left and Cancel (Cancel leaves the library as it
+was); the blur bar at the bottom shows checked of total, the time left, Pause and Stop; the window stays responsive while marking photos in the 6,000-photo visit;
 the visits list updates its counts right away; quitting right after a change still saves
 (reopen the app and check the change is there).

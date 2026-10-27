@@ -48,7 +48,7 @@ struct ReduceView: View {
     }
 
     private var counts: (kept: Int, rejected: Int, left: Int) {
-        group?.progress(in: state.items) ?? (0, 0, 0)
+        group.map { state.visitCounts[$0.id].tuple } ?? (0, 0, 0)
     }
 
     var body: some View {

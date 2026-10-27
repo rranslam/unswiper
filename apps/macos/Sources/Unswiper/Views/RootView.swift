@@ -27,9 +27,25 @@ struct RootView: View {
             if let progress = state.blurProgress {
                 Divider()
                 HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
+                    if let fraction = state.blurFraction {
+                        ProgressView(value: fraction)
+                            .frame(width: 160)
+                    } else {
+                        ProgressView().controlSize(.small)
+                    }
                     Text(progress).font(.caption).foregroundStyle(.secondary)
                     Spacer()
+                    if state.canPauseBlur {
+                        Button(state.blurPaused ? "Resume" : "Pause") {
+                            if state.blurPaused { state.resumeBlur() } else { state.pauseBlur() }
+                        }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                    }
+                    Button("Stop") { state.stopBlur() }
+                        .buttonStyle(.borderless)
+                        .font(.caption)
+                        .help("Stop checking. Scores already saved are kept; the check runs again next time.")
                 }
                 .padding(.horizontal)
                 .padding(.vertical, 6)
