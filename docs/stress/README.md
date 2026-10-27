@@ -42,3 +42,13 @@ shows a progress bar, counts, the time left and Cancel (Cancel leaves the librar
 was); the blur bar at the bottom shows checked of total, the time left, Pause and Stop; the window stays responsive while marking photos in the 6,000-photo visit;
 the visits list updates its counts right away; quitting right after a change still saves
 (reopen the app and check the change is there).
+
+## Mac result on a real large library (2026/10/26)
+
+Rob tested the `fix/large-library` Mac build on his own library of about 82k files on an external drive. The window stayed responsive the whole time. While the first index runs, the folder header shows a progress bar reading "Reading dates and places · N of TOTAL · about M min left", plus a Cancel button. The previous index's item count and its "Last index" time stay visible until the new index finishes.
+
+1. The progress bar fills as dates and places are read, and the count updates every few hundred files.
+2. Cancel stops the index and keeps the previous index, so nothing is lost.
+3. Once indexing is done, the blur check runs in the background with Pause and Stop, and the app stays usable while it runs.
+
+![Mac index progress bar with Cancel](mac_index_progress.png)
