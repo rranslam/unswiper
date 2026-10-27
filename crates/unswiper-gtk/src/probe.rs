@@ -36,7 +36,7 @@ pub fn start() {
         let gap = last.get().elapsed().as_millis();
         last.set(Instant::now());
         MAX_STALL.with(|m| m.set(m.get().max(gap)));
-        if gap >= 200 {
+        if gap >= 100 {
             eprintln!("probe: t={:.2}s stall_ms={gap}", secs());
         }
         relm4::gtk::glib::ControlFlow::Continue

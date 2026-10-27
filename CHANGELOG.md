@@ -9,6 +9,7 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ### Changed
 - Linux app, indexing: dates and places are read on several threads, with a progress bar, counts, the time left and **Cancel**. Re-indexing reuses what was read before for files whose size and modified time haven't changed, so only new or changed files are opened again (`unswiper_core::index::index_with`).
+- Linux app: the photo grid is a virtual grid (GtkGridView). Only the cells on screen are built and recycled while scrolling; thumbnails are loaded when a cell appears and dropped from the queue when it scrolls away (newest first, three threads, about 600 kept in memory). Opening a visit of 6,000 photos takes under 50 ms (was 2 s plus a freeze). Enter selects the focused photo; tooltips are filled in when shown.
 - Linux app, blur check: a progress bar with the time left, **pause** and **stop** in the title bar; marks appear every few seconds while it runs instead of only at the end; scores are saved every 30 s and when stopped, so the next run only checks the rest.
 
 ## [0.6.0] - 2026-10-26

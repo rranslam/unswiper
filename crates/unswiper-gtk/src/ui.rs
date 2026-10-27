@@ -25,8 +25,6 @@ use unswiper_core::trash::FreedesktopTrash;
 use unswiper_core::watch::{FolderWatcher, WatchBatch, DEFAULT_MAX_WAIT, DEFAULT_QUIET};
 use unswiper_core::{CommitMode, Decision, GroupMode, MediaItem};
 
-/// Grid cells built per main-loop turn.
-const GRID_BATCH: usize = 200;
 const THUMB: u32 = 220;
 
 /// Launch options (from the command line).
@@ -149,9 +147,7 @@ pub enum Msg {
     /// Grouping picker (plan §20.6): regroups and saves `groupMode`.
     SetGroupMode(GroupMode),
     Watch(WatchBatch),
-    Thumb(u64, String, ThumbMsg),
-    /// Build the next batch of grid cells for grid generation `gen`.
-    GridMore(u64),
+    Thumb(String, ThumbMsg),
     Save,
     /// Save right away (window closing).
     SaveNow,
@@ -181,7 +177,7 @@ pub enum Msg {
     ViewerMuted(bool),
     ViewerOpenExternal,
     SetLiveMotion(bool),
-    Duration(u64, String, u64),
+    Duration(String, u64),
     ToggleInfo,
     SetShowLocation(bool),
     InfoRead(String, Box<MediaInfo>),
@@ -193,12 +189,6 @@ pub struct App {
     state: AppState,
     opts: Options,
     watcher: Option<FolderWatcher>,
-    thumb_gen: u64,
-    /// `thumb_gen` for the thumbnail thread, so it stops when the grid changes.
-    thumb_gen_shared: Arc<std::sync::atomic::AtomicU64>,
-    /// Grid cells still to build, and thumbnails that arrived before their cell.
-    grid_pending: Vec<MediaItem>,
-    thumb_early: HashMap<String, ThumbMsg>,
     save_scheduled: bool,
     /// Background library.json writer.
     saver: crate::saver::Saver,
@@ -245,11 +235,7 @@ pub struct Widgets {
     visit_title: gtk::Label,
     keep_spin: gtk::SpinButton,
     keep_status: gtk::Label,
-    grid: gtk::FlowBox,
-    cells: HashMap<String, (gtk::Box, gtk::Picture, gtk::Label)>,
-    /// What each cell shows now (selected, badge), so refresh only touches changed cells.
-    cell_looks: HashMap<String, (bool, u8)>,
-    durations: HashMap<String, gtk::Label>,
+    grid: crate::grid::Grid,
     content: gtk::Stack,
     viewer: ViewerWidgets,
     selection_label: gtk::Label,
@@ -786,19 +772,41 @@ impl Component for App {
         top.append(&keep_status);
         top.append(&filter_box);
 
-        let grid = gtk::FlowBox::builder()
-            .selection_mode(gtk::SelectionMode::None)
-            .homogeneous(true)
-            .min_children_per_line(2)
-            .max_children_per_line(12)
-            .row_spacing(6)
-            .column_spacing(6)
-            .margin_start(12)
-            .margin_end(12)
-            .valign(gtk::Align::Start)
-            .build();
+        // Virtualised photo grid: cells only for what is on screen, thumbnails on demand.
+        let grid = {
+            let tx = sender.input_sender().clone();
+            let load: Arc<crate::grid::LoadFn> = Arc::new(|p: &str, k| {
+                let path = std::path::Path::new(p);
+                let dur = (k == unswiper_core::MediaKind::Video)
+                    .then(|| crate::video::duration(path))
+                    .flatten()
+                    .map(|d| d.as_millis() as u64);
+                let cache = thumbs::default_cache_dir();
+                (thumbs::load(path, k, THUMB, Some(&cache)), dur)
+            });
+            let loader = crate::grid::Loader::start(
+                3,
+                load,
+                Arc::new(move |e| match e {
+                    crate::grid::LoaderEvent::Thumb(p, t) => tx.emit(Msg::Thumb(p, ThumbMsg(t))),
+                    crate::grid::LoaderEvent::Duration(p, ms) => tx.emit(Msg::Duration(p, ms)),
+                }),
+            );
+            let s = sender.clone();
+            crate::grid::Grid::new(
+                THUMB as i32 * 3 / 4,
+                loader,
+                Rc::new(move |e| {
+                    let _ = s.input_sender().send(match e {
+                        crate::grid::GridEvent::Click(p, c, sh) => Msg::Click(p, c, sh),
+                        crate::grid::GridEvent::Open(p) => Msg::OpenViewer(p),
+                        crate::grid::GridEvent::Menu(p) => Msg::InfoPopover(p),
+                    });
+                }),
+            )
+        };
         let grid_scroll = gtk::ScrolledWindow::builder()
-            .child(&grid)
+            .child(&grid.view)
             .vexpand(true)
             .build();
         let empty = adw::StatusPage::builder()
@@ -1033,10 +1041,6 @@ impl Component for App {
             state,
             opts: opts.clone(),
             watcher: None,
-            thumb_gen: 0,
-            thumb_gen_shared: Default::default(),
-            grid_pending: vec![],
-            thumb_early: HashMap::new(),
             save_scheduled: false,
             saver: {
                 let tx = sender.input_sender().clone();
@@ -1059,7 +1063,6 @@ impl Component for App {
         };
         let mut widgets = Widgets {
             visit_rows: Vec::new(),
-            cell_looks: HashMap::new(),
             visit_store,
             visit_sel,
             toasts,
@@ -1069,8 +1072,6 @@ impl Component for App {
             keep_spin,
             keep_status,
             grid,
-            cells: HashMap::new(),
-            durations: HashMap::new(),
             content,
             viewer: ViewerWidgets {
                 title: v_title,
@@ -1380,6 +1381,7 @@ impl Component for App {
                     let d = self.state.apply_watch(&b, dates.as_ref());
                     changed = !d.is_empty();
                     if changed {
+                        w.grid.forget_thumbnails();
                         self.rebuild_grid(w, &sender);
                         if !d.added.is_empty() {
                             self.start_blur(&sender);
@@ -1387,28 +1389,9 @@ impl Component for App {
                     }
                 }
             }
-            Msg::Thumb(gen, path, t) => {
+            Msg::Thumb(path, t) => {
                 changed = false;
-                if gen == self.thumb_gen {
-                    match w.cells.get(&path) {
-                        Some((_, pic, _)) => set_thumb(pic, t.0),
-                        // Its cell isn't built yet (large visit): use it when it is.
-                        None => {
-                            self.thumb_early.insert(path, t);
-                        }
-                    }
-                }
-            }
-            Msg::GridMore(gen) => {
-                changed = false;
-                if gen == self.thumb_gen && !self.grid_pending.is_empty() {
-                    let n = self.grid_pending.len().min(GRID_BATCH);
-                    let batch: Vec<MediaItem> = self.grid_pending.drain(..n).collect();
-                    self.add_cells(w, &sender, &batch);
-                    if !self.grid_pending.is_empty() {
-                        sender.input(Msg::GridMore(gen));
-                    }
-                }
+                w.grid.set_thumb(path, t.0);
             }
             Msg::Save => {
                 changed = false;
@@ -1474,12 +1457,15 @@ impl Component for App {
             Msg::BlurResult(flagged, scored, last, cache) => {
                 if last && crate::probe::enabled() {
                     crate::probe::mark("blur done");
-                    // Stress scenario: a few decisions in the open visit, then quit.
+                    // Stress scenario: reopen the first visit and decide on all of it, three times; quit.
                     let s = sender.clone();
                     glib::timeout_add_local_once(
                         std::time::Duration::from_millis(300),
                         move || {
                             for _ in 0..3 {
+                                // Leave and reopen the first visit, then decide on all of it.
+                                s.input(Msg::OpenVisit(1));
+                                s.input(Msg::OpenVisit(0));
                                 s.input(Msg::SelectAll);
                                 s.input(Msg::Decide(Decision::Keep));
                                 s.input(Msg::SelectAll);
@@ -1614,16 +1600,9 @@ impl Component for App {
                     self.show_viewer(w, &sender);
                 }
             }
-            Msg::Duration(gen, path, ms) => {
+            Msg::Duration(path, ms) => {
                 changed = false;
-                if gen == self.thumb_gen {
-                    if let Some(l) = w.durations.get(&path) {
-                        l.set_label(&format!(
-                            "▶ {}",
-                            crate::player::format_duration(std::time::Duration::from_millis(ms))
-                        ));
-                    }
-                }
+                w.grid.set_duration(path, ms);
             }
             Msg::ToggleInfo => {
                 self.state.info_open = !self.state.info_open;
@@ -1848,7 +1827,7 @@ impl App {
         let Some(item) = self.state.item(path).cloned() else {
             return;
         };
-        let Some((cell, _, _)) = w.cells.get(path) else {
+        let Some(cell) = w.grid.cell_widget(path) else {
             return;
         };
         if self.info_cache.get(path).is_none() {
@@ -1917,7 +1896,7 @@ impl App {
             .child(&content)
             .position(gtk::PositionType::Right)
             .build();
-        pop.set_parent(cell);
+        pop.set_parent(&cell);
         {
             let s = sender.clone();
             let p = path.to_string();
@@ -2110,60 +2089,31 @@ impl App {
         });
     }
 
-    /// Selection and badges of the grid cells; only cells whose look changed are touched
-    /// (thousands of cells in a large visit).
-    fn update_cells(&self, w: &mut Widgets) {
+    /// Selection and badges of the open visit's grid cells.
+    fn cell_looks(&self) -> HashMap<String, crate::grid::Look> {
+        use crate::grid::{Badge, Look};
         let st = &self.state;
-        for (path, (cell, _, badge)) in &w.cells {
-            let Some(it) = st.item(path) else { continue };
-            let picked = st.selection.contains(path);
-            let look = match it.decision {
-                Decision::Keep => 1,
-                Decision::Reject if unswiper_core::quality::is_suggested(it) => 2,
-                Decision::Reject => 3,
-                Decision::Undecided => 0,
-            };
-            let old = w.cell_looks.insert(path.clone(), (picked, look));
-            if old.map(|o| o.0) != Some(picked) {
-                if picked {
-                    cell.add_css_class("picked");
-                } else {
-                    cell.remove_css_class("picked");
-                }
-            }
-            if old.map(|o| o.1) == Some(look) {
-                continue;
-            }
-            badge.remove_css_class("keep");
-            badge.remove_css_class("reject");
-            badge.remove_css_class("blurry");
-            // Setting a tooltip is costly in GTK; only touch it for the Blurry? badge.
-            if old.map(|o| o.1) == Some(2) {
-                badge.set_tooltip_text(None);
-            }
-            cell.remove_css_class("rejected");
-            match look {
-                1 => {
-                    badge.set_label("Keep");
-                    badge.add_css_class("keep");
-                    badge.set_visible(true);
-                }
-                2 => {
-                    badge.set_label("Blurry?");
-                    badge.add_css_class("blurry");
-                    badge.set_tooltip_text(Some("Unswiper thinks this photo is blurry and marked it Reject. Press K to keep it or U to clear. Nothing moves until you commit."));
-                    cell.add_css_class("rejected");
-                    badge.set_visible(true);
-                }
-                3 => {
-                    badge.set_label("Reject");
-                    badge.add_css_class("reject");
-                    cell.add_css_class("rejected");
-                    badge.set_visible(true);
-                }
-                _ => badge.set_visible(false),
-            }
-        }
+        st.visible_items()
+            .into_iter()
+            .map(|it| {
+                let badge = match it.decision {
+                    Decision::Keep => Badge::Keep,
+                    Decision::Reject if unswiper_core::quality::is_suggested(it) => Badge::Blurry,
+                    Decision::Reject => Badge::Reject,
+                    Decision::Undecided => Badge::None,
+                };
+                let look = Look {
+                    picked: st.selection.contains(&it.path),
+                    badge,
+                };
+                (it.path.clone(), look)
+            })
+            .collect()
+    }
+
+    /// Updates the grid's selection and badges (only on-screen cells are touched).
+    fn update_cells(&self, w: &mut Widgets) {
+        w.grid.set_looks(self.cell_looks());
     }
 
     fn show_index_progress(&mut self, w: &mut Widgets, p: IndexProgress) {
@@ -2246,123 +2196,21 @@ impl App {
     }
 
     /// Rebuilds the thumbnail grid for the open visit and starts loading thumbnails.
-    fn rebuild_grid(&mut self, w: &mut Widgets, sender: &ComponentSender<Self>) {
-        self.thumb_gen += 1;
-        self.thumb_gen_shared
-            .store(self.thumb_gen, Ordering::Relaxed);
-        w.grid.remove_all();
-        w.cells.clear();
-        w.cell_looks.clear();
-        w.durations.clear();
-        self.thumb_early.clear();
-        let items: Vec<MediaItem> = self.state.visible_items().into_iter().cloned().collect();
-        // Large visits: the first cells now, the rest in batches between other events.
-        self.grid_pending = items.iter().skip(GRID_BATCH).cloned().collect();
-        self.add_cells(w, sender, &items[..items.len().min(GRID_BATCH)]);
-        if !self.grid_pending.is_empty() {
-            sender.input(Msg::GridMore(self.thumb_gen));
+    fn rebuild_grid(&mut self, w: &mut Widgets, _sender: &ComponentSender<Self>) {
+        let items: Vec<crate::grid::GridItem> = self
+            .state
+            .visible_items()
+            .into_iter()
+            .map(|i| crate::grid::GridItem {
+                path: i.path.clone(),
+                kind: i.kind,
+            })
+            .collect();
+        if self.state.visit.is_some() && self.state.viewer.is_none() {
+            // Show the grid page first so the grid view knows its size and binds only what fits.
+            w.content.set_visible_child_name("grid");
         }
-        let gen = self.thumb_gen;
-        let current = self.thumb_gen_shared.clone();
-        let tx = sender.input_sender().clone();
-        let jobs: Vec<(String, unswiper_core::MediaKind)> =
-            items.iter().map(|i| (i.path.clone(), i.kind)).collect();
-        std::thread::spawn(move || {
-            let cache = thumbs::default_cache_dir();
-            for (p, k) in jobs {
-                if current.load(Ordering::Relaxed) != gen {
-                    break; // another visit or filter: stop loading these
-                }
-                if k == unswiper_core::MediaKind::Video {
-                    if let Some(d) = crate::video::duration(std::path::Path::new(&p)) {
-                        if tx
-                            .send(Msg::Duration(gen, p.clone(), d.as_millis() as u64))
-                            .is_err()
-                        {
-                            break;
-                        }
-                    }
-                }
-                if let Some(t) = thumbs::load(std::path::Path::new(&p), k, THUMB, Some(&cache)) {
-                    if tx.send(Msg::Thumb(gen, p, ThumbMsg(t))).is_err() {
-                        break;
-                    }
-                }
-            }
-        });
-    }
-
-    /// Creates grid cells for `items` (appended in order).
-    fn add_cells(&mut self, w: &mut Widgets, sender: &ComponentSender<Self>, items: &[MediaItem]) {
-        for it in items {
-            let pic = gtk::Picture::builder()
-                .content_fit(gtk::ContentFit::Cover)
-                .width_request(THUMB as i32 * 3 / 4)
-                .height_request(THUMB as i32 * 3 / 4)
-                .build();
-            let badge = gtk::Label::builder()
-                .halign(gtk::Align::End)
-                .valign(gtk::Align::Start)
-                .css_classes(["badge"])
-                .visible(false)
-                .build();
-            let overlay = gtk::Overlay::builder().child(&pic).build();
-            overlay.add_overlay(&badge);
-            if it.kind == unswiper_core::MediaKind::Video {
-                // Play badge; the duration is filled in by the thumbnail thread.
-                let dur = gtk::Label::builder()
-                    .label("▶")
-                    .halign(gtk::Align::Start)
-                    .valign(gtk::Align::End)
-                    .css_classes(["duration"])
-                    .build();
-                overlay.add_overlay(&dur);
-                w.durations.insert(it.path.clone(), dur);
-            }
-            let name = it.path.rsplit('/').next().unwrap_or(&it.path).to_string();
-            let cell = gtk::Box::builder()
-                .orientation(gtk::Orientation::Vertical)
-                .css_classes(["thumb"])
-                .tooltip_text(&name)
-                .build();
-            cell.append(&overlay);
-            cell.append(
-                &gtk::Label::builder()
-                    .label(&name)
-                    .ellipsize(gtk::pango::EllipsizeMode::Middle)
-                    .css_classes(["caption"])
-                    .build(),
-            );
-            let click = gtk::GestureClick::new();
-            let s = sender.clone();
-            let p = it.path.clone();
-            click.connect_pressed(move |g, n, _, _| {
-                if n == 2 {
-                    s.input(Msg::OpenViewer(p.clone()));
-                    return;
-                }
-                let m = g.current_event_state();
-                s.input(Msg::Click(
-                    p.clone(),
-                    m.contains(gdk::ModifierType::CONTROL_MASK),
-                    m.contains(gdk::ModifierType::SHIFT_MASK),
-                ));
-            });
-            cell.add_controller(click);
-            let menu_click = gtk::GestureClick::builder()
-                .button(gdk::BUTTON_SECONDARY)
-                .build();
-            let s = sender.clone();
-            let p = it.path.clone();
-            menu_click.connect_pressed(move |_, _, _, _| s.input(Msg::InfoPopover(p.clone())));
-            cell.add_controller(menu_click);
-            w.grid.append(&cell);
-            if let Some(t) = self.thumb_early.remove(&it.path) {
-                set_thumb(&pic, t.0);
-            }
-            w.cells.insert(it.path.clone(), (cell, pic, badge));
-        }
-        self.update_cells(w);
+        w.grid.set_items(&items, self.cell_looks());
     }
 
     /// Syncs every cheap widget with the state.
@@ -2478,19 +2326,6 @@ impl App {
         });
         w.syncing.set(false);
     }
-}
-
-/// Sets a grid cell's thumbnail.
-fn set_thumb(pic: &gtk::Picture, t: thumbs::Thumb) {
-    let bytes = glib::Bytes::from_owned(t.rgba);
-    let tex = gdk::MemoryTexture::new(
-        t.width as i32,
-        t.height as i32,
-        gdk::MemoryFormat::R8g8b8a8,
-        &bytes,
-        t.width as usize * 4,
-    );
-    pic.set_paintable(Some(&tex));
 }
 
 /// Rows of the visits list: place icon, title, dates and counts, progress, done tick.

@@ -6,6 +6,7 @@
 
 pub mod blur;
 pub mod format;
+pub mod grid;
 pub mod help;
 pub mod icons;
 pub mod info;
