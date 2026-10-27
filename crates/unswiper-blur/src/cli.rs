@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 // Copyright (c) 2026 Rob Ranslam
 
-//! `unswiper-blur scan <folder|library.json> [--json] [--threshold N] [--sensitivity S] [--write-cache [FILE]]`
+//! `unswiper-blur scan <folder|library.json> [--json] [--threshold N] [--sensitivity S] [--cutoffs L,N,H] [--write-cache [FILE]]`
 //!
 //! Scores photos and lists the ones that would be suggested as blurry. Read-only for
 //! photos: it never moves, deletes or changes them, and never edits library.json. With
@@ -12,14 +12,19 @@ use crate::decide::{Reason, Thresholds};
 use crate::scan;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
-use unswiper_core::quality::Sensitivity;
+use unswiper_core::quality::{self, Cutoffs, Sensitivity};
 use unswiper_core::{index, LibrarySnapshot, MediaItem};
 
 pub const USAGE: &str = "usage:
   unswiper-blur scan <folder|library.json> [options]   score photos, list likely blurry ones
-      --json                 machine-readable output
-      --sensitivity S        low | normal (default) | high
+      --print                print every scored photo (the default text output)
+      --json                 machine-readable output, with all numbers per photo
+      --sensitivity S        low | normal | high (default: the library's setting for a
+                             library.json, else normal)
+      --cutoffs L,N,H        blurry-below scores for low, normal and high (default: the
+                             library's saved cutoffs, else 7,13,25)
       --threshold N          custom absolute sharpness floor (overrides the sensitivity floor)
+  Prints every scored photo, softest first: score (higher = sharper), verdict, path.
       --write-cache [FILE]   save scores (default: the app's quality-cache.json next to
                              library.json, or ~/.local/share/unswiper for a folder)
       --only FILE            score only the photos listed in FILE (one path per line, e.g.
@@ -37,7 +42,12 @@ Nothing is moved or deleted.";
 pub struct Options {
     pub target: PathBuf,
     pub json: bool,
-    pub thresholds: Thresholds,
+    /// `--sensitivity`; `None`: the library's setting (normal for a folder).
+    pub sensitivity: Option<Sensitivity>,
+    /// `--cutoffs`; `None`: the library's saved cutoffs (defaults for a folder).
+    pub cutoffs: Option<Cutoffs>,
+    /// `--threshold`: overrides the floor of the chosen sensitivity.
+    pub abs: Option<f32>,
     pub write_cache: Option<Option<PathBuf>>,
     /// `--only`: a file listing the paths to score (others are only read from the cache).
     pub only: Option<PathBuf>,
@@ -51,7 +61,8 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     }
     let mut target = None;
     let mut json = false;
-    let mut sens = Sensitivity::Normal;
+    let mut sens = None;
+    let mut cutoffs = None;
     let mut abs = None;
     let mut write_cache = None;
     let mut only = None;
@@ -60,12 +71,28 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
     while i < args.len() {
         match args[i].as_str() {
             "--json" => json = true,
+            // The default text output already prints every score; accepted for clarity.
+            "--print" => {}
             "--progress" => progress = true,
             "--sensitivity" => {
-                sens = args
+                sens = Some(
+                    args.get(i + 1)
+                        .and_then(|s| Sensitivity::parse(s))
+                        .ok_or("--sensitivity needs low, normal or high")?,
+                );
+                i += 1;
+            }
+            "--cutoffs" => {
+                let v: Vec<f32> = args
                     .get(i + 1)
-                    .and_then(|s| Sensitivity::parse(s))
-                    .ok_or("--sensitivity needs low, normal or high")?;
+                    .map(|s| s.split(',').filter_map(|x| x.trim().parse().ok()).collect())
+                    .unwrap_or_default();
+                let [low, normal, high] = v[..] else {
+                    return Err("--cutoffs needs three numbers, e.g. 7,13,25".into());
+                };
+                let c = Cutoffs { low, normal, high };
+                c.validate().map_err(|e| format!("--cutoffs: {e}"))?;
+                cutoffs = Some(c);
                 i += 1;
             }
             "--threshold" => {
@@ -102,14 +129,12 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
         }
         i += 1;
     }
-    let mut thresholds = Thresholds::for_sensitivity(sens);
-    if let Some(a) = abs {
-        thresholds.abs = a;
-    }
     Ok(Options {
         target: target.ok_or(USAGE)?,
         json,
-        thresholds,
+        sensitivity: sens,
+        cutoffs,
+        abs,
         write_cache,
         only,
         progress,
@@ -117,7 +142,9 @@ pub fn parse(args: &[String]) -> Result<Options, String> {
 }
 
 /// Photos to scan and the default cache location for a target.
-fn load_target(target: &Path) -> Result<(Vec<MediaItem>, PathBuf), String> {
+fn load_target(
+    target: &Path,
+) -> Result<(Vec<MediaItem>, PathBuf, unswiper_core::AppConfig), String> {
     if target.is_dir() {
         let (items, _) = index::index(
             target,
@@ -128,13 +155,13 @@ fn load_target(target: &Path) -> Result<(Vec<MediaItem>, PathBuf), String> {
         )
         .map_err(|e| format!("{}: {e}", target.display()))?;
         let dir = unswiper_core::store::default_support_dir();
-        Ok((items, QualityCache::path_in(&dir)))
+        Ok((items, QualityCache::path_in(&dir), Default::default()))
     } else {
         let data = std::fs::read(target).map_err(|e| format!("{}: {e}", target.display()))?;
         let snap: LibrarySnapshot =
             serde_json::from_slice(&data).map_err(|e| format!("{}: {e}", target.display()))?;
         let dir = target.parent().unwrap_or(Path::new("."));
-        Ok((snap.items, QualityCache::path_in(dir)))
+        Ok((snap.items, QualityCache::path_in(dir), snap.config))
     }
 }
 
@@ -185,9 +212,25 @@ fn score_with_progress(todo: &[String], cache: &mut QualityCache, save: Option<&
     say(total);
 }
 
+impl Options {
+    /// The thresholds in effect: flags first, then the library's saved settings.
+    pub fn thresholds(&self, config: &unswiper_core::AppConfig) -> Thresholds {
+        let sens = self
+            .sensitivity
+            .unwrap_or_else(|| quality::sensitivity(config));
+        let cutoffs = self.cutoffs.unwrap_or_else(|| quality::cutoffs(config));
+        let mut t = Thresholds::for_level(sens, cutoffs);
+        if let Some(a) = self.abs {
+            t.abs = a;
+        }
+        t
+    }
+}
+
 /// Runs the command; returns the text to print.
 pub fn run(o: &Options, now: i64) -> Result<String, String> {
-    let (items, default_cache) = load_target(&o.target)?;
+    let (items, default_cache, config) = load_target(&o.target)?;
+    let th = o.thresholds(&config);
     let cache_path = match &o.write_cache {
         Some(Some(p)) => p.clone(),
         _ => default_cache,
@@ -223,7 +266,7 @@ pub fn run(o: &Options, now: i64) -> Result<String, String> {
             &|_, _| {},
         );
     }
-    let s = scan::suggestions(&items, &cache, o.thresholds);
+    let s = scan::suggestions(&items, &cache, th);
     if o.write_cache.is_some() {
         cache
             .save(&cache_path)
@@ -251,7 +294,10 @@ pub fn run(o: &Options, now: i64) -> Result<String, String> {
             .collect();
         return Ok(serde_json::to_string_pretty(&v).unwrap_or_default());
     }
-    let mut out = String::new();
+    let mut out = format!(
+        "{:>10}  {:<14}  path   (score: higher = sharper; blurry below {:.1})\n",
+        "score", "verdict", th.abs
+    );
     for (p, sharp, r) in &rows {
         let tag = match r {
             Some(Reason::Soft) => "BLURRY",
@@ -317,11 +363,38 @@ mod tests {
         ]))
         .unwrap();
         assert!(o.json);
-        assert_eq!(o.thresholds.abs, 4.0);
+        let def = unswiper_core::AppConfig::default();
+        assert_eq!(o.thresholds(&def).abs, 4.0);
         assert_eq!(
-            o.thresholds.rel,
+            o.thresholds(&def).rel,
             Thresholds::for_sensitivity(Sensitivity::High).rel
         );
+        // Without flags: the library's saved sensitivity and cutoffs.
+        let o2 = parse(&a(&["scan", "/lib.json"])).unwrap();
+        let mut cfg = unswiper_core::AppConfig::default();
+        assert_eq!(o2.thresholds(&cfg).abs, 13.0);
+        quality::set_sensitivity(&mut cfg, Sensitivity::Low);
+        quality::set_cutoffs(
+            &mut cfg,
+            Cutoffs {
+                low: 3.0,
+                normal: 8.0,
+                high: 20.0,
+            },
+        )
+        .unwrap();
+        assert_eq!(o2.thresholds(&cfg).abs, 3.0);
+        // --cutoffs beats the library; --sensitivity picks which one.
+        let o3 = parse(&a(&[
+            "scan",
+            "/l",
+            "--cutoffs",
+            "5,10,30",
+            "--sensitivity",
+            "high",
+        ]))
+        .unwrap();
+        assert_eq!(o3.thresholds(&cfg).abs, 30.0);
         assert_eq!(o.write_cache, Some(None));
         let o = parse(&a(&["scan", "--write-cache", "/c.json", "/x"])).unwrap();
         assert_eq!(o.write_cache, Some(Some(PathBuf::from("/c.json"))));
@@ -340,6 +413,9 @@ mod tests {
             &["scan", "/x", "/y"],
             &["scan", "/x", "--only"],
             &["scan", "/x", "--only", "--json"],
+            &["scan", "/x", "--cutoffs", "5,10"],
+            &["scan", "/x", "--cutoffs", "10,5,30"],
+            &["scan", "/x", "--cutoffs", "a,b,c"],
         ] {
             assert!(parse(&a(bad)).is_err(), "{bad:?}");
         }

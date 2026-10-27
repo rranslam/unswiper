@@ -12,6 +12,8 @@
 //! * item `blurDismissed: true`: the user cleared a suggestion; rescans never re-flag it.
 //! * config `blurDetection: false`: the setting is off (missing = on, the default).
 //! * config `blurSensitivity: "low" | "normal" | "high"` (missing = normal).
+//! * config `blurCutoffs: {"low": 7, "normal": 13, "high": 25}`: the sharpness score below
+//!   which a photo counts as blurry at each sensitivity (missing = the defaults).
 //!
 //! Rules: suggestions only ever touch Undecided items, manual decisions always win, and
 //! nothing moves until the user commits the open visit.
@@ -25,6 +27,7 @@ pub const KEY_DISMISSED: &str = "blurDismissed";
 pub const SOURCE_AUTO_BLUR: &str = "auto-blur";
 pub const KEY_ENABLED: &str = "blurDetection";
 pub const KEY_SENSITIVITY: &str = "blurSensitivity";
+pub const KEY_CUTOFFS: &str = "blurCutoffs";
 
 /// How eagerly photos are suggested as blurry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -57,6 +60,100 @@ impl Sensitivity {
     pub fn parse(s: &str) -> Option<Sensitivity> {
         Sensitivity::ALL.into_iter().find(|v| v.as_str() == s)
     }
+}
+
+/// The sharpness score below which a photo is blurry, for each sensitivity. The score is the
+/// Laplacian-variance measure of `unswiper-blur` (higher = sharper). Low flags the fewest
+/// photos, so its cutoff is the smallest: `low < normal < high`.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cutoffs {
+    pub low: f32,
+    pub normal: f32,
+    pub high: f32,
+}
+
+impl Default for Cutoffs {
+    fn default() -> Self {
+        Cutoffs::DEFAULT
+    }
+}
+
+impl Cutoffs {
+    /// Calibrated on 85 real photos (docs/blur-evaluation.md, 15 Oct 2026).
+    pub const DEFAULT: Cutoffs = Cutoffs {
+        low: 7.0,
+        normal: 13.0,
+        high: 25.0,
+    };
+    /// Largest cutoff accepted (sharp photos score in the hundreds or thousands).
+    pub const MAX: f32 = 1000.0;
+
+    pub fn get(self, s: Sensitivity) -> f32 {
+        match s {
+            Sensitivity::Low => self.low,
+            Sensitivity::Normal => self.normal,
+            Sensitivity::High => self.high,
+        }
+    }
+
+    /// Checks the values: each above 0 and at most [`Cutoffs::MAX`], and Low < Normal < High.
+    /// The error is a sentence for the settings dialog.
+    pub fn validate(self) -> Result<(), String> {
+        for (name, v) in [
+            ("Low", self.low),
+            ("Normal", self.normal),
+            ("High", self.high),
+        ] {
+            if !v.is_finite() || v <= 0.0 {
+                return Err(format!("{name} must be a number above 0."));
+            }
+            if v > Cutoffs::MAX {
+                return Err(format!("{name} must be at most {}.", Cutoffs::MAX));
+            }
+        }
+        if !(self.low < self.normal && self.normal < self.high) {
+            return Err(
+                "The values must go up: Low below Normal, Normal below High (Low flags the fewest photos)."
+                    .into(),
+            );
+        }
+        Ok(())
+    }
+}
+
+/// The saved cutoffs; missing or invalid values give the defaults.
+pub fn cutoffs(c: &AppConfig) -> Cutoffs {
+    let Some(o) = c.extra.get(KEY_CUTOFFS).and_then(Value::as_object) else {
+        return Cutoffs::DEFAULT;
+    };
+    let d = Cutoffs::DEFAULT;
+    let f = |k: &str, def: f32| o.get(k).and_then(Value::as_f64).map_or(def, |v| v as f32);
+    let v = Cutoffs {
+        low: f("low", d.low),
+        normal: f("normal", d.normal),
+        high: f("high", d.high),
+    };
+    if v.validate().is_ok() {
+        v
+    } else {
+        d
+    }
+}
+
+/// Saves the cutoffs after checking them; the defaults are stored as an absent key.
+pub fn set_cutoffs(c: &mut AppConfig, v: Cutoffs) -> Result<(), String> {
+    v.validate()?;
+    if v == Cutoffs::DEFAULT {
+        c.extra.remove(KEY_CUTOFFS);
+    } else {
+        // Rounded to 0.1 so the JSON stays readable (2.3, not 2.299999952316284).
+        let r = |x: f32| ((x as f64) * 10.0).round() / 10.0;
+        c.extra.insert(
+            KEY_CUTOFFS.into(),
+            serde_json::json!({"low": r(v.low), "normal": r(v.normal), "high": r(v.high)}),
+        );
+    }
+    Ok(())
 }
 
 /// Whether "Detect blurry photos" is on (default on).
@@ -219,6 +316,55 @@ mod tests {
 
     fn set(v: &[&str]) -> HashSet<String> {
         v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn cutoffs_default_validate_and_round_trip() {
+        let mut c = AppConfig::default();
+        assert_eq!(cutoffs(&c), Cutoffs::DEFAULT);
+        assert_eq!(Cutoffs::DEFAULT.get(Sensitivity::Normal), 13.0);
+        let v = Cutoffs {
+            low: 4.5,
+            normal: 9.0,
+            high: 20.0,
+        };
+        set_cutoffs(&mut c, v).unwrap();
+        assert_eq!(
+            c.extra[KEY_CUTOFFS],
+            serde_json::json!({"low": 4.5, "normal": 9.0, "high": 20.0})
+        );
+        assert_eq!(cutoffs(&c), v);
+        // Out of order, zero, negative, too big, NaN: refused, nothing saved.
+        for bad in [
+            (9.0, 9.0, 20.0),
+            (10.0, 9.0, 20.0),
+            (4.0, 30.0, 20.0),
+            (0.0, 9.0, 20.0),
+            (-1.0, 9.0, 20.0),
+            (4.0, 9.0, 2000.0),
+            (f32::NAN, 9.0, 20.0),
+        ] {
+            let b = Cutoffs {
+                low: bad.0,
+                normal: bad.1,
+                high: bad.2,
+            };
+            assert!(set_cutoffs(&mut c, b).is_err(), "{bad:?}");
+        }
+        assert_eq!(cutoffs(&c), v);
+        // Defaults: the key goes away.
+        set_cutoffs(&mut c, Cutoffs::DEFAULT).unwrap();
+        assert!(!c.extra.contains_key(KEY_CUTOFFS));
+        // A hand-edited, invalid value falls back to the defaults.
+        c.extra.insert(
+            KEY_CUTOFFS.into(),
+            serde_json::json!({"low": 30, "normal": 9, "high": 20}),
+        );
+        assert_eq!(cutoffs(&c), Cutoffs::DEFAULT);
+        // A partial object fills in the defaults.
+        c.extra
+            .insert(KEY_CUTOFFS.into(), serde_json::json!({"normal": 10}));
+        assert_eq!(cutoffs(&c).normal, 10.0);
     }
 
     #[test]
