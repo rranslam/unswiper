@@ -6,6 +6,8 @@ import SwiftUI
 struct RootView: View {
     @EnvironmentObject private var state: AppState
     @State private var columns: NavigationSplitViewVisibility = .all
+    /// The visits list was hidden by Unswiper to make room for Photo Info.
+    @State private var sidebarAutoHidden = false
 
     /// Window title: the open visit's name, else the app's.
     private var detailTitle: String {
@@ -98,6 +100,18 @@ struct RootView: View {
             }
         }
         .frame(minWidth: 940, minHeight: 600)
+        // Photo Info opening in a narrow window hides the visits list so the photos keep
+        // their room, and closing it brings the list back. Decided on the click, from the
+        // window's current width, never from layout.
+        .onChange(of: state.infoOpen) { _, open in
+            let width = Double(KeyRouter.shared.window?.frame.width ?? 10_000)
+            let next = LayoutRules.sidebar(inspectorOpen: open, windowWidth: width,
+                                           sidebarShown: columns != .detailOnly,
+                                           autoHidden: sidebarAutoHidden)
+            sidebarAutoHidden = next.autoHidden
+            let wanted: NavigationSplitViewVisibility = next.show ? .all : .detailOnly
+            if wanted != columns { withAnimation { columns = wanted } }
+        }
         .sheet(isPresented: $state.cutoffsSheetOpen) { BlurCutoffsSheet() }
         .alert("Saved library couldn't be opened", isPresented: Binding(
             get: { state.libraryLoadProblem != nil },

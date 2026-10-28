@@ -30,6 +30,8 @@ struct UnswiperApp: App {
                 .modifier(OpenHelpOnLaunch())
                 .background(MainWindowReader())
         }
+        // Wide enough for the visits list, a usable photo grid and Photo Info.
+        .defaultSize(width: 1280, height: 800)
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Unswiper") { AboutPanel.show() }
