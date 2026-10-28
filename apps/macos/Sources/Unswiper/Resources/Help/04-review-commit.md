@@ -4,7 +4,7 @@ When you're happy with your choices, click **Review & commit…**. This is the o
 
 ## Choose what happens to rejected files
 
-On the visits screen, the **Commit** menu decides where rejected files go:
+At the top of the visits list (left side of the window), the **Commit** menu decides where rejected files go:
 
 - **Move to Trash** — rejected files go to the macOS Trash (the Trash icon in the Dock). You can drag them back out until you empty the Trash.
 - **Quarantine folder** — rejected files are moved to a folder named `_Rejected/Unswiper` inside your photo folder, in a sub-folder named with the date and time. Nothing is deleted.

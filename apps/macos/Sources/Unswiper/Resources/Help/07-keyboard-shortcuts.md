@@ -12,6 +12,7 @@ On a Mac, **⌘** is the Command key and **⇧** is the Shift key.
 - **⌘ Return** — Open Review & commit (it still asks you to confirm)
 - **Esc** — Cancel the Review & commit screen
 - **⇧⌘R** — Re-index the current folder
+- **⌃⌘S** — Hide or show the visits list (⌃ is the Control key)
 - **⌘?** — Open Unswiper Help
 - **⌘W** — Close the current window
 - **⌘Q** — Quit Unswiper

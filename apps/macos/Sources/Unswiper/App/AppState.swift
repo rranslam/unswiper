@@ -75,14 +75,6 @@ final class AppState: ObservableObject {
     /// Set while the helper groups by place ("Grouping by place…").
     @Published var groupingProgress: String?
 
-    enum AppPath: Hashable {
-        case home
-        case setup
-        case reduce(VisitGroup.ID)
-        case commit(VisitGroup.ID)
-        case compare(VisitGroup.ID, [String])
-    }
-
     private var bookmarkURL: URL?
     /// The URL we currently hold security-scoped access to (started once, stopped on root change/quit).
     private var accessedURL: URL?
@@ -349,6 +341,17 @@ final class AppState: ObservableObject {
         selectedGroupID = group.id
         path = .reduce(group.id)
         checkBlur(visitFirst: group.id, visitOnly: true)
+    }
+
+    /// A click in the visits list (nil: the selection was cleared).
+    func selectVisit(_ id: VisitGroup.ID?) {
+        let next = path.selecting(id)
+        guard next != path else { return }
+        if let id, let group = groups.first(where: { $0.id == id }) {
+            openGroup(group)
+        } else {
+            path = next
+        }
     }
 
     func items(in group: VisitGroup) -> [MediaItem] {
@@ -810,11 +813,8 @@ final class AppState: ObservableObject {
         groupingGeneration += 1
         if let id = selectedGroupID, !groups.contains(where: { $0.id == id }) {
             selectedGroupID = nil
-            switch path {
-            case .reduce, .commit, .compare: path = .home
-            default: break
-            }
         }
+        path = path.keeping(visits: Set(groups.map(\.id)))
         persist()
     }
 

@@ -4,7 +4,7 @@ You can play a video, or look at a photo in a large view, without leaving Unswip
 
 ## Opening the viewer
 
-1. Open a visit (click it on the Visits screen).
+1. Open a visit (click it in the visits list on the left).
 2. Video tiles show a **▶** badge with the length of the clip, for example **▶ 0:07**.
 3. Do one of these:
    - **Double-click** a photo or video, or

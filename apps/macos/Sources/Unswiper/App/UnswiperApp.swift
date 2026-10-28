@@ -33,6 +33,7 @@ struct UnswiperApp: App {
                 Button("About Unswiper") { AboutPanel.show() }
             }
             CommandGroup(replacing: .newItem) {}
+            SidebarCommands()
             CommandMenu("Library") {
                 Button("Choose Folder…") {
                     state.path = .setup

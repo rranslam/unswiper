@@ -16,7 +16,7 @@ A **visit** is a pile of photos and videos taken close together in time — a tr
 
 ## Grouping by place
 
-To group by where photos were taken instead of only by time, choose **View ▸ Grouping**, or use the **Grouping** menu above the visits list:
+To group by where photos were taken instead of only by time, choose **View ▸ Grouping**, or use the **Grouping** menu at the top of the visits list (left side of the window):
 
 - **By Visit (Time)**: the default, as described above.
 - **By Place**: all photos with the same place name, for example **Walla Walla, WA**, form one group, whenever they were taken and wherever they are in that town. Each group is in time order. Place names are the nearest town, looked up offline. Photos more than 100 km from any town go into **Other places**; photos without a location go into **No location** (a video without one borrows the place of a photo taken within 30 minutes).
@@ -27,6 +27,8 @@ Place groups show a pin and the town name (no map or internet needed). Your choi
 ## The visits list
 
 Each row shows the visit's dates, how many photos and videos it has, and your progress, for example `3 kept · 12 reject · 35 left`. Big visits are usually the best place to start.
+
+The list stays on the left while you work, and the visit you have open is highlighted. Click another visit to switch to it: it opens on its photo grid, with nothing selected. The **⋯** button at the top of the list has **Re-index**, **Restore Last Commit** and **Change Folder…**. To hide or show the list, click the sidebar button at the top left or choose **View ▸ Hide Sidebar** / **Show Sidebar** (**⌃⌘S**).
 
 ## The "Undated" visit
 

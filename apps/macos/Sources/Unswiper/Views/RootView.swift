@@ -5,23 +5,53 @@ import SwiftUI
 
 struct RootView: View {
     @EnvironmentObject private var state: AppState
+    @State private var columns: NavigationSplitViewVisibility = .all
+
+    /// Window title: the open visit's name, else the app's.
+    private var detailTitle: String {
+        guard let id = state.path.visitID,
+              let group = state.groups.first(where: { $0.id == id }) else { return "Unswiper" }
+        return group.title
+    }
+
+    /// The right side: the open visit's page, or a hint to pick one.
+    @ViewBuilder private var detail: some View {
+        switch state.path {
+        case .reduce(let id):
+            // A different visit is a fresh view: grid, no selection, no large photo.
+            ReduceView(groupID: id)
+                .id(id)
+        case .commit(let id):
+            CommitView(groupID: id)
+        case .compare(let id, let paths):
+            CompareView(groupID: id, paths: paths)
+        case .home, .setup:
+            ContentUnavailableView {
+                Label(state.groups.isEmpty ? "No Visits Yet" : "No Visit Selected",
+                      systemImage: "photo.on.rectangle.angled")
+            } description: {
+                Text(state.groups.isEmpty
+                     ? "Visits appear on the left when indexing finishes."
+                     : "Choose a visit on the left to review its photos.")
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             Group {
-                switch state.path {
-                case .setup:
+                if state.path.isFullWindow {
                     SetupView()
-                case .home:
-                    GroupsView()
-                case .reduce(let id):
-                    // A different visit is a fresh view: grid, no selection, no large photo.
-                    ReduceView(groupID: id)
-                        .id(id)
-                case .commit(let id):
-                    CommitView(groupID: id)
-                case .compare(let id, let paths):
-                    CompareView(groupID: id, paths: paths)
+                } else {
+                    NavigationSplitView(columnVisibility: $columns) {
+                        GroupsView()
+                            .navigationSplitViewColumnWidth(min: 280, ideal: 340, max: 520)
+                    } detail: {
+                        detail
+                            .frame(minWidth: 640, minHeight: 400)
+                            .navigationTitle(detailTitle)
+                    }
+                    .navigationSplitViewStyle(.balanced)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -67,7 +97,7 @@ struct RootView: View {
                 .padding(.vertical, 6)
             }
         }
-        .frame(minWidth: 900, minHeight: 620)
+        .frame(minWidth: 940, minHeight: 600)
         .sheet(isPresented: $state.cutoffsSheetOpen) { BlurCutoffsSheet() }
         .alert("Saved library couldn't be opened", isPresented: Binding(
             get: { state.libraryLoadProblem != nil },

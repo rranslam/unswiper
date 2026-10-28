@@ -86,13 +86,10 @@ struct ReduceView: View {
 
     private func header(_ group: VisitGroup) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button {
-                    state.path = .home
-                } label: {
-                    Label("Visits", systemImage: "chevron.left")
-                }
-                .buttonStyle(.borderless)
+            HStack(alignment: .firstTextBaseline) {
+                Text(group.title)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(2)
                 Spacer()
                 Text("Local")
                     .font(.caption)
@@ -100,8 +97,6 @@ struct ReduceView: View {
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
             }
-            Text(group.title)
-                .font(.title2.weight(.semibold))
             HStack(spacing: 16) {
                 Text("\(group.itemCount) items · \(ByteFormat.string(group.totalBytes))")
                 Text("Keep \(keepTarget)")
