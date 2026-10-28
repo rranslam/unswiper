@@ -53,21 +53,7 @@ struct MediaViewer: View {
             }
         }
         .onChange(of: item.path) { _, _ in failed = false }
-        // Space/Esc close, arrows step, K/R/U decide on the shown item.
-        .background {
-            Group {
-                Button("") { onClose() }.keyboardShortcut(.space, modifiers: [])
-                Button("") { onClose() }.keyboardShortcut(.escape, modifiers: [])
-                Button("") { onStep(-1) }.keyboardShortcut(.leftArrow, modifiers: [])
-                Button("") { onStep(1) }.keyboardShortcut(.rightArrow, modifiers: [])
-                Button("") { decide(.keep) }.keyboardShortcut("k", modifiers: [])
-                Button("") { decide(.reject) }.keyboardShortcut("r", modifiers: [])
-                Button("") { decide(.undecided) }.keyboardShortcut("u", modifiers: [])
-                Button("") { state.infoOpen.toggle() }.keyboardShortcut("i", modifiers: [])
-            }
-            .opacity(0)
-            .accessibilityHidden(true)
-        }
+        // Space/Esc, arrows and K/R/U/I are handled for the whole window by KeyRouter.
     }
 
     @ViewBuilder
@@ -91,10 +77,39 @@ struct MediaViewer: View {
 
     @ViewBuilder
     private var badge: some View {
+        let suggested = BlurRules.isSuggested(item)
+        let texts = BlurRules.viewerTexts(flag: flagText(suggested: suggested), suggested: suggested,
+                                          score: state.blurEnabled ? state.blurScores.score(for: item) : nil)
+        HStack(spacing: 8) {
+            if !texts.flag.isEmpty {
+                Text(texts.flag)
+                    .font(.caption)
+                    .padding(.horizontal, 6)
+                    .background(flagColor(suggested: suggested).opacity(suggested ? 0.8 : 0.3), in: Capsule())
+                    .help(suggested ? "Blur score: higher is sharper. Blurry Photos ▸ Blur Cutoffs… sets where Blurry starts." : "")
+            }
+            if !texts.score.isEmpty {
+                Text(texts.score)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .help("Blur score: higher is sharper. Blurry Photos ▸ Blur Cutoffs… sets where Blurry starts.")
+            }
+        }
+    }
+
+    private func flagText(suggested: Bool) -> String {
         switch item.decision {
-        case .keep: Text("Keep").font(.caption).padding(.horizontal, 6).background(.green.opacity(0.3), in: Capsule())
-        case .reject: Text("Reject").font(.caption).padding(.horizontal, 6).background(.red.opacity(0.3), in: Capsule())
-        case .undecided: EmptyView()
+        case .keep: return "Keep"
+        case .reject: return suggested ? "Blurry?" : "Reject"
+        case .undecided: return ""
+        }
+    }
+
+    private func flagColor(suggested: Bool) -> Color {
+        switch item.decision {
+        case .keep: return .green
+        case .reject: return suggested ? .orange : .red
+        case .undecided: return .clear
         }
     }
 

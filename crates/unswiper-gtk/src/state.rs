@@ -390,6 +390,8 @@ impl AppState {
         self.visit = Some(id.to_string());
         self.selection.clear();
         self.anchor = None;
+        // Another visit starts on its grid, not on the photo that was open in the last one.
+        self.viewer = None;
         true
     }
 
@@ -559,6 +561,8 @@ impl AppState {
         self.snap.config.group_mode = Some(m.as_str().to_string());
         self.regroup();
         self.after_items_changed();
+        // The groups were rebuilt: back to the grid (of the same visit if it still exists).
+        self.viewer = None;
     }
 
     /// Recomputes the groups from the items with the saved grouping settings.
@@ -750,6 +754,24 @@ impl AppState {
     pub fn set_blur_sensitivity(&mut self, s: Sensitivity) {
         quality::set_sensitivity(&mut self.snap.config, s);
         self.dirty = true;
+    }
+
+    /// The blurry-below score for each sensitivity (saved in library.json).
+    pub fn blur_cutoffs(&self) -> quality::Cutoffs {
+        quality::cutoffs(&self.snap.config)
+    }
+
+    /// Saves new cutoffs after checking them (Low < Normal < High, each above 0). The caller
+    /// re-runs the check, which re-applies the marks from cached scores without rescanning.
+    pub fn set_blur_cutoffs(&mut self, c: quality::Cutoffs) -> Result<(), String> {
+        quality::set_cutoffs(&mut self.snap.config, c)?;
+        self.dirty = true;
+        Ok(())
+    }
+
+    /// The thresholds in effect (sensitivity and its cutoff).
+    pub fn blur_thresholds(&self) -> unswiper_blur::decide::Thresholds {
+        unswiper_blur::decide::Thresholds::for_level(self.blur_sensitivity(), self.blur_cutoffs())
     }
 
     /// Applies a scan's verdict (see `unswiper_blur::scan::suggestions`).
@@ -1429,6 +1451,18 @@ mod tests {
         assert_eq!(s.set_blur_enabled(true), 0);
         s.set_blur_sensitivity(Sensitivity::High);
         assert_eq!(s.blur_sensitivity(), Sensitivity::High);
+        assert_eq!(s.blur_thresholds().abs, 25.0);
+        let c = quality::Cutoffs {
+            low: 4.0,
+            normal: 9.0,
+            high: 18.0,
+        };
+        s.set_blur_cutoffs(c).unwrap();
+        assert_eq!(s.blur_cutoffs(), c);
+        assert_eq!(s.blur_thresholds().abs, 18.0);
+        let bad = quality::Cutoffs { low: 20.0, ..c };
+        assert!(s.set_blur_cutoffs(bad).is_err());
+        assert_eq!(s.blur_cutoffs(), c, "a refused change keeps the old values");
     }
 
     #[test]
@@ -1560,6 +1594,33 @@ mod tests {
         assert!(s2.live_motion());
         s.set_live_motion(false);
         assert!(!s.live_motion());
+    }
+
+    #[test]
+    fn switching_visit_or_grouping_returns_to_the_grid() {
+        let (_t, mut s, ids) = two_visits();
+        assert!(s.open_visit(&ids[0]));
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        assert!(s.viewer.is_some());
+        // Another visit: grid, nothing selected.
+        assert!(s.open_visit(&ids[1]));
+        assert_eq!(s.viewer, None);
+        assert!(s.selection.is_empty());
+        // Unknown visit: nothing changes.
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        assert!(!s.open_visit("nope"));
+        assert_eq!(s.viewer.as_deref(), Some(p.as_str()));
+        // Another grouping: grid again.
+        s.set_group_mode(GroupMode::Geo);
+        assert_eq!(s.viewer, None);
+        // The same grouping again changes nothing.
+        s.open_visit(&s.snap.groups[0].id.clone());
+        let p = s.visible_items()[0].path.clone();
+        assert!(s.open_viewer(&p));
+        s.set_group_mode(GroupMode::Geo);
+        assert!(s.viewer.is_some());
     }
 
     #[test]

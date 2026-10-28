@@ -4,6 +4,21 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+### Added
+- Mac: side-by-side window like the Linux app. The visits list (folder, indexing progress with Cancel, Grouping and Commit pickers, per-visit counts) stays on the left; the open visit's grid or large photo, Review & commit and Compare show on the right, with a placeholder when no visit is open. The open visit is highlighted; clicking another opens it fresh on its grid, and changing the grouping still returns to the grid. Re-index, Restore Last Commit and Change Folder… moved into a **⋯** menu at the top of the list. The list can be hidden with the sidebar button or **View ▸ Hide Sidebar** (⌃⌘S). Choosing a folder still fills the whole window. The "‹ Visits" back button is gone.
+- Blur score in the large viewer (Linux and Mac): a photo marked as blurry shows its sharpness score in its flag (**Blurry? · 4.2**), and any other checked photo shows **Sharpness 42.7** next to its name. Higher means sharper. No number for videos, screenshots, photos not checked yet, or photos too dark or plain to judge.
+- Adjustable blur cutoffs (Linux: ☰ ▸ Blurry Photos ▸ Blur Sensitivity ▸ **Cutoffs…**; Mac: Blurry Photos ▸ **Blur Cutoffs…**): the score below which a photo counts as blurry at Low, Normal and High (defaults 7, 13, 25, unchanged). Shows the current numbers and which one is in use, checks that Low < Normal < High and that each is above 0 and at most 1000, has **Reset to Defaults**, and saves them in library.json (`config.blurCutoffs`, shared by both apps; missing = the defaults). Saving re-applies the marks from the cached scores right away; nothing is scanned again. The shake rule follows the cutoff (4 ×); the burst rule is unchanged.
+- `unswiper-blur scan` uses the library's saved sensitivity and cutoffs when given a library.json (before: always Normal 13 unless `--sensitivity`/`--threshold`), prints the cutoff in use above the list, and has `--cutoffs L,N,H` to try other values; `--print` names the default listing. `unswiper-blur info` uses the saved cutoffs too. The Mac helper gets the cutoffs the same way, from library.json.
+- docs/blur-evaluation.md explains the score ("Reading the score") with synthetic reference values (`cargo run --release -p unswiper-blur --example scale`); the Blurry Photos help page has a short version.
+
+### Fixed
+- Mac: About Unswiper showed a folder icon and no version when started with `swift run`. It now shows the funnel icon (also in the Dock), version, description, © 2026 Rob Ranslam, MIT License, the website and issue links and the third-party notices, like the Linux About dialog. build-dmg.sh takes its default version from Cargo.toml.
+- Mac: K, R, U, I, Space, Esc and ←/→ did nothing in the side-by-side window when the visits list had keyboard focus (the list took the keys). They're now handled for the whole window, skip text fields and sheets, and are also listed in a new **Photo** menu.
+- Mac: started with `swift run`, the app now gets its menu bar, Dock icon and Help like the installed app (it was treated as a background tool).
+- Linux app: right-clicking a photo no longer prints `Gtk-WARNING: Broken accounting of active state for widget (GtkBox)`. The info popover opened on the button press, so it appeared under the pointer while the button was still down and the release landed on the popover; GTK then cleared the pressed ("active") state on widgets it had never set it on (a GTK bug, fixed upstream in GTK 4.21.6, while the AppImage ships an older GTK). The popover now opens when the button is released, as GTK recommends.
+- Linux app: switching to another visit, or changing the grouping, now returns to the grid instead of leaving the previous visit's large photo on screen (the visit's title changed, but the large photo stayed until you clicked Grid).
+- Mac app: changing the grouping (View ▸ Grouping) while a large photo is open now returns to the visit's grid, and opening a visit always starts on its grid. (Switching visits on the Mac already went through the Visits list, which reset the view.)
+
 ## [0.6.1] - 2026-10-26
 
 ### Fixed

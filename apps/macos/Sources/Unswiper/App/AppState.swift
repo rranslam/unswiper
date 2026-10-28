@@ -75,14 +75,6 @@ final class AppState: ObservableObject {
     /// Set while the helper groups by place ("Grouping by place…").
     @Published var groupingProgress: String?
 
-    enum AppPath: Hashable {
-        case home
-        case setup
-        case reduce(VisitGroup.ID)
-        case commit(VisitGroup.ID)
-        case compare(VisitGroup.ID, [String])
-    }
-
     private var bookmarkURL: URL?
     /// The URL we currently hold security-scoped access to (started once, stopped on root change/quit).
     private var accessedURL: URL?
@@ -98,6 +90,7 @@ final class AppState: ObservableObject {
         self.groups = snap.groups
         self.lastIndexedAt = snap.lastIndexedAt
         rebuildCaches() // didSet doesn't run in init
+        reloadBlurScores()
         if let data = snap.config.bookmarkData {
             restoreBookmark(data)
         }
@@ -350,6 +343,17 @@ final class AppState: ObservableObject {
         checkBlur(visitFirst: group.id, visitOnly: true)
     }
 
+    /// A click in the visits list (nil: the selection was cleared).
+    func selectVisit(_ id: VisitGroup.ID?) {
+        let next = path.selecting(id)
+        guard next != path else { return }
+        if let id, let group = groups.first(where: { $0.id == id }) {
+            openGroup(group)
+        } else {
+            path = next
+        }
+    }
+
     func items(in group: VisitGroup) -> [MediaItem] {
         // Library order first, then by time (as before, without scanning the whole library).
         let positions = Set(group.itemPaths.compactMap { itemIndex[$0] }).sorted()
@@ -402,6 +406,32 @@ final class AppState: ObservableObject {
             let n = BlurRules.withdrawAll(&items)
             persist()
             statusMessage = n > 0 ? "Blurry-photo detection is off. \(n) suggestion\(n == 1 ? "" : "s") removed." : "Blurry-photo detection is off."
+        }
+    }
+
+    var blurCutoffs: BlurCutoffs { BlurRules.cutoffs(config) }
+    /// Opens the "Blur Cutoffs" sheet (Blurry Photos menu).
+    @Published var cutoffsSheetOpen = false
+    /// Scores from the helper's cache, for the number in the large viewer.
+    @Published private(set) var blurScores = BlurScores()
+
+    /// Saves new cutoffs and re-applies the marks. The helper reads them from library.json and
+    /// reuses its cached scores, so only photos without a score are read. Returns the problem
+    /// when the values can't be used (nothing is saved then).
+    @discardableResult
+    func setBlurCutoffs(_ c: BlurCutoffs) -> String? {
+        if let p = BlurRules.setCutoffs(&config, c) { return p }
+        persist()
+        checkBlur(visitFirst: selectedGroupID)
+        return nil
+    }
+
+    /// Reads the helper's score cache off the main thread (it can be tens of MB).
+    func reloadBlurScores() {
+        let url = BlurScores.url
+        Task { [weak self] in
+            let scores = await Task.detached(priority: .utility) { BlurScores.load(url) }.value
+            self?.blurScores = scores
         }
     }
 
@@ -499,6 +529,7 @@ final class AppState: ObservableObject {
                 self.blurPaused = false
             }
             self.resetInfo() // new scores change the Sharpness row
+            self.reloadBlurScores() // and the number in the large viewer
             if suggested > 0, !Task.isCancelled {
                 self.statusMessage = suggested == 1
                     ? "1 photo looks blurry and was marked Reject. Nothing moves until you commit."
@@ -724,6 +755,10 @@ final class AppState: ObservableObject {
 
     // MARK: - Grouping mode (plan §20.6)
 
+    /// Goes up by one each time the visits are regrouped; the visit view closes its large
+    /// photo when it changes.
+    @Published private(set) var groupingGeneration = 0
+
     /// Changes the grouping mode, saves it in `AppConfig.groupMode` and regroups the library.
     /// Views call this from a `Task`, never from inside a Picker/List update, so replacing
     /// `groups` and the selection is not a reentrant NSTableView change.
@@ -774,13 +809,12 @@ final class AppState: ObservableObject {
 
     /// After a regroup: drop a selection that no longer exists and save.
     private func groupsChanged() {
+        // An open large photo closes: the visit view goes back to its grid (or Visits).
+        groupingGeneration += 1
         if let id = selectedGroupID, !groups.contains(where: { $0.id == id }) {
             selectedGroupID = nil
-            switch path {
-            case .reduce, .commit, .compare: path = .home
-            default: break
-            }
         }
+        path = path.keeping(visits: Set(groups.map(\.id)))
         persist()
     }
 

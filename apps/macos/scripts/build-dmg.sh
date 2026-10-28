@@ -8,7 +8,10 @@ set -euo pipefail
 
 APP_NAME="Unswiper"
 BUNDLE_ID="io.github.rranslam.Unswiper"  # same as Linux; com.rranslam.unswiper up to 0.1.2
-VERSION="${1:-${VERSION:-0.6.1}}"
+# Default: the workspace version in the root Cargo.toml (the one source of truth; the
+# app's AppInfo.fallbackVersion for `swift run` is checked against it by a cargo test).
+CARGO_VERSION="$(sed -n 's/^version = "\(.*\)"$/\1/p' "$(cd "$(dirname "$0")/../../.." && pwd)/Cargo.toml" | head -n 1)"
+VERSION="${1:-${VERSION:-$CARGO_VERSION}}"
 VERSION="${VERSION#v}"
 MIN_MACOS="14.0"
 
@@ -82,6 +85,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
+  <key>NSHumanReadableCopyright</key><string>© 2026 Rob Ranslam. MIT License.</string>
   <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
   <key>LSMinimumSystemVersion</key><string>$MIN_MACOS</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.photography</string>

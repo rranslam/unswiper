@@ -13,6 +13,8 @@ struct ReduceView: View {
     @State private var viewer = ViewerModel()
     /// Path whose right-click Show Info popover is open.
     @State private var infoPopover: String?
+    /// Identifies this page to KeyRouter (another visit's page may appear before this one goes).
+    @State private var keyToken = UUID()
 
     enum MediaFilter: String, CaseIterable, Identifiable {
         case all, photos, videos, blurry
@@ -78,19 +80,22 @@ struct ReduceView: View {
         }
         .onAppear {
             keepTarget = state.keepTarget(for: groupID)
+            KeyRouter.shared.attach(.init(token: keyToken,
+                                          viewerOpen: { viewer.current != nil },
+                                          perform: { handleKey($0) }))
         }
+        .onDisappear { KeyRouter.shared.detach(keyToken) }
         .onChange(of: members.map(\.path)) { _, paths in viewer.check(paths) }
+        // Another grouping: back to the grid, like switching visits.
+        .onChange(of: state.groupingGeneration) { _, _ in viewer.close() }
     }
 
     private func header(_ group: VisitGroup) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Button {
-                    state.path = .home
-                } label: {
-                    Label("Visits", systemImage: "chevron.left")
-                }
-                .buttonStyle(.borderless)
+            HStack(alignment: .firstTextBaseline) {
+                Text(group.title)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(2)
                 Spacer()
                 Text("Local")
                     .font(.caption)
@@ -98,8 +103,6 @@ struct ReduceView: View {
                     .padding(.vertical, 3)
                     .background(.quaternary, in: Capsule())
             }
-            Text(group.title)
-                .font(.title2.weight(.semibold))
             HStack(spacing: 16) {
                 Text("\(group.itemCount) items · \(ByteFormat.string(group.totalBytes))")
                 Text("Keep \(keepTarget)")
@@ -186,19 +189,14 @@ struct ReduceView: View {
                 .frame(maxWidth: 360, alignment: .leading)
             Spacer()
             Button("Info") { state.infoOpen.toggle() }
-                .keyboardShortcut("i", modifiers: [])
                 .help("Show or hide Photo Info (I or ⌘I)")
             Button("Keep") { apply(.keep) }
-                .keyboardShortcut("k", modifiers: [])
                 .disabled(selected.isEmpty)
             Button("Reject") { apply(.reject) }
-                .keyboardShortcut("r", modifiers: [])
                 .disabled(selected.isEmpty)
             Button("Clear") { apply(.undecided) }
-                .keyboardShortcut("u", modifiers: [])
                 .disabled(selected.isEmpty)
             Button("View") { viewer.openOnSelection(selected, in: members.map(\.path)) }
-                .keyboardShortcut(.space, modifiers: [])
                 .disabled(selected.isEmpty)
             Button("Compare") { openCompare() }
                 .disabled(selected.count < 2 || selected.count > 4)
@@ -210,6 +208,32 @@ struct ReduceView: View {
             .keyboardShortcut(.return, modifiers: .command)
         }
         .padding()
+    }
+
+    /// K/R/U/I/Space/Esc/←/→ (from KeyRouter or the Photo menu). True when the key was used.
+    private func handleKey(_ command: KeyCommand) -> Bool {
+        let paths = members.map(\.path)
+        if let current = viewer.current {
+            switch command {
+            case .keep: state.updateDecision(paths: [current], decision: .keep)
+            case .reject: state.updateDecision(paths: [current], decision: .reject)
+            case .clear: state.updateDecision(paths: [current], decision: .undecided)
+            case .view, .close: viewer.close()
+            case .previous: _ = viewer.step(-1, in: paths)
+            case .next: _ = viewer.step(1, in: paths)
+            case .info: state.infoOpen.toggle()
+            }
+            return true
+        }
+        switch command {
+        case .keep: apply(.keep)
+        case .reject: apply(.reject)
+        case .clear: apply(.undecided)
+        case .view: viewer.openOnSelection(selected, in: paths)
+        case .info: state.infoOpen.toggle()
+        case .close, .previous, .next: return false
+        }
+        return true
     }
 
     private func toggle(_ path: String) {

@@ -26,7 +26,7 @@ use unswiper_core::{LibrarySnapshot, MediaItem, MediaKind};
 pub fn sharpness_for(
     item: &MediaItem,
     cache: &QualityCache,
-    sensitivity: Sensitivity,
+    thresholds: Thresholds,
     blur_enabled: bool,
 ) -> Option<Sharpness> {
     if item.kind == MediaKind::Video || !blur_enabled {
@@ -40,7 +40,7 @@ pub fn sharpness_for(
         Some(sc) => sharpness_word(
             &sc,
             quality::is_suggested(item).then_some(Reason::Soft),
-            Thresholds::for_sensitivity(sensitivity),
+            thresholds,
         ),
         None => Sharpness::NotChecked,
     })
@@ -155,7 +155,7 @@ pub fn run(o: &Options) -> Result<String, String> {
             .collect();
         return Ok(serde_json::to_string_pretty(&out).unwrap_or_default());
     }
-    let (items, cache, lib_sens, lib_blur) = match &o.library {
+    let (items, cache, lib_sens, lib_blur, cutoffs) = match &o.library {
         Some(lib) => {
             let data = std::fs::read(lib).map_err(|e| format!("{}: {e}", lib.display()))?;
             let snap: LibrarySnapshot =
@@ -167,9 +167,16 @@ pub fn run(o: &Options) -> Result<String, String> {
                 cache,
                 quality::sensitivity(&snap.config),
                 quality::enabled(&snap.config),
+                quality::cutoffs(&snap.config),
             )
         }
-        None => (vec![], QualityCache::default(), Sensitivity::Normal, true),
+        None => (
+            vec![],
+            QualityCache::default(),
+            Sensitivity::Normal,
+            true,
+            quality::Cutoffs::DEFAULT,
+        ),
     };
     let sens = o.sensitivity.unwrap_or(lib_sens);
     let blur_on = lib_blur && !o.blur_off;
@@ -182,7 +189,9 @@ pub fn run(o: &Options) -> Result<String, String> {
             let item = items.iter().find(|i| i.path == path);
             let facts = item.map(file_facts).unwrap_or_else(|| FileFacts::of(f));
             let sharp = match item {
-                Some(it) => sharpness_for(it, &cache, sens, blur_on),
+                Some(it) => {
+                    sharpness_for(it, &cache, Thresholds::for_level(sens, cutoffs), blur_on)
+                }
                 None if media.is_video || !blur_on => None,
                 None => Some(Sharpness::NotChecked),
             };
@@ -266,7 +275,7 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let mut it = item(d.path(), "a.jpg", "photo");
         let mut cache = QualityCache::default();
-        let n = Sensitivity::Normal;
+        let n = Thresholds::for_sensitivity(Sensitivity::Normal);
         assert_eq!(
             sharpness_for(&it, &cache, n, true),
             Some(Sharpness::NotChecked)
@@ -277,6 +286,19 @@ mod tests {
         assert_eq!(sharpness_for(&it, &cache, n, true), Some(Sharpness::Sharp));
         cache.put(&it.path, st, score(20.0), 0);
         assert_eq!(sharpness_for(&it, &cache, n, true), Some(Sharpness::Soft));
+        // A user cutoff of 25 at Normal: 20 is blurry, without rescanning.
+        let custom = Thresholds::for_level(
+            Sensitivity::Normal,
+            quality::Cutoffs {
+                low: 10.0,
+                normal: 25.0,
+                high: 40.0,
+            },
+        );
+        assert_eq!(
+            sharpness_for(&it, &cache, custom, true),
+            Some(Sharpness::Blurry)
+        );
         cache.put(&it.path, st, score(100.0), 0);
         let set: std::collections::HashSet<String> = [it.path.clone()].into_iter().collect();
         quality::apply_suggestions(std::slice::from_mut(&mut it), &set, &set, true);

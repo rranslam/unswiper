@@ -11,7 +11,7 @@ let package = Package(
         .executableTarget(
             name: "Unswiper",
             path: "Sources/Unswiper",
-            resources: [.copy("Resources/Help"), .copy("Resources/Takeout")]
+            resources: [.copy("Resources/Help"), .copy("Resources/Takeout"), .copy("Resources/AppIcon.png")]
         ),
         .testTarget(
             name: "UnswiperTests",

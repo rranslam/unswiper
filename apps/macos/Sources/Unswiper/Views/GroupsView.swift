@@ -3,6 +3,8 @@
 
 import SwiftUI
 
+/// The visits list (the left side of the window): library header, grouping and commit
+/// settings, then one row per visit. Clicking a visit opens it on the right.
 struct GroupsView: View {
     @EnvironmentObject private var state: AppState
 
@@ -13,58 +15,88 @@ struct GroupsView: View {
             if state.groups.isEmpty {
                 empty
             } else {
-                List(state.groups) { group in
-                    Button {
-                        // Deferred: navigating from inside the List's (NSTableView) click
-                        // handler is a reentrant table update and logs an AppKit warning.
-                        Task { @MainActor in state.openGroup(group) }
-                    } label: {
+                List(selection: Binding(
+                    get: { state.path.visitID },
+                    // Deferred: navigating from inside the List's (NSTableView) selection
+                    // handler is a reentrant table update and logs an AppKit warning.
+                    set: { id in Task { @MainActor in state.selectVisit(id) } }
+                )) {
+                    ForEach(state.groups) { group in
                         GroupRow(group: group, counts: state.visitCounts[group.id])
+                            .tag(group.id)
                     }
-                    .buttonStyle(.plain)
                 }
-                .listStyle(.inset)
+                .listStyle(.sidebar)
             }
         }
-        .navigationTitle("Visits")
     }
 
     private var header: some View {
-        HStack(spacing: 16) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(state.librarySummary)
-                    .font(.headline)
-                if let root = state.config.rootPath {
-                    Text(root)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(state.librarySummary)
+                        .font(.headline)
+                    if let root = state.config.rootPath {
+                        Text(root)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(root)
+                    }
+                    if let at = state.lastIndexedAt {
+                        Text("Last index \(at.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Spacer(minLength: 4)
+                Menu {
+                    Button("Re-index") {
+                        Task { await state.reindex() }
+                    }
+                    .disabled(state.isBusy || state.config.rootPath == nil)
+                    Button("Restore Last Commit") {
+                        Task { await state.restoreLastCommit() }
+                    }
+                    .disabled(state.isBusy || !state.hasRestorableCommit)
+                    Divider()
+                    Button("Change Folder…") {
+                        state.path = .setup
+                    }
+                    .disabled(state.isBusy)
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .help("Re-index, Restore Last Commit (move the files of the most recent commit back), Change Folder")
+            }
+            if let busy = state.busyMessage {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(busy)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
+                        .lineLimit(2)
                 }
-                if let at = state.lastIndexedAt {
-                    Text("Last index \(at.formatted(date: .abbreviated, time: .shortened))")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
-            }
-            Spacer()
-            if let busy = state.busyMessage {
-                ProgressView()
-                    .controlSize(.small)
-                Text(busy)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
             }
             if state.isIndexing, !state.groups.isEmpty {
                 IndexProgressBar(compact: true)
-                    .frame(maxWidth: 360)
             }
             if let g = state.groupingProgress {
-                ProgressView()
-                    .controlSize(.small)
-                Text(g)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(g)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                }
             }
             Picker("Grouping", selection: Binding(
                 get: { state.config.grouping },
@@ -74,7 +106,6 @@ struct GroupsView: View {
                     Text(mode.label).tag(mode)
                 }
             }
-            .frame(width: 230)
             .disabled(state.isBusy)
             .help("How visits are formed: by time, by place, or by time and then place")
 
@@ -83,47 +114,30 @@ struct GroupsView: View {
                     Text(mode.label).tag(mode)
                 }
             }
-            .frame(width: 220)
             .disabled(state.isBusy)
             .onChange(of: state.config.commitMode) { _, _ in state.persist() }
-
-            Button("Restore Last Commit") {
-                Task { await state.restoreLastCommit() }
-            }
-            .disabled(state.isBusy || !state.hasRestorableCommit)
-            .help("Move files from the most recent commit back to their original locations")
-
-            Button("Re-index") {
-                Task { await state.reindex() }
-            }
-            .disabled(state.isBusy || state.config.rootPath == nil)
-
-            Button("Change Folder…") {
-                state.path = .setup
-            }
-            .disabled(state.isBusy)
         }
-        .padding()
+        .padding(12)
     }
 
     private var empty: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 12) {
             Spacer()
             Text(state.isIndexing ? "Indexing…" : "No visits yet")
-                .font(.title2)
+                .font(.title3)
             if state.isIndexing {
                 IndexProgressBar(compact: false)
-                    .frame(maxWidth: 480)
             } else {
                 Text("Choose a folder and index to build visit groups.")
+                    .font(.callout)
                     .foregroundStyle(.secondary)
-            }
-            if !state.isIndexing {
+                    .multilineTextAlignment(.center)
                 Button("Choose Folder…") { state.path = .setup }
                     .buttonStyle(.borderedProminent)
             }
             Spacer()
         }
+        .padding()
         .frame(maxWidth: .infinity)
     }
 }
@@ -134,7 +148,7 @@ struct GroupRow: View {
 
     var body: some View {
         let progress = counts
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     if group.place != nil {
@@ -144,6 +158,7 @@ struct GroupRow: View {
                     }
                     Text(group.title)
                         .font(.headline)
+                        .lineLimit(2)
                 }
                 Text(dateRange)
                     .font(.caption)
@@ -154,19 +169,20 @@ struct GroupRow: View {
                         .foregroundStyle(.tint)
                 }
             }
-            Spacer()
+            Spacer(minLength: 4)
             VStack(alignment: .trailing, spacing: 4) {
                 Text(ByteFormat.string(group.totalBytes))
                     .font(.headline.monospacedDigit())
                 Text("\(group.photoCount) photos · \(group.videoCount) videos")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .lineLimit(1)
                 Text("\(group.itemCount) items")
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
         }
-        .padding(.vertical, 6)
+        .padding(.vertical, 4)
         .contentShape(Rectangle())
     }
 

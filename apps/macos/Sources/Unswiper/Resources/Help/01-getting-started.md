@@ -20,9 +20,9 @@ Your photos are **not moved or changed** during indexing.
 
 ## Step 3 — Pick a visit and reduce it
 
-When indexing finishes you'll see a list of **visits**. Click one to open it, mark the photos you want to **Keep** and the ones to **Reject**, then click **Review & commit…**. See the other help topics for each step.
+When indexing finishes, the list of **visits** appears on the left side of the window. Click one and its photos open on the right, next to the list. Mark the photos you want to **Keep** and the ones to **Reject**, then click **Review & commit…**. To get more room, hide the list with the sidebar button at the top left or **View ▸ Hide Sidebar** (**⌃⌘S**). See the other help topics for each step.
 
 ## Changing folders later
 
-- Click **Change Folder…** on the visits screen, or choose **Library ▸ Choose Folder…** from the menu bar at the top of the screen.
-- To rescan the same folder, click **Re-index** or press **⇧⌘R** (Shift + Command + R).
+- Click the **⋯** button at the top of the visits list and choose **Change Folder…**, or choose **Library ▸ Choose Folder…** from the menu bar at the top of the screen.
+- To rescan the same folder, choose **Re-index** in the **⋯** menu or press **⇧⌘R** (Shift + Command + R).

@@ -6,6 +6,7 @@ import SwiftUI
 
 @main
 struct UnswiperApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
     @StateObject private var takeout = TakeoutSetupModel()
     @AppStorage(ViewerRules.liveMotionKey) private var liveMotion = false
@@ -27,12 +28,14 @@ struct UnswiperApp: App {
             RootView()
                 .environmentObject(state)
                 .modifier(OpenHelpOnLaunch())
+                .background(MainWindowReader())
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Unswiper") { AboutPanel.show() }
             }
             CommandGroup(replacing: .newItem) {}
+            SidebarCommands()
             CommandMenu("Library") {
                 Button("Choose Folder…") {
                     state.path = .setup
@@ -61,6 +64,9 @@ struct UnswiperApp: App {
                 }
                 .disabled(state.isBusy)
             }
+            CommandMenu("Photo") {
+                PhotoMenuItems()
+            }
             CommandMenu("Blurry Photos") {
                 Toggle("Detect Blurry Photos", isOn: Binding(
                     get: { state.blurEnabled },
@@ -73,6 +79,8 @@ struct UnswiperApp: App {
                     ForEach(BlurRules.Sensitivity.allCases) { s in Text(s.label).tag(s) }
                 }
                 .disabled(!state.blurEnabled)
+                Button("Blur Cutoffs…") { state.cutoffsSheetOpen = true }
+                    .disabled(!state.blurEnabled)
                 Button("Check for Blurry Photos Now") {
                     state.checkBlur(visitFirst: state.selectedGroupID, userAsked: true)
                 }
@@ -160,13 +168,44 @@ enum AboutPanel {
         return fallback
     }
 
+    /// The funnel icon: the app's own in Unswiper.app, else the bundled PNG (`swift run`,
+    /// where the default would be the icon of the build folder: a generic folder).
+    @MainActor static var icon: NSImage? {
+        if !LaunchRules.isUnbundled(bundleURL: Bundle.main.bundleURL) { return NSApplication.shared.applicationIconImage }
+        guard let bundle = HelpLibrary.resourceBundle else { return nil }
+        let url = bundle.url(forResource: "AppIcon", withExtension: "png")
+            ?? bundle.bundleURL.appendingPathComponent("AppIcon.png")
+        return NSImage(contentsOf: url)
+    }
+
+    @MainActor static func credits() -> NSAttributedString {
+        let small = NSFont.systemFont(ofSize: NSFont.smallSystemFontSize)
+        let text = NSMutableAttributedString()
+        for line in AppInfo.creditsLines(notices: noticesText()) {
+            var attrs: [NSAttributedString.Key: Any] = [.font: small, .foregroundColor: NSColor.labelColor]
+            if let range = line.range(of: "https://"), let url = URL(string: String(line[range.lowerBound...])) {
+                attrs[.link] = url
+            }
+            text.append(NSAttributedString(string: line + "\n", attributes: attrs))
+        }
+        let centered = NSMutableParagraphStyle()
+        centered.alignment = .center
+        text.addAttribute(.paragraphStyle, value: centered, range: NSRange(location: 0, length: text.length))
+        return text
+    }
+
     @MainActor static func show() {
-        let credits = NSAttributedString(
-            string: noticesText(),
-            attributes: [.font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
-                         .foregroundColor: NSColor.labelColor]
-        )
-        NSApplication.shared.orderFrontStandardAboutPanel(options: [.credits: credits])
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [
+            .applicationName: AppInfo.name,
+            .applicationVersion: AppInfo.version,
+            // The build number in brackets would repeat the version; leave it empty.
+            .version: "",
+            .credits: credits(),
+            NSApplication.AboutPanelOptionKey(rawValue: "Copyright"): AppInfo.copyright,
+        ]
+        if let icon { options[.applicationIcon] = icon }
+        NSApplication.shared.orderFrontStandardAboutPanel(options: options)
         NSApplication.shared.activate(ignoringOtherApps: true)
     }
+
 }

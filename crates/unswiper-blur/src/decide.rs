@@ -6,7 +6,7 @@
 
 use crate::score::Score;
 pub use unswiper_core::meta::info::Sharpness;
-use unswiper_core::quality::Sensitivity;
+use unswiper_core::quality::{Cutoffs, Sensitivity};
 
 /// Photos taken within this many seconds of each other form a burst.
 pub const BURST_GAP_SECS: i64 = 3;
@@ -25,20 +25,22 @@ pub struct Thresholds {
 }
 
 impl Thresholds {
+    /// The default thresholds for a sensitivity.
     pub fn for_sensitivity(s: Sensitivity) -> Thresholds {
-        match s {
-            Sensitivity::Low => Thresholds {
-                abs: 7.0,
-                rel: 0.25,
-            },
-            Sensitivity::Normal => Thresholds {
-                abs: 13.0,
-                rel: 0.35,
-            },
-            Sensitivity::High => Thresholds {
-                abs: 25.0,
-                rel: 0.45,
-            },
+        Thresholds::for_level(s, Cutoffs::DEFAULT)
+    }
+
+    /// A sensitivity with the user's cutoffs (the absolute floor). The burst factor stays
+    /// tied to the sensitivity.
+    pub fn for_level(s: Sensitivity, cutoffs: Cutoffs) -> Thresholds {
+        let rel = match s {
+            Sensitivity::Low => 0.25,
+            Sensitivity::Normal => 0.35,
+            Sensitivity::High => 0.45,
+        };
+        Thresholds {
+            abs: cutoffs.get(s),
+            rel,
         }
     }
 
