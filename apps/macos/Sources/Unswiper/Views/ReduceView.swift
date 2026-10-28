@@ -75,6 +75,8 @@ struct ReduceView: View {
                 ContentUnavailableView("Visit not found", systemImage: "questionmark.folder")
             }
         }
+        // The photos keep at least this much room next to Photo Info.
+        .frame(minWidth: LayoutRules.contentMin)
         .inspector(isPresented: $state.infoOpen) {
             InfoInspector(path: infoTarget?.path, others: infoTarget?.others ?? 0)
         }

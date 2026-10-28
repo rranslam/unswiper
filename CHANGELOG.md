@@ -5,6 +5,7 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 ## [Unreleased]
 
 ### Fixed
+- Mac: with Photo Info open, the visits list crowded out the photos. The photos now always keep at least 420 points; opening Photo Info in a window narrower than about 1140 points hides the visits list and closing it brings the list back (a list you hid yourself stays hidden). New windows open at 1280 × 800.
 - Mac: resizing the window with Photo Info open could crash ("more Update Constraints in Window passes than there are views"). The info panel now lays out its rows itself instead of in a grouped form.
 
 ## [0.6.2] - 2026-10-27
