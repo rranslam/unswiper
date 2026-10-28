@@ -1,6 +1,6 @@
-# Status — Unswiper — 2026-10-27 (v0.6.2)
+# Status — Unswiper — 2026-10-28 (v0.6.3)
 
-**Current direction (27 Oct 2026):** v0.6.2 released: blur score in the viewer and editable cutoffs, Mac side-by-side window, shortcut and About fixes. v0.6.1: large libraries stay responsive on macOS and Linux (background indexing and blur check with progress, virtual grid). v0.6.0: grouping by place on macOS and Linux (By Visit (Time), By Place, By Visit and Place), offline place names, date fallbacks, visits oldest first. Next: **v0.7 `unswiper-hash`**, the separate file-hashing CLI (design approved, `crates/unswiper-hash/DESIGN.md` on branch `design/unswiper-hash`). Later: a map view (plan §21). The Windows port is deferred. History below.
+**Current direction (28 Oct 2026):** v0.6.3 released: fixes for a Mac resize crash with Photo Info open, room for the photos next to Photo Info, and arrow-key grid navigation on Mac and Linux. v0.6.2: blur score in the viewer and editable cutoffs, Mac side-by-side window, shortcut and About fixes. v0.6.1: large libraries stay responsive on macOS and Linux (background indexing and blur check with progress, virtual grid). v0.6.0: grouping by place on macOS and Linux (By Visit (Time), By Place, By Visit and Place), offline place names, date fallbacks, visits oldest first. Next: **v0.7 `unswiper-hash`**, the separate file-hashing CLI (design approved, `crates/unswiper-hash/DESIGN.md` on branch `design/unswiper-hash`). Later: a map view (plan §21). The Windows port is deferred. History below.
 
 ---
 ## Earlier status — 2026-10-11 (macOS MVP + review fixes)

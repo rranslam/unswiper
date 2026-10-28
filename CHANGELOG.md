@@ -4,6 +4,8 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-10-28
+
 ### Fixed
 - Mac: the arrow keys, Page Up/Down and Home/End didn't move the selection in the photo grid. They now move it like on Linux (one photo, one row, a screenful, first/last) and scroll it into view; ←/→ in the large photo are unchanged. Typing in text fields and sheets isn't affected.
 - Mac: with Photo Info open, the visits list crowded out the photos. The photos now always keep at least 420 points; opening Photo Info in a window narrower than about 1140 points hides the visits list and closing it brings the list back (a list you hid yourself stays hidden). New windows open at 1280 × 800.

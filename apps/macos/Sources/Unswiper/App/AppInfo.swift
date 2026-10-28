@@ -9,7 +9,7 @@ enum AppInfo {
     /// Used when there's no Info.plist (`swift run`). Keep equal to `version` in the root
     /// Cargo.toml: `cargo test -p unswiper-core --test mac_version` fails otherwise, and
     /// build-dmg.sh stamps Info.plist with the Cargo.toml version.
-    static let fallbackVersion = "0.6.2"
+    static let fallbackVersion = "0.6.3"
     static let developer = "Rob Ranslam"
     static let copyright = "© 2026 Rob Ranslam"
     static let comments = "Sort trip photos into visits, keep the best, set aside the rest."

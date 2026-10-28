@@ -8,7 +8,7 @@ Pare down your photos and videos **one visit at a time** (grouped by place and t
 
 *Formerly visit-media-reduce.* Free and open source under the [MIT License](LICENSE).
 
-**Status:** v0.6.2 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64). New in 0.6: **grouping by place**: choose **By Visit (Time)**, **By Place** (all photos from one town together, e.g. every Walla Walla photo in one group) or **By Visit and Place** (each trip split per town), with offline place names. Photos without a camera date now get one from GPS time or the file name, and visits are listed **oldest first**. Also included: guided import from Google Photos (Takeout), photo info, blurry-photo detection and in-app video playback. New in 0.6.1: **large libraries** (tested on about 80,000 files) stay responsive, with progress bars and Cancel while indexing and the blur check running in the background with Pause and Stop. New in 0.6.2: the large view shows each photo's **blur score**, you can set your own **blur cutoffs**, and the Mac app now shows the visits list and photos **side by side** like the Linux app. See [CHANGELOG.md](CHANGELOG.md).
+**Status:** v0.6.3 is out for **macOS** (SwiftUI app) and **Linux** (GTK 4 app on a shared Rust core; AppImage and Flatpak, x86_64 and aarch64). New in 0.6: **grouping by place**: choose **By Visit (Time)**, **By Place** (all photos from one town together, e.g. every Walla Walla photo in one group) or **By Visit and Place** (each trip split per town), with offline place names. Photos without a camera date now get one from GPS time or the file name, and visits are listed **oldest first**. Also included: guided import from Google Photos (Takeout), photo info, blurry-photo detection and in-app video playback. New in 0.6.1: **large libraries** (tested on about 80,000 files) stay responsive, with progress bars and Cancel while indexing and the blur check running in the background with Pause and Stop. New in 0.6.2: the large view shows each photo's **blur score**, you can set your own **blur cutoffs**, and the Mac app now shows the visits list and photos **side by side** like the Linux app. New in 0.6.3: fixes for a Mac crash when resizing with Photo Info open, room for the photos next to Photo Info, and arrow-key navigation in the photo grid on Mac and Linux. See [CHANGELOG.md](CHANGELOG.md).
 
 ## Download & Install (macOS)
 
@@ -18,16 +18,16 @@ You need a Mac running **macOS 14 (Sonoma) or newer**. Works on Apple Silicon an
 
 1. Open this link in Safari (or any browser): **https://github.com/rranslam/unswiper/releases/latest**
 2. Scroll down to the section called **Assets**. (If you only see a small triangle and the word "Assets", click it to open the list.)
-3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.6.2.dmg`**. Do *not* click "Source code".
+3. Click the file whose name ends in **`.dmg`**, for example **`Unswiper-0.6.3.dmg`**. Do *not* click "Source code".
 4. Your browser downloads it. In Safari, a blue arrow in the top-right of the window shows the download progress. Wait until it finishes.
 
 ### Step 2 — Install
 
 1. Open **Finder** (the blue-and-white smiley face at the left end of the Dock, the row of icons at the bottom of your screen).
 2. In the Finder window's left sidebar, click **Downloads**.
-3. **Double-click** `Unswiper-0.6.2.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
+3. **Double-click** `Unswiper-0.6.3.dmg`. After a few seconds a new window opens showing the **Unswiper** icon and an **Applications** folder icon.
 4. **Click and hold** on the Unswiper icon, **drag** it on top of the Applications folder icon, and let go. This copies the app into your Applications folder.
-5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.6.2** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
+5. Eject the installer disk: in the Finder sidebar, under **Locations**, find **Unswiper 0.6.3** and click the small **eject (⏏)** button next to it. (You can also drag the `.dmg` file in Downloads to the Trash now; you don't need it anymore.)
 
 ### Step 3 — Open it the first time
 
@@ -219,10 +219,10 @@ swift test
 To build the downloadable app and `.dmg` yourself:
 
 ```
-apps/macos/scripts/build-dmg.sh 0.6.2
+apps/macos/scripts/build-dmg.sh 0.6.3
 ```
 
-The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.6.2.dmg`). Pushing a tag such as `v0.6.2` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
+The result is in `apps/macos/dist/` (`Unswiper.app` and `Unswiper-0.6.3.dmg`). Pushing a tag such as `v0.6.3` to GitHub runs `.github/workflows/release.yml`, which builds the `.dmg`, both AppImages and both Flatpaks and attaches them to a GitHub Release.
 
 ## Build from source (Linux)
 
