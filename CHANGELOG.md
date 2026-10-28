@@ -4,6 +4,9 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+### Fixed
+- Mac: resizing the window with Photo Info open could crash ("more Update Constraints in Window passes than there are views"). The info panel now lays out its rows itself instead of in a grouped form.
+
 ## [0.6.2] - 2026-10-27
 
 ### Added

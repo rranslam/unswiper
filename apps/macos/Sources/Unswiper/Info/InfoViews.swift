@@ -20,30 +20,48 @@ struct InfoInspector: View {
     var body: some View {
         Group {
             if let path {
-                Form {
-                    Section {
+                // A plain ScrollView, not a grouped Form: Form rows are table cells with their
+                // own hosting views whose heights depend on the column width, and wrapped,
+                // selectable values made window resizing loop until AppKit threw
+                // ("more Update Constraints in Window passes than there are views").
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 14) {
                         Text(InfoRules.heading(fileName: URL(fileURLWithPath: path).lastPathComponent, others: others))
                             .font(.headline)
                             .textSelection(.enabled)
-                    }
-                    if let answer = state.infoAnswer(path) {
-                        ForEach(InfoRules.sections(answer.rows, shortOnly: false)) { section in
-                            Section(section.title) {
-                                ForEach(section.rows, id: \.self) { row in
-                                    LabeledContent(row.label) {
-                                        Text(row.value).textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let answer = state.infoAnswer(path) {
+                            ForEach(InfoRules.sections(answer.rows, shortOnly: false)) { section in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(section.title)
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(.secondary)
+                                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+                                        ForEach(section.rows, id: \.self) { row in
+                                            GridRow {
+                                                Text(row.label)
+                                                    .foregroundStyle(.secondary)
+                                                    .gridColumnAlignment(.trailing)
+                                                Text(row.value)
+                                                    .textSelection(.enabled)
+                                                    .fixedSize(horizontal: false, vertical: true)
+                                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                            }
+                                        }
                                     }
+                                    .font(.callout)
+                                    if section.title == "Location" { locationFooter(section.rows) }
                                 }
-                                if section.title == "Location" { locationFooter(section.rows) }
                             }
+                        } else if let problem = state.infoProblem {
+                            Text(problem).foregroundStyle(.secondary)
+                        } else {
+                            ProgressView("Reading…").controlSize(.small)
                         }
-                    } else if let problem = state.infoProblem {
-                        Text(problem).foregroundStyle(.secondary)
-                    } else {
-                        ProgressView("Reading…").controlSize(.small)
                     }
+                    .padding(12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .formStyle(.grouped)
             } else {
                 ContentUnavailableView(
                     "No Selection",
@@ -68,6 +86,7 @@ struct InfoInspector: View {
         Text("Shown only on this Mac. Turn off in View ▸ Show Location in Photo Info.")
             .font(.caption)
             .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
