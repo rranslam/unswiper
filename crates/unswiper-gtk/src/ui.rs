@@ -239,6 +239,8 @@ pub struct Widgets {
     keep_status: gtk::Label,
     grid: crate::grid::Grid,
     content: gtk::Stack,
+    /// Read by the Left/Right shortcuts (see `viewer_key_applies`).
+    viewer_open: Rc<Cell<bool>>,
     viewer: ViewerWidgets,
     selection_label: gtk::Label,
     commit_button: gtk::Button,
@@ -285,14 +287,30 @@ pub struct ViewerWidgets {
 
 /// Viewer keys (Space, arrows) run in the capture phase so a focused button doesn't eat
 /// Space; skip them while a dialog or a text/spin field has focus.
+/// Whether a capture-phase viewer key is handled now. Space opens and closes the viewer;
+/// Left/Right step through it only while it's open, and otherwise go on to the photo grid,
+/// which moves its selection with them (like Up/Down).
+fn viewer_key_applies(trigger: &str, viewer_open: bool) -> bool {
+    match trigger {
+        "Left" | "Right" => viewer_open,
+        _ => true,
+    }
+}
+
 fn viewer_key(
     ctl: &gtk::ShortcutController,
     trigger: &str,
     sender: &ComponentSender<App>,
+    viewer_open: &Rc<Cell<bool>>,
     msg: fn() -> Msg,
 ) {
     let s = sender.clone();
+    let open = viewer_open.clone();
+    let key = trigger.to_string();
     let act = gtk::CallbackAction::new(move |w, _| {
+        if !viewer_key_applies(&key, open.get()) {
+            return glib::Propagation::Proceed;
+        }
         let focus = w.root().and_then(|r| r.focus());
         let busy = focus.is_some_and(|f| {
             f.ancestor(adw::Dialog::static_type()).is_some()
@@ -622,9 +640,11 @@ impl Component for App {
         let vctl = gtk::ShortcutController::new();
         vctl.set_scope(gtk::ShortcutScope::Managed);
         vctl.set_propagation_phase(gtk::PropagationPhase::Capture);
-        viewer_key(&vctl, "space", &sender, || Msg::ToggleViewer);
-        viewer_key(&vctl, "Left", &sender, || Msg::ViewerStep(-1));
-        viewer_key(&vctl, "Right", &sender, || Msg::ViewerStep(1));
+        // Set in `view` from the state: Left/Right go to the grid unless the viewer is open.
+        let viewer_open = Rc::new(Cell::new(false));
+        viewer_key(&vctl, "space", &sender, &viewer_open, || Msg::ToggleViewer);
+        viewer_key(&vctl, "Left", &sender, &viewer_open, || Msg::ViewerStep(-1));
+        viewer_key(&vctl, "Right", &sender, &viewer_open, || Msg::ViewerStep(1));
         root.add_controller(vctl);
 
         // Setup page.
@@ -1085,6 +1105,7 @@ impl Component for App {
             keep_status,
             grid,
             content,
+            viewer_open,
             viewer: ViewerWidgets {
                 title: v_title,
                 position: v_pos,
@@ -2296,6 +2317,7 @@ impl App {
         w.visit_rows = rows;
 
         w.live_action.set_state(&st.live_motion().to_variant());
+        w.viewer_open.set(st.viewer.is_some());
         w.content.set_visible_child_name(if st.viewer.is_some() {
             "viewer"
         } else if st.visit.is_some() {
@@ -2544,5 +2566,23 @@ mod notices_tests {
     fn about_shows_geonames_attribution() {
         assert!(super::THIRD_PARTY_NOTICES.contains("GeoNames"));
         assert!(super::THIRD_PARTY_NOTICES.contains("CC BY 4.0"));
+    }
+}
+
+#[cfg(test)]
+mod viewer_key_tests {
+    use super::viewer_key_applies;
+
+    #[test]
+    fn arrows_go_to_the_grid_unless_the_viewer_is_open() {
+        assert!(!viewer_key_applies("Left", false));
+        assert!(!viewer_key_applies("Right", false));
+        assert!(viewer_key_applies("Left", true));
+        assert!(viewer_key_applies("Right", true));
+        assert!(
+            viewer_key_applies("space", false),
+            "Space opens the viewer from the grid"
+        );
+        assert!(viewer_key_applies("space", true));
     }
 }
