@@ -4,6 +4,7 @@
 - **R** — Reject the selected photos (in a visit)
 - **U** — Clear the choice for the selected photos
 - **Space** or **double-click** — Open the selected photo or video in the viewer (Space or **Esc** closes it)
+- **Arrow keys, Page Up / Page Down, Home / End** — In the photo grid, move the selection
 - **← / →** — In the viewer, show the previous or next item
 - **I** or **Ctrl+I** — Show or hide the Photo Info panel (camera, settings, date, size, location)
 - **Right-click** a photo — Quick look at its Photo Info
