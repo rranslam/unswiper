@@ -166,6 +166,13 @@ Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/shar
 
 Unswiper can find photos that are probably out of focus or shaken and mark them **Reject** for you, with an orange **Blurry?** badge. **Nothing is moved or deleted automatically:** marked photos move only when you open their visit and click **Review & Commit…**, like any other rejected photo. Your own Keep/Reject choices always win. It is **on** by default, runs entirely on your computer, and you can turn it off: on Linux in the main menu (**☰**) under **Blurry Photos**, on a Mac in the **Blurry Photos** menu at the top of the screen. Inside the app, open Help (**F1** on Linux, **⌘?** on a Mac) and read the **Blurry Photos** page for the full steps.
 
+**Known limits: photos that can be flagged by mistake.** The check looks for crisp edges, so some good photos can score low. Always glance at **Blurry?** photos before you commit.
+- **Close-ups and shallow focus:** a macro or portrait shot where only a center circle is sharp and the edges are deliberately soft. If the sharp area is small, the score can fall below the cutoff.
+- **Plain or very fine-textured subjects:** sky, fog, snow, water, a blank wall, or distant foliage and gravel whose detail is only a pixel or two wide.
+- **Large photos with mostly fine detail:** the score is measured at screen size (long edge 1024 px), so detail that's only visible at 100% doesn't count.
+
+If too many good photos are flagged, lower the sensitivity, or set your own Low, Normal and High cutoffs (Linux: **☰ → Blurry Photos → Blur Sensitivity → Cutoffs…**; Mac: **Blurry Photos → Blur Cutoffs…**). The large view shows each photo's score next to the badge, which helps you pick values.
+
 **Command-line checker (optional, for big folders or trying it out).** If you build Unswiper from source, the `unswiper-blur` tool lists photos that look blurry. It only reads your photos; it never moves, deletes or changes anything, and never edits your decisions.
 
 1. Open a Terminal in the Unswiper source folder.
