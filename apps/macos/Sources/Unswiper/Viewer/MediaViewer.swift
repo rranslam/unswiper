@@ -53,21 +53,7 @@ struct MediaViewer: View {
             }
         }
         .onChange(of: item.path) { _, _ in failed = false }
-        // Space/Esc close, arrows step, K/R/U decide on the shown item.
-        .background {
-            Group {
-                Button("") { onClose() }.keyboardShortcut(.space, modifiers: [])
-                Button("") { onClose() }.keyboardShortcut(.escape, modifiers: [])
-                Button("") { onStep(-1) }.keyboardShortcut(.leftArrow, modifiers: [])
-                Button("") { onStep(1) }.keyboardShortcut(.rightArrow, modifiers: [])
-                Button("") { decide(.keep) }.keyboardShortcut("k", modifiers: [])
-                Button("") { decide(.reject) }.keyboardShortcut("r", modifiers: [])
-                Button("") { decide(.undecided) }.keyboardShortcut("u", modifiers: [])
-                Button("") { state.infoOpen.toggle() }.keyboardShortcut("i", modifiers: [])
-            }
-            .opacity(0)
-            .accessibilityHidden(true)
-        }
+        // Space/Esc, arrows and K/R/U/I are handled for the whole window by KeyRouter.
     }
 
     @ViewBuilder

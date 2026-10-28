@@ -6,6 +6,7 @@ import SwiftUI
 
 @main
 struct UnswiperApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var state = AppState()
     @StateObject private var takeout = TakeoutSetupModel()
     @AppStorage(ViewerRules.liveMotionKey) private var liveMotion = false
@@ -27,6 +28,7 @@ struct UnswiperApp: App {
             RootView()
                 .environmentObject(state)
                 .modifier(OpenHelpOnLaunch())
+                .background(MainWindowReader())
         }
         .commands {
             CommandGroup(replacing: .appInfo) {
@@ -61,6 +63,9 @@ struct UnswiperApp: App {
                     ForEach(GroupMode.allCases) { m in Text(m.label).tag(m) }
                 }
                 .disabled(state.isBusy)
+            }
+            CommandMenu("Photo") {
+                PhotoMenuItems()
             }
             CommandMenu("Blurry Photos") {
                 Toggle("Detect Blurry Photos", isOn: Binding(

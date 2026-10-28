@@ -2,6 +2,8 @@
 
 On a Mac, **⌘** is the Command key and **⇧** is the Shift key.
 
+The single keys work whenever a visit is open, also right after you clicked in the visits list, but not while you type in a text box. They're also listed in the **Photo** menu.
+
 - **K** — Keep the selected photos (in a visit)
 - **R** — Reject the selected photos (in a visit)
 - **U** — Clear the choice for the selected photos (also clears a **Blurry?** suggestion for good)
