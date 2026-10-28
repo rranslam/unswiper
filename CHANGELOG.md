@@ -4,6 +4,8 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-10-27
+
 ### Added
 - Mac: side-by-side window like the Linux app. The visits list (folder, indexing progress with Cancel, Grouping and Commit pickers, per-visit counts) stays on the left; the open visit's grid or large photo, Review & commit and Compare show on the right, with a placeholder when no visit is open. The open visit is highlighted; clicking another opens it fresh on its grid, and changing the grouping still returns to the grid. Re-index, Restore Last Commit and Change Folder… moved into a **⋯** menu at the top of the list. The list can be hidden with the sidebar button or **View ▸ Hide Sidebar** (⌃⌘S). Choosing a folder still fills the whole window. The "‹ Visits" back button is gone.
 - Blur score in the large viewer (Linux and Mac): a photo marked as blurry shows its sharpness score in its flag (**Blurry? · 4.2**), and any other checked photo shows **Sharpness 42.7** next to its name. Higher means sharper. No number for videos, screenshots, photos not checked yet, or photos too dark or plain to judge.

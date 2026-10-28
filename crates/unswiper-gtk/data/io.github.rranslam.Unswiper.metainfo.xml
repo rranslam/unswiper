@@ -37,6 +37,7 @@
     <screenshot type="default"><caption>Reviewing a visit</caption><image>https://raw.githubusercontent.com/rranslam/unswiper/main/crates/unswiper-gtk/data/screenshot.png</image></screenshot>
   </screenshots>
   <releases>
+    <release version="0.6.2" date="2026-10-27"><description><p>The large view shows each photo's blur score, and the Low, Normal and High blur cutoffs can be edited. Switching visits or grouping returns to the grid. Fixes a GTK warning when right-clicking photos.</p></description></release>
     <release version="0.6.1" date="2026-10-26"><description><p>Large libraries stay responsive: indexing and the blur check run in the background with progress bars, Cancel, Pause and Stop, and the photo grid only builds what is on screen.</p></description></release>
     <release version="0.6.0" date="2026-10-26"><description><p>Group by place: choose By Visit (Time), By Place (all photos from one town together) or By Visit and Place (each trip split per town), with offline place names. Photos without a camera date get one from GPS time or the file name, and visits are listed oldest first.</p></description></release>
     <release version="0.5.0" date="2026-10-25"><description><p>Import from Google Photos: a step-by-step assistant explains which Google Takeout options to pick, checks free space, unpacks your exports with a progress bar (stop and continue later) and uses Google's dates and places.</p></description></release>
