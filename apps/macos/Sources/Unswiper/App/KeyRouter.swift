@@ -109,6 +109,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         if LaunchRules.isUnbundled(bundleURL: Bundle.main.bundleURL) {
             NSApplication.shared.setActivationPolicy(.regular)
+            // Dock icon: otherwise a generic one (no .app, no AppIcon.icns).
+            MainActor.assumeIsolated {
+                if let icon = AboutPanel.icon { NSApplication.shared.applicationIconImage = icon }
+            }
         }
     }
 

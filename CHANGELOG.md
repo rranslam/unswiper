@@ -12,6 +12,7 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 - docs/blur-evaluation.md explains the score ("Reading the score") with synthetic reference values (`cargo run --release -p unswiper-blur --example scale`); the Blurry Photos help page has a short version.
 
 ### Fixed
+- Mac: About Unswiper showed a folder icon and no version when started with `swift run`. It now shows the funnel icon (also in the Dock), version, description, © 2026 Rob Ranslam, MIT License, the website and issue links and the third-party notices, like the Linux About dialog. build-dmg.sh takes its default version from Cargo.toml.
 - Mac: K, R, U, I, Space, Esc and ←/→ did nothing in the side-by-side window when the visits list had keyboard focus (the list took the keys). They're now handled for the whole window, skip text fields and sheets, and are also listed in a new **Photo** menu.
 - Mac: started with `swift run`, the app now gets its menu bar, Dock icon and Help like the installed app (it was treated as a background tool).
 - Linux app: right-clicking a photo no longer prints `Gtk-WARNING: Broken accounting of active state for widget (GtkBox)`. The info popover opened on the button press, so it appeared under the pointer while the button was still down and the release landed on the popover; GTK then cleared the pressed ("active") state on widgets it had never set it on (a GTK bug, fixed upstream in GTK 4.21.6, while the AppImage ships an older GTK). The popover now opens when the button is released, as GTK recommends.
