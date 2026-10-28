@@ -15,6 +15,13 @@ struct ReduceView: View {
     @State private var infoPopover: String?
     /// Identifies this page to KeyRouter (another visit's page may appear before this one goes).
     @State private var keyToken = UUID()
+    /// The photo the arrow keys move from (the last one clicked or moved to).
+    @State private var cursor: String?
+    /// Scrolls the grid to this photo (set by a key press, read by the ScrollViewReader).
+    @State private var scrollTarget: String?
+    /// The grid's size, noted for the keys. A plain object, not observed state: writing it
+    /// while the grid lays out never redraws anything, so it can't start a layout loop.
+    @State private var gridSize = GridSizeBox()
 
     enum MediaFilter: String, CaseIterable, Identifiable {
         case all, photos, videos, blurry
@@ -150,13 +157,14 @@ struct ReduceView: View {
     }
 
     private var grid: some View {
+        ScrollViewReader { proxy in
         ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 110), spacing: 8)], spacing: 8) {
                 ForEach(members) { item in
                     MediaCell(
                         item: item,
                         selected: selected.contains(item.path),
-                        onTap: { toggle(item.path) },
+                        onTap: { toggle(item.path); cursor = item.path },
                         onOpen: { viewer.open(item.path, in: members.map(\.path)) }
                     )
                     .popover(isPresented: Binding(
@@ -181,6 +189,36 @@ struct ReduceView: View {
             }
             .padding()
         }
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { gridSize.size = geo.size }
+                    .onChange(of: geo.size) { _, size in gridSize.size = size }
+            }
+        }
+        .onChange(of: scrollTarget) { _, target in
+            guard let target else { return }
+            withAnimation(.easeInOut(duration: 0.15)) { proxy.scrollTo(target) }
+        }
+        }
+    }
+
+    /// ←/→, ↑/↓, Page Up/Down, Home/End in the grid: select one photo and scroll to it.
+    private func moveSelection(_ command: KeyCommand) -> Bool {
+        let paths = members.map(\.path)
+        let from = cursor.flatMap { c in selected.contains(c) ? paths.firstIndex(of: c) : nil }
+            ?? paths.firstIndex(where: selected.contains)
+        let size = gridSize.size
+        guard let to = GridNav.target(
+            from: from, count: paths.count,
+            columns: GridNav.columns(width: size.width),
+            rowsPerPage: GridNav.rowsPerPage(width: size.width, height: size.height),
+            command: command
+        ) else { return false }
+        selected = [paths[to]]
+        cursor = paths[to]
+        scrollTarget = paths[to]
+        return true
     }
 
     private func bottomBar(_ group: VisitGroup) -> some View {
@@ -224,6 +262,7 @@ struct ReduceView: View {
             case .previous: _ = viewer.step(-1, in: paths)
             case .next: _ = viewer.step(1, in: paths)
             case .info: state.infoOpen.toggle()
+            case .up, .down, .pageUp, .pageDown, .home, .end: return false
             }
             return true
         }
@@ -233,7 +272,9 @@ struct ReduceView: View {
         case .clear: apply(.undecided)
         case .view: viewer.openOnSelection(selected, in: paths)
         case .info: state.infoOpen.toggle()
-        case .close, .previous, .next: return false
+        case .previous, .next, .up, .down, .pageUp, .pageDown, .home, .end:
+            return moveSelection(command)
+        case .close: return false
         }
         return true
     }
@@ -311,4 +352,9 @@ struct MediaCell: View {
             EmptyView()
         }
     }
+}
+
+/// Last known size of the photo grid (see `ReduceView.gridSize`).
+final class GridSizeBox {
+    var size: CGSize = .zero
 }

@@ -8,6 +8,7 @@ The single keys work whenever a visit is open, also right after you clicked in t
 - **R** — Reject the selected photos (in a visit)
 - **U** — Clear the choice for the selected photos (also clears a **Blurry?** suggestion for good)
 - **Space** or **double-click** — Open the selected photo or video in the viewer (Space or **Esc** closes it)
+- **Arrow keys, Page Up / Page Down, Home / End** — In the photo grid, move the selection (one photo, one row, a screenful, first / last) and scroll to it
 - **← / →** — In the viewer, show the previous or next item
 - **I** or **⌘I** — Show or hide the Photo Info inspector (camera, settings, date, size, location)
 - **Right-click ▸ Show Info** — Quick look at a photo's Photo Info
