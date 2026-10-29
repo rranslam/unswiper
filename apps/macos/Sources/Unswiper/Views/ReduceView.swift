@@ -198,7 +198,7 @@ struct ReduceView: View {
         }
         .onChange(of: scrollTarget) { _, target in
             guard let target else { return }
-            withAnimation(.easeInOut(duration: 0.15)) { proxy.scrollTo(target) }
+            proxy.scrollTo(target)
         }
         }
     }

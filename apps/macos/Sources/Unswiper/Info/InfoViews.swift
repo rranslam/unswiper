@@ -28,25 +28,30 @@ struct InfoInspector: View {
                     VStack(alignment: .leading, spacing: 14) {
                         Text(InfoRules.heading(fileName: URL(fileURLWithPath: path).lastPathComponent, others: others))
                             .font(.headline)
-                            .textSelection(.enabled)
                             .fixedSize(horizontal: false, vertical: true)
+                            .contextMenu { copyButton(URL(fileURLWithPath: path).lastPathComponent) }
                         if let answer = state.infoAnswer(path) {
                             ForEach(InfoRules.sections(answer.rows, shortOnly: false)) { section in
                                 VStack(alignment: .leading, spacing: 6) {
                                     Text(section.title)
                                         .font(.subheadline.weight(.semibold))
                                         .foregroundStyle(.secondary)
-                                    Grid(alignment: .leadingFirstTextBaseline, horizontalSpacing: 10, verticalSpacing: 4) {
+                                    // Fixed label column and plain (not selectable) text: a selectable
+                                    // Text is an AppKit text view, and wrapped ones in a flexible
+                                    // column got a new frame on every pass when the selection
+                                    // changed, which crashed AppKit (v0.6.3). Right-click copies.
+                                    VStack(alignment: .leading, spacing: 4) {
                                         ForEach(section.rows, id: \.self) { row in
-                                            GridRow {
+                                            HStack(alignment: .firstTextBaseline, spacing: 8) {
                                                 Text(row.label)
                                                     .foregroundStyle(.secondary)
-                                                    .gridColumnAlignment(.trailing)
+                                                    .lineLimit(1)
+                                                    .frame(width: 92, alignment: .trailing)
                                                 Text(row.value)
-                                                    .textSelection(.enabled)
                                                     .fixedSize(horizontal: false, vertical: true)
                                                     .frame(maxWidth: .infinity, alignment: .leading)
                                             }
+                                            .contextMenu { copyButton(row.value) }
                                         }
                                     }
                                     .font(.callout)
@@ -70,9 +75,18 @@ struct InfoInspector: View {
                 )
             }
         }
-        .inspectorColumnWidth(min: 240, ideal: 300, max: 420)
+        // A fixed width: the panel never resizes with its content or the window.
+        .frame(width: InfoRules.inspectorWidth)
+        .inspectorColumnWidth(InfoRules.inspectorWidth)
         .task(id: InfoTaskKey(path: path, settings: state.infoSettings, generation: state.infoGeneration)) {
             if let path { state.loadInfo([path]) }
+        }
+    }
+
+    private func copyButton(_ text: String) -> some View {
+        Button("Copy") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
         }
     }
 
@@ -142,7 +156,6 @@ struct InfoStrip: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .textSelection(.enabled)
                     .help("Settings of the selected item")
             } else {
                 Text(" ").font(.caption)

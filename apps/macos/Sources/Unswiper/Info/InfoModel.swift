@@ -6,6 +6,9 @@ import Foundation
 /// Pure rules for the photo info popover, inspector and Compare strip (plan §17.2), mirroring
 /// `AppState::info_target` and `info.rs` in the Linux app.
 enum InfoRules {
+    /// Width of the Photo Info panel (fixed, see InfoInspector).
+    static let inspectorWidth: CGFloat = 300
+
     /// The item the info shows: the one in the viewer, else the first selected one in grid order,
     /// plus how many others are selected.
     static func target(viewer: String?, selected: Set<String>, ordered: [String]) -> (path: String, others: Int)? {

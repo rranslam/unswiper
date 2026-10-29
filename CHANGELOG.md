@@ -4,6 +4,9 @@ All notable changes to Unswiper are listed here. Downloads: https://github.com/r
 
 ## [Unreleased]
 
+### Fixed
+- Mac: selecting a photo or pressing ↓ with Photo Info open could still crash ("more Update Constraints in Window passes than there are views"). Photo Info now has a fixed width (300 points) and plain text with a fixed label column; right-click a value and choose **Copy** to copy it (it can no longer be selected with the mouse). The settings line under the grid isn't selectable either.
+
 ## [0.6.3] - 2026-10-28
 
 ### Fixed

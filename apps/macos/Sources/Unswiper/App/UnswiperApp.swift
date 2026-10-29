@@ -28,7 +28,7 @@ struct UnswiperApp: App {
             RootView()
                 .environmentObject(state)
                 .modifier(OpenHelpOnLaunch())
-                .background(MainWindowReader())
+                .background(MainWindowReader().frame(width: 0, height: 0))
         }
         // Wide enough for the visits list, a usable photo grid and Photo Info.
         .defaultSize(width: 1280, height: 800)
