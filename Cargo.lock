@@ -2106,7 +2106,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-blur"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "image",
  "libheif-rs",
@@ -2122,7 +2122,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-cli"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "serde_json",
  "tempfile",
@@ -2133,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-core"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "base64",
  "chrono",
@@ -2152,7 +2152,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-geo"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "reverse_geocoder",
  "unswiper-core",
@@ -2160,7 +2160,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-gtk"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "chrono",
  "gstreamer",
@@ -2182,7 +2182,7 @@ dependencies = [
 
 [[package]]
 name = "unswiper-takeout"
-version = "0.6.3"
+version = "0.6.4"
 dependencies = [
  "chrono",
  "flate2",

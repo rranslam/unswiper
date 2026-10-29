@@ -13,6 +13,7 @@ A small box opens next to it with the main facts: camera and lens, shutter speed
 
 - Press **I** or **⌘I** to show or hide the inspector on the right. You can also click **Info** in the bottom bar, or choose **View ▸ Show Inspector** in the menu bar.
 - The inspector shows the item you **selected**. If several are selected, it shows the first one and says how many more are selected.
+- To copy a value (or the file name), right-click it and choose **Copy**. The text in the inspector can't be selected with the mouse.
 - It also works in the viewer: it follows along when you press **←** or **→**.
 - The inspector stays open or closed until you quit Unswiper.
 
