@@ -37,6 +37,7 @@
     <screenshot type="default"><caption>Reviewing a visit</caption><image>https://raw.githubusercontent.com/rranslam/unswiper/main/crates/unswiper-gtk/data/screenshot.png</image></screenshot>
   </screenshots>
   <releases>
+    <release version="0.6.4" date="2026-10-28"><description><p>Mac: no more crash when selecting photos with Photo Info open. Photo Info values are copied with right-click ▸ Copy. The Mac grid keys are documented in Help.</p></description></release>
     <release version="0.6.3" date="2026-10-28"><description><p>Arrow keys move the selection in the photo grid. Mac: no more crash when resizing the window with Photo Info open, and the photos keep their room next to Photo Info.</p></description></release>
     <release version="0.6.2" date="2026-10-27"><description><p>The large view shows each photo's blur score, and the Low, Normal and High blur cutoffs can be edited. Switching visits or grouping returns to the grid. Fixes a GTK warning when right-clicking photos.</p></description></release>
     <release version="0.6.1" date="2026-10-26"><description><p>Large libraries stay responsive: indexing and the blur check run in the background with progress bars, Cancel, Pause and Stop, and the photo grid only builds what is on screen.</p></description></release>
