@@ -10,8 +10,8 @@ The single keys work whenever a visit is open, also right after you clicked in t
 - **Space** or **double-click** — Open the selected photo or video in the viewer (Space or **Esc** closes it)
 - **← / →** — In the photo grid, select the previous or next photo
 - **↑ / ↓** — In the photo grid, select the photo one row up or down
-- **Page Up / Page Down** — In the photo grid, move the selection a screenful up or down
-- **Home / End** — In the photo grid, select the first or last photo
+- **Fn+↑ / Fn+↓ (Page Up / Page Down)** — In the photo grid, move the selection a screenful up or down
+- **Fn+← / Fn+→ (Home / End)** — In the photo grid, select the first or last photo
 - The grid scrolls to keep the selected photo in view. The selection doesn't wrap around at either end.
 - **⇧, ⌘ or ⌥ with ↑ / ↓** — Unswiper doesn't use these; macOS scrolls the grid instead, without changing the selection (⌥↑ / ⌥↓ jump to the top or bottom)
 - **← / →** — In the viewer, show the previous or next item
