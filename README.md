@@ -153,6 +153,38 @@ To update, download the new `.flatpak` and run the same `flatpak install --user`
 
 Decisions, commit history and blur scores (`quality-cache.json`): `~/.local/share/unswiper/` (Flatpak: `~/.var/app/io.github.rranslam.Unswiper/data/unswiper/`). Rejected files go to your desktop Trash (or `_Rejected/Unswiper` inside the library, if you chose that), so you can restore them. Removing the app never touches your photos.
 
+### Uninstalling / removing old copies (Linux)
+
+**Uninstalling never deletes your photos.** It only removes the app (and, if you choose, its saved settings and decisions). Files you rejected stay in your Trash or in `_Rejected/Unswiper` until you delete them yourself.
+
+**Flatpak.** You can end up with two copies: one installed for your user (`--user`) and one for the whole computer (`--system`). Keep only one, so the app menu opens the version you expect.
+
+1. See which copies you have:
+   ```bash
+   flatpak list --app --columns=application,version,installation | grep -i unswiper
+   ```
+   Each line shows the version and `user` or `system`.
+2. Remove the **user** copy (no password needed):
+   ```bash
+   flatpak uninstall --user io.github.rranslam.Unswiper
+   ```
+3. Remove the **system** copy (asks for your password):
+   ```bash
+   sudo flatpak uninstall --system io.github.rranslam.Unswiper
+   ```
+4. Answer **y** when asked. Run step 1 again to check.
+
+**AppImage.** There's nothing to uninstall: delete the file, for example `rm ~/Applications/Unswiper-x86_64.AppImage` (or wherever you saved it, often `~/Downloads`). If a tool such as AppImageLauncher added it to your app menu, also remove its menu entry: `ls ~/.local/share/applications | grep -i unswiper`, then delete the file it shows with `rm ~/.local/share/applications/<that file>`.
+
+**Mac.** Quit Unswiper and drag **Unswiper** from **Applications** to the Trash (see *Uninstalling* in the macOS section above).
+
+**Saved settings and decisions (optional).** Removing the app keeps these, so a reinstall picks up where you left off. To remove them too, delete the folder:
+- Linux AppImage: `~/.local/share/unswiper` (or `$XDG_DATA_HOME/unswiper` if you set `XDG_DATA_HOME`)
+- Linux Flatpak: `~/.var/app/io.github.rranslam.Unswiper` (for example `rm -rf ~/.var/app/io.github.rranslam.Unswiper`)
+- Mac: `~/Library/Application Support/Unswiper`
+
+These folders only hold Unswiper's own files (library.json, commit history, blur scores), never your photos.
+
 ## Known issues
 
 - **Unswiper 0.3.0 AppImage: videos don't play on newer distros (GStreamer clash).** Use the Flatpak, or 0.4.0 or newer, where it's fixed. See https://github.com/rranslam/unswiper/issues/1.
