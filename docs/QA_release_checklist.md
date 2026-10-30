@@ -63,3 +63,62 @@ Check each of these:
 
 - [ ] Add an empty `## [Unreleased]` section to `CHANGELOG.md` when the next change lands.
 - [ ] Do a quick smoke test of the downloaded `.dmg`, AppImage and Flatpak on a copy of a small photo folder.
+- [ ] Install each asset from the release page and check the version it reports (section 6).
+
+## 6. Post-release install and version verification
+
+Do this for **each of the 5 assets** after the Release workflow finishes. Download it from the release page (not a local build), install it the way a user would, launch it, and check that every place that shows a version says the tagged version `X.Y.Z`. If one doesn't, don't edit the release: open a `fix/version-report` PR with a test, then make a new patch release.
+
+Replace `X.Y.Z` with the version (no `v`). Base URL: `https://github.com/rranslam/unswiper/releases/download/vX.Y.Z`.
+
+**Linux AppImage** (`Unswiper-x86_64.AppImage` on x86_64, `Unswiper-aarch64.AppImage` on aarch64; check with `uname -m`):
+
+```bash
+mkdir -p /tmp/uv && cd /tmp/uv
+curl -fLO https://github.com/rranslam/unswiper/releases/download/vX.Y.Z/Unswiper-$(uname -m).AppImage
+chmod +x Unswiper-$(uname -m).AppImage
+./Unswiper-$(uname -m).AppImage --version            # must print: unswiper X.Y.Z
+./Unswiper-$(uname -m).AppImage --appimage-extract >/dev/null
+grep -m1 'release version' squashfs-root/usr/share/metainfo/io.github.rranslam.Unswiper.metainfo.xml   # first entry: X.Y.Z
+grep X-AppImage-Version squashfs-root/io.github.rranslam.Unswiper.desktop                              # X.Y.Z
+./Unswiper-$(uname -m).AppImage                      # ☰ ▸ About Unswiper: the version badge shows X.Y.Z
+cd / && rm -rf /tmp/uv
+```
+
+(No FUSE: add `--appimage-extract-and-run` before the other arguments.)
+
+**Linux Flatpak** (`Unswiper-x86_64.flatpak` / `Unswiper-aarch64.flatpak`; user install, no sudo). First note whether it was already installed (`flatpak list --user --app | grep Unswiper`); if it was, skip the uninstall at the end.
+
+```bash
+mkdir -p /tmp/uv && cd /tmp/uv
+curl -fLO https://github.com/rranslam/unswiper/releases/download/vX.Y.Z/Unswiper-$(uname -m).flatpak
+flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo   # for the GNOME runtime
+flatpak install --user -y Unswiper-$(uname -m).flatpak
+flatpak info --user io.github.rranslam.Unswiper | grep -i version     # Version: X.Y.Z
+flatpak run io.github.rranslam.Unswiper --version                     # unswiper X.Y.Z
+flatpak run io.github.rranslam.Unswiper                               # ☰ ▸ About Unswiper shows X.Y.Z
+flatpak uninstall --user -y io.github.rranslam.Unswiper               # only if it wasn't installed before
+cd / && rm -rf /tmp/uv
+```
+
+**macOS** (`Unswiper-X.Y.Z.dmg`; read it from the mounted image, don't replace the installed app):
+
+```bash
+cd /tmp && curl -fLO https://github.com/rranslam/unswiper/releases/download/vX.Y.Z/Unswiper-X.Y.Z.dmg
+hdiutil attach -nobrowse -readonly Unswiper-X.Y.Z.dmg
+/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' -c 'Print CFBundleVersion' \
+  "/Volumes/Unswiper X.Y.Z/Unswiper.app/Contents/Info.plist"         # both X.Y.Z
+open "/Volumes/Unswiper X.Y.Z/Unswiper.app"                          # Unswiper ▸ About Unswiper: "Version X.Y.Z"
+# quit Unswiper, then:
+hdiutil detach "/Volumes/Unswiper X.Y.Z" && rm /tmp/Unswiper-X.Y.Z.dmg
+```
+
+**No machine for an architecture?** Check the files without running them and mark the asset "static only, run test pending": for the AppImage, extract the squashfs (it starts at the `hsqs` offset; `unsquashfs -o <offset>`), then check the metainfo, the `.desktop` file and that `usr/bin/unswiper` contains `X.Y.Z`. For the Flatpak bundle, decompress its xz stream and look for the first `release version=` in the metainfo.
+
+Record the result in the release PR or notes as a table: asset, machine, how checked (run / About / package metadata / static), version shown, pass or fail.
+
+- [ ] `Unswiper-x86_64.AppImage`: `--version`, About and metadata show X.Y.Z
+- [ ] `Unswiper-x86_64.flatpak`: `flatpak info`, `--version` and About show X.Y.Z
+- [ ] `Unswiper-aarch64.AppImage`: same as x86_64
+- [ ] `Unswiper-aarch64.flatpak`: same as x86_64
+- [ ] `Unswiper-X.Y.Z.dmg`: Info.plist and About show X.Y.Z
