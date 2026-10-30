@@ -63,3 +63,14 @@ Check each of these:
 
 - [ ] Add an empty `## [Unreleased]` section to `CHANGELOG.md` when the next change lands.
 - [ ] Do a quick smoke test of the downloaded `.dmg`, AppImage and Flatpak on a copy of a small photo folder.
+
+## 7. Flathub update (once Unswiper is on Flathub)
+
+See [flathub_release_process.md](flathub_release_process.md) Part B.
+
+- [ ] Before tagging: the metainfo has `<release version="X.Y.Z" date="…">` with notes (the workflow fails without it).
+- [ ] After **Release** succeeds: approve the **`flathub`** environment gate on the *Flathub update* run ("go").
+- [ ] The PR "Update to X.Y.Z" is open on `flathub/io.github.rranslam.Unswiper` and its `flathub/build` check is green.
+- [ ] Install the test build from the bot's comment, start it, and check About shows X.Y.Z. Open a library of test images, then remove the `/test` ref.
+- [ ] Merge the PR. Within a few hours, `flatpak update io.github.rranslam.Unswiper` from Flathub shows X.Y.Z.
+- [ ] If the permissions or runtime changed, explain them in the PR (moderation hold).

@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Rob Ranslam
+# Opens an update PR on the Flathub app repo (flathub/io.github.rranslam.Unswiper) for a released tag.
+# Rob's "go" = approve the `flathub` environment gate, then test and merge the PR on Flathub.
+# Disabled until the app is accepted on Flathub: set the repo variable FLATHUB_ENABLED=true to turn it on.
+# Needs the secret FLATHUB_TOKEN (fine-grained PAT Rob creates; see docs/flathub_release_process.md).
+name: Flathub update
+
+on:
+  workflow_run:
+    workflows: ["Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Released version without the v, e.g. 0.6.5"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    if: >-
+      vars.FLATHUB_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
+    runs-on: ubuntu-24.04
+    environment: flathub   # add Rob as required reviewer in Settings > Environments
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Version
+        id: v
+        env:
+          INPUT: ${{ github.event.inputs.version }}
+          RUN_TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          v="${INPUT:-${RUN_TAG#v}}"
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version '$v'"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: flathub/io.github.rranslam.Unswiper
+          token: ${{ secrets.FLATHUB_TOKEN }}
+          path: flathub
+      - run: pip install --user aiohttp tomlkit
+      - run: packaging/flathub/update-flathub-manifest.sh "${{ steps.v.outputs.version }}" flathub
+      - name: Lint manifest
+        run: |
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends flatpak
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y --noninteractive flathub org.flatpak.Builder
+          cd flathub && flatpak run --command=flatpak-builder-lint org.flatpak.Builder manifest io.github.rranslam.Unswiper.yml
+      - name: Open PR on Flathub
+        # peter-evans/create-pull-request v7.0.8
+        uses: peter-evans/create-pull-request@271a8d0340265f705b14b6d32b9829c1cb33d45e
+        with:
+          path: flathub
+          token: ${{ secrets.FLATHUB_TOKEN }}
+          branch: update-${{ steps.v.outputs.version }}
+          base: master
+          title: Update to ${{ steps.v.outputs.version }}
+          commit-message: Update to ${{ steps.v.outputs.version }}
+          body: |
+            Update to v${{ steps.v.outputs.version }}: https://github.com/rranslam/unswiper/releases/tag/v${{ steps.v.outputs.version }}
+            Tag and commit bumped, cargo-sources.json regenerated from the tag's Cargo.lock. No permission changes.
+          author: Rob Ranslam <rranslam@gmail.com>
+          committer: Rob Ranslam <rranslam@gmail.com>
+          delete-branch: true

@@ -26,11 +26,6 @@ finish-args:
   - --filesystem=xdg-videos
   # Move to Trash: the freedesktop home trash, so files can be put back by Restore Last Commit.
   - --filesystem=xdg-data/Trash
-build-options:
-  append-path: /usr/lib/sdk/rust-stable/bin
-  env:
-    CARGO_HOME: /run/build/unswiper/cargo
-    CARGO_NET_OFFLINE: "true"
 cleanup:
   - /include
   - /lib/pkgconfig
@@ -39,6 +34,11 @@ cleanup:
   - /bin/heif-*
   - /bin/dec265
   - "*.a"
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  env:
+    CARGO_HOME: /run/build/unswiper/cargo
+    CARGO_NET_OFFLINE: "true"
 modules:
   # HEVC decoder used by libheif for HEIC.
   - name: libde265
@@ -91,6 +91,7 @@ modules:
       - install -Dm644 crates/unswiper-gtk/data/io.github.rranslam.Unswiper.desktop /app/share/applications/io.github.rranslam.Unswiper.desktop
       - install -Dm644 crates/unswiper-gtk/data/io.github.rranslam.Unswiper.metainfo.xml /app/share/metainfo/io.github.rranslam.Unswiper.metainfo.xml
       - install -Dm644 LICENSE /app/share/doc/unswiper/LICENSE
+      - install -Dm644 LICENSE -t /app/share/licenses/io.github.rranslam.Unswiper/
       - install -Dm644 THIRD_PARTY_NOTICES /app/share/doc/unswiper/THIRD_PARTY_NOTICES
       - cd crates/unswiper-gtk/data/icons && find hicolor -type f -exec install -Dm644 {} /app/share/icons/{} \;
     sources:

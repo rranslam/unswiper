@@ -2,7 +2,7 @@
 # Flatpak
 
 `io.github.rranslam.Unswiper.yml` builds the GTK app (`crates/unswiper-gtk`) on GNOME Platform/SDK 50
-with the `rust-stable` SDK extension (25.08). It is not published to Flathub.
+with the `rust-stable` SDK extension (25.08). It is not published to Flathub yet; see `docs/flathub_release_process.md` (the Flathub manifest itself must use a git tag source).
 
 ```sh
 flatpak install --user flathub org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
