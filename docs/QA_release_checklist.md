@@ -115,6 +115,8 @@ hdiutil detach "/Volumes/Unswiper X.Y.Z" && rm /tmp/Unswiper-X.Y.Z.dmg
 
 **No machine for an architecture?** Check the files without running them and mark the asset "static only, run test pending": for the AppImage, extract the squashfs (it starts at the `hsqs` offset; `unsquashfs -o <offset>`), then check the metainfo, the `.desktop` file and that `usr/bin/unswiper` contains `X.Y.Z`. For the Flatpak bundle, decompress its xz stream and look for the first `release version=` in the metainfo.
 
+Before installing, check for older copies (see the README section *Uninstalling / removing old copies*): two Flatpaks (`--user` and `--system`) can make the app menu open the old one.
+
 Record the result in the release PR or notes as a table: asset, machine, how checked (run / About / package metadata / static), version shown, pass or fail.
 
 - [ ] `Unswiper-x86_64.AppImage`: `--version`, About and metadata show X.Y.Z
